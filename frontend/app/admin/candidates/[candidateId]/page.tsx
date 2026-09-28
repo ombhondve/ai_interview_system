@@ -568,6 +568,13 @@ export default function CandidateDetailPage() {
             .split("\n")
             .map((item) => item.trim())
             .filter(Boolean),
+          studentEducation: data.studentEducation
+            ? {
+                degree: data.studentEducation.degree,
+                college: data.studentEducation.college,
+                year: data.studentEducation.year,
+              }
+            : undefined,
         });
 
       setGeneratedProject(
