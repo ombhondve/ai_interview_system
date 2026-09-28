@@ -2,7 +2,7 @@
 
 import { GraduationCap } from "lucide-react";
 
-import { Candidate } from "@/types";
+import { Candidate, getEducationList } from "@/types";
 
 import {
   Card,
@@ -218,7 +218,7 @@ export function CandidateEducationTab({
 }) {
 
   const education =
-    candidate.education ?? [];
+    getEducationList(candidate.education);
 
 
   return (
