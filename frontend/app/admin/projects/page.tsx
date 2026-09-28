@@ -979,10 +979,20 @@ export default function ProjectsPage() {
      PROJECT UPDATED
   ======================================================= */
 
-  const handleProjectUpdated = (updated: { id: string } & Partial<Project>) => {
+  const handleProjectUpdated = (
+    updatedRaw: Parameters<
+      NonNullable<ComponentProps<typeof ProjectEditModal>["onUpdated"]>
+    >[0]
+  ) => {
+    const updated = updatedRaw as unknown as Partial<Project>;
+
+    if (!updated.id) return;
+
+    const id = updated.id;
+
     setProjects((current) =>
       current.map((project) =>
-        project.id === updated.id ? { ...project, ...updated } : project
+        project.id === id ? { ...project, ...updated } : project
       )
     );
 
