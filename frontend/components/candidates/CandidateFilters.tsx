@@ -196,9 +196,7 @@ export function CandidateFiltersBar({
         value={filters.status ?? ""}
         onChange={(e) =>
           update({
-            status:
-              e.target.value ||
-              undefined,
+            status: (e.target.value || undefined) as Filters["status"],
           })
         }
         className={selectClass}
