@@ -2345,9 +2345,12 @@ export default function ProjectForm({
                     dark:text-slate-200
                   "
                 >
-                  {studentEducation.college ||
-                    studentEducation.institution ||
-                    studentEducation.university}
+                  {String(
+                    studentEducation.college ??
+                      studentEducation.institution ??
+                      studentEducation.university ??
+                      ""
+                  )}
                 </p>
               </div>
             )}
@@ -2371,9 +2374,7 @@ export default function ProjectForm({
                     dark:text-slate-200
                   "
                 >
-                  {
-                    studentEducation.year
-                  }
+                  {String(studentEducation.year ?? "")}
                 </p>
               </div>
             )}
@@ -2397,9 +2398,7 @@ export default function ProjectForm({
                     dark:text-slate-200
                   "
                 >
-                  {
-                    studentEducation.graduationYear
-                  }
+                  {String(studentEducation.graduationYear ?? "")}
                 </p>
               </div>
             )}
