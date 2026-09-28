@@ -38,7 +38,7 @@ export const mockCandidates: Candidate[] = [
     interviewStatus: "scheduled",
     resume: { fileName: "Priya_Patil_Resume.pdf", uploadDate: "2027-02-12T14:10:00", ocrConfidence: 98 },
     interview: { date: "2027-02-20", time: "11:00 AM", status: "scheduled" },
-    assignedProject: { title: "E-commerce Product Catalog UI", difficulty: "mid" },
+    assignedProject: { id: "proj-1", title: "E-commerce Product Catalog UI", difficulty: "mid" },
     activity: [
       { id: "a1", label: "Resume Received", description: "Sent via WhatsApp", timestamp: "2027-02-12T14:10:00", state: "complete" },
       { id: "a2", label: "Resume Parsed", description: "Education and skills extracted", timestamp: "2027-02-12T14:11:00", state: "complete" },
@@ -65,7 +65,7 @@ export const mockCandidates: Candidate[] = [
     interviewStatus: "completed",
     resume: { fileName: "Amit_Joshi_Resume.pdf", uploadDate: "2027-02-08T08:15:00", ocrConfidence: 91 },
     interview: { date: "2027-02-16", time: "3:30 PM", status: "completed" },
-    assignedProject: { title: "Inventory Management API", difficulty: "mid" },
+    assignedProject: { id: "proj-2", title: "Inventory Management API", difficulty: "mid" },
     activity: [
       { id: "a1", label: "Resume Received", description: "Sent via WhatsApp", timestamp: "2027-02-08T08:15:00", state: "complete" },
       { id: "a2", label: "Resume Parsed", description: "Education and skills extracted", timestamp: "2027-02-08T08:16:00", state: "complete" },
@@ -156,7 +156,7 @@ export const mockCandidates: Candidate[] = [
     interviewStatus: "scheduled",
     resume: { fileName: "Karan_Mehta_Resume.pdf", uploadDate: "2027-01-20T09:00:00", ocrConfidence: 97 },
     interview: { date: "2027-02-22", time: "10:00 AM", status: "scheduled" },
-    assignedProject: { title: "Real-time Chat Application", difficulty: "senior" },
+    assignedProject: { id: "proj-3", title: "Real-time Chat Application", difficulty: "senior" },
     activity: [
       { id: "a1", label: "Resume Received", description: "Sent via WhatsApp", timestamp: "2027-01-20T09:00:00", state: "complete" },
       { id: "a2", label: "Resume Parsed", description: "Education and skills extracted", timestamp: "2027-01-20T09:01:00", state: "complete" },
@@ -181,7 +181,7 @@ export const mockCandidates: Candidate[] = [
     interviewStatus: "completed",
     resume: { fileName: "Ananya_Rao_Resume.pdf", uploadDate: "2027-01-10T13:20:00", ocrConfidence: 95 },
     interview: { date: "2027-01-25", time: "2:00 PM", status: "completed" },
-    assignedProject: { title: "Sentiment Analysis Microservice", difficulty: "senior" },
+    assignedProject: { id: "proj-4", title: "Sentiment Analysis Microservice", difficulty: "senior" },
     activity: [
       { id: "a1", label: "Resume Received", description: "Sent via WhatsApp", timestamp: "2027-01-10T13:20:00", state: "complete" },
       { id: "a2", label: "Resume Parsed", description: "Education and skills extracted", timestamp: "2027-01-10T13:21:00", state: "complete" },
@@ -270,7 +270,7 @@ export const mockCandidates: Candidate[] = [
     interviewStatus: "completed",
     resume: { fileName: "Tanvi_Kulkarni_Resume.pdf", uploadDate: "2027-01-15T10:40:00", ocrConfidence: 93 },
     interview: { date: "2027-01-30", time: "4:00 PM", status: "completed" },
-    assignedProject: { title: "Image Classification API", difficulty: "mid" },
+    assignedProject: { id: "proj-5", title: "Image Classification API", difficulty: "mid" },
     activity: [
       { id: "a1", label: "Resume Received", description: "Sent via WhatsApp", timestamp: "2027-01-15T10:40:00", state: "complete" },
       { id: "a2", label: "Resume Parsed", description: "Education and skills extracted", timestamp: "2027-01-15T10:41:00", state: "complete" },
