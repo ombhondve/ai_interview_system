@@ -26,6 +26,8 @@ import {
    TYPES
 ========================================================= */
 
+export interface GeneratedProject extends ProjectAIPreviewData {}
+
 export interface ProjectAIPreviewData {
   id?: string;
 
