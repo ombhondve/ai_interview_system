@@ -1785,7 +1785,7 @@ export default function ProjectsPage() {
                     For a Specific Student
                   </h3>
                   <p className="mt-2 text-sm leading-5 text-slate-500 dark:text-slate-400">
-                    Create a project tailored to a student's skills,
+                    Create a project tailored to a student&apos;s skills,
                     education, role, and JD match.
                   </p>
                 </div>
