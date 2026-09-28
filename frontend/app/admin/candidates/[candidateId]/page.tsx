@@ -20,6 +20,7 @@ import {
 import {
   projectService,
   type Project,
+  type ProjectDifficulty,
 } from "@/services/project.api";
 
 import ProjectForm, {
@@ -732,6 +733,12 @@ export default function CandidateDetailPage() {
             ? String(generationContext.duration).trim()
             : undefined;
 
+      const difficulty: ProjectDifficulty =
+        projectData.difficulty === "mid" ||
+        projectData.difficulty === "senior"
+          ? projectData.difficulty
+          : "junior";
+
       const focus =
         Array.isArray(projectData.focus)
           ? projectData.focus
@@ -771,8 +778,7 @@ export default function CandidateDetailPage() {
         await projectService.createProject({
           title,
           role,
-          difficulty:
-            projectData.difficulty || "junior",
+          difficulty,
           description,
           technologies,
           briefUrl:
