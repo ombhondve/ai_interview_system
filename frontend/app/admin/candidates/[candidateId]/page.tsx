@@ -1529,10 +1529,11 @@ export default function CandidateDetailPage() {
       <ProjectAIPreview
         open={showAIPreview}
         project={generatedProject}
-        onClose={() => setShowAIPreview(false)
+        onClose={() => setShowAIPreview(false)}
         onRegenerate={handleRegenerateProject}
         onEdit={handleEditGeneratedProject}
-        onUseProject={handleUseGeneratedProject}
+        onUseProject={() => handleUseGeneratedProject(generatedProject ?? undefined)}
+        saving={actionLoading}
       />
 
       {assignProjectOpen && (
