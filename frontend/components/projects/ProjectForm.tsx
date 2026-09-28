@@ -343,68 +343,29 @@ function resolvePdfUrl(
 /**
  * Normalize generated section data.
  */
-function normalizeSections(
-  value: unknown
-): ProjectSection[] {
-  if (!Array.isArray(value)) {
-    return [];
+function normalizeSections(value: unknown): ProjectSection[] {
+  if (!Array.isArray(value)) return [];
+
+  const result: ProjectSection[] = [];
+
+  for (const section of value) {
+    if (!section || typeof section !== "object") continue;
+
+    const source = section as Record<string, unknown>;
+    const title = safeString(source.title);
+    const content = safeString(source.content);
+    const items = normalizeStringArray(source.items);
+
+    if (!title && !content && items.length === 0) continue;
+
+    result.push({
+      title: title || "Project Section",
+      content,
+      items,
+    });
   }
 
-  return value
-    .map((section) => {
-      if (
-        !section ||
-        typeof section !==
-          "object"
-      ) {
-        return null;
-      }
-
-      const source =
-        section as Record<
-          string,
-          unknown
-        >;
-
-      const title =
-        safeString(
-          source.title
-        );
-
-      const content =
-        safeString(
-          source.content
-        );
-
-      const items =
-        normalizeStringArray(
-          source.items
-        );
-
-      if (
-        !title &&
-        !content &&
-        items.length === 0
-      ) {
-        return null;
-      }
-
-      return {
-        title:
-          title ||
-          "Project Section",
-
-        content,
-
-        items,
-      };
-    })
-    .filter(
-      (
-        section
-      ): section is ProjectSection =>
-        Boolean(section)
-    );
+  return result;
 }
 
 /* =====================================================
@@ -2355,7 +2316,7 @@ export default function ProjectForm({
               </div>
             )}
 
-            {studentEducation.year && (
+            {Boolean(studentEducation.year) && (
               <div>
                 <p
                   className="
