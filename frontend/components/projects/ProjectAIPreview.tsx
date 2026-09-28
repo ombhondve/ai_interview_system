@@ -57,6 +57,8 @@ export interface ProjectAIPreviewData {
 
   briefUrl?: string | null;
 
+  projectType?: string;
+
   studentId?: string;
 
   studentName?: string;

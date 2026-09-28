@@ -1,2 +1,0 @@
-import { NextResponse } from "next/server"; import { getReports } from "@/lib/server-store"; import { requireAdmin } from "@/lib/auth-server";
-export async function GET(_:Request,{params}:{params:{reportId:string}}){try{requireAdmin();const r=getReports().find(x=>x.id===params.reportId);return r?NextResponse.json(r):NextResponse.json({message:"Report not found"},{status:404})}catch{return NextResponse.json({message:"Unauthorized"},{status:401})}}

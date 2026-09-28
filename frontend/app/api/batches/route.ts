@@ -1,2 +1,0 @@
-import { NextResponse } from "next/server"; import { candidates } from "@/lib/server-store"; import { requireAdmin } from "@/lib/auth-server";
-export async function GET(){try{requireAdmin();const names=[...new Set(candidates.map(c=>c.batch))];return NextResponse.json({data:names.map(name=>({name,count:candidates.filter(c=>c.batch===name).length}))})}catch{return NextResponse.json({message:"Unauthorized"},{status:401})}}
