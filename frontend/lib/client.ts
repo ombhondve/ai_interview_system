@@ -1,5 +1,5 @@
 const BACKEND_API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||process.env.BACKEND_URL ||
   "/api";
 
 export function apiUrl(path: string): string {

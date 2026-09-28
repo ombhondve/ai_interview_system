@@ -23,7 +23,7 @@ interface Candidate {
   role: string;
   status: string;
 }
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
 
 function VerifyInner() {
   const params = useSearchParams();

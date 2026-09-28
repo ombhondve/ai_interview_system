@@ -222,8 +222,7 @@ export function CandidateProjectTab({
   // FETCH PROJECT
   // =====================================================
 
-  const backendUrl =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 
     useEffect(() => {
@@ -242,7 +241,7 @@ export function CandidateProjectTab({
         setError("");
 
         const backendUrl =
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+          process.env.NEXT_PUBLIC_API_URL || process.env.BACKEND_URL;
 
         const response = await fetch(
           `${backendUrl}/api/projects/${encodeURIComponent(projectId)}`,
