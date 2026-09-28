@@ -74,6 +74,13 @@ export interface StudentEducation {
   degree: string;
   college: string;
   year: string;
+
+  /*
+   * Allow the student education object to be passed through
+   * the shared project-generation service contract, which
+   * supports additional education fields.
+   */
+  [key: string]: unknown;
 }
 
 export interface ProjectAIGeneratorData {
