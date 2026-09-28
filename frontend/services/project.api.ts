@@ -462,7 +462,7 @@ function normalizeProject(
    *
    * Prefer an explicitly supplied value.
    */
-  const possibleAssignedValues = [
+  const possibleAssignedValues: unknown[] = [
     project.assigned,
     project.assignedCount,
     project.assignedCandidateCount,
