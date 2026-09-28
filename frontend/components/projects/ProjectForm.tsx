@@ -11,10 +11,9 @@ import {
    TYPES
 ===================================================== */
 
-export type ProjectDifficulty =
-  | "junior"
-  | "mid"
-  | "senior";
+import type { ProjectDifficulty } from "@/services/project.api";
+
+export type { ProjectDifficulty } from "@/services/project.api";
 
 export type ProjectStatus =
   | "active"
@@ -34,15 +33,9 @@ export interface ProjectSection {
    STUDENT EDUCATION
 ===================================================== */
 
-export interface StudentEducation {
-  degree?: string;
-  field?: string;
-  college?: string;
-  institution?: string;
-  university?: string;
-  year?: string | number;
-  graduationYear?: string | number;
-}
+import type { StudentEducation } from "@/services/project.api";
+
+export type { StudentEducation } from "@/services/project.api";
 
 /* =====================================================
    PROJECT FORM DATA
