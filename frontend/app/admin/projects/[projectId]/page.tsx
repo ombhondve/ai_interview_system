@@ -736,7 +736,7 @@ export default function ProjectDetailsPage() {
           onClose={() =>
             setEditOpen(false)
           }
-          onSaved={
+          onUpdated={
             handleProjectUpdated
           }
         />
