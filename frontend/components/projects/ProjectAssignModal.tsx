@@ -360,7 +360,7 @@ function normalizeCandidate(
   }
 
   return {
-    ...(value as AssignCandidate),
+    ...(value as unknown as AssignCandidate),
 
     id: String(id),
 

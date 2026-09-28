@@ -840,9 +840,7 @@ export default function ProjectAIGeneratorModal({
       return;
     }
 
-    const handleKeyDown = (
-      event: KeyboardEvent
-    ) => {
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (
         event.key === "Escape" &&
         !loading
@@ -1357,8 +1355,10 @@ export default function ProjectAIGeneratorModal({
                                 dark:text-indigo-300/60
                               "
                             >
-                              {studentEducation.college ||
-                                "College not specified"}
+                              {String(
+                                studentEducation.college ??
+                                  "College not specified"
+                              )}
 
                               {studentEducation.year
                                 ? ` • ${studentEducation.year}`

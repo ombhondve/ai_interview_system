@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ComponentProps } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
@@ -34,6 +34,8 @@ import ProjectAIGeneratorModal, {
 import ProjectAIPreview, {
   ProjectAIPreviewData as GeneratedProject,
 } from "@/components/projects/ProjectAIPreview";
+
+type FormInitial = ComponentProps<typeof ProjectForm>["initialData"];
 
 /* =========================================================
    TYPES
@@ -417,16 +419,16 @@ export default function ProjectsPage() {
 
           duration:
             data.duration ||
-            draft?.duration ||
+            (draft?.duration != null ? String(draft.duration) : undefined) ||
             (generationContext?.duration != null
-              ? formatGeneratorDuration(
-                  generationContext.duration
-                )
+              ? formatGeneratorDuration(generationContext.duration)
               : undefined),
 
           focus:
             data.focus ||
-            draft?.focus ||
+            (Array.isArray(draft?.focus)
+              ? draft.focus.join(", ")
+              : draft?.focus) ||
             (generationContext?.focus?.length
               ? generationContext.focus.join(", ")
               : undefined),
@@ -977,18 +979,16 @@ export default function ProjectsPage() {
      PROJECT UPDATED
   ======================================================= */
 
-  const handleProjectUpdated = (
-    updatedProject: Project
-  ) => {
+  const handleProjectUpdated = (updated: { id: string } & Partial<Project>) => {
     setProjects((current) =>
       current.map((project) =>
-        project.id === updatedProject.id
-          ? updatedProject
-          : project
+        project.id === updated.id ? { ...project, ...updated } : project
       )
     );
 
-    setSelectedProject(updatedProject);
+    setSelectedProject((current) =>
+      current ? { ...current, ...updated } : current
+    );
 
     setEditOpen(false);
   };
@@ -1695,13 +1695,10 @@ export default function ProjectsPage() {
                         /* Preserve dynamic AI PDF sections. */
                         sections:
                           Array.isArray(
-                            (generatedProject as GeneratedProject & {
-                              sections?: unknown[];
-                            }).sections
+                            (generatedProject as GeneratedProject & { sections?: unknown[] }).sections
                           )
-                            ? (generatedProject as GeneratedProject & {
-                                sections?: unknown[];
-                              }).sections
+                            ? ((generatedProject as GeneratedProject & { sections?: unknown[] })
+                                .sections as NonNullable<FormInitial>["sections"])
                             : [],
                       }
                     : undefined
@@ -2168,7 +2165,6 @@ export default function ProjectsPage() {
       <ProjectAIPreview
         open={showAIPreview}
         project={generatedProject}
-        loading={aiLoading}
         onClose={() => setShowAIPreview(false)}
         onRegenerate={handleRegenerateProject}
         onEdit={handleEditGeneratedProject}

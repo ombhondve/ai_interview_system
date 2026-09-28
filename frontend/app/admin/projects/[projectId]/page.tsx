@@ -624,7 +624,7 @@ export default function ProjectDetailsPage() {
                 const candidateId =
                   String(
                     candidate.id ||
-                      candidate._id ||
+                      (candidate as AssignedCandidate & { _id?: string })._id ||
                       `candidate-${index}`
                   );
 
