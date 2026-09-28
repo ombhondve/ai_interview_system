@@ -1529,8 +1529,7 @@ export default function CandidateDetailPage() {
       <ProjectAIPreview
         open={showAIPreview}
         project={generatedProject}
-        loading={aiLoading}
-        onClose={() => setShowAIPreview(false)}
+        onClose={() => setShowAIPreview(false)
         onRegenerate={handleRegenerateProject}
         onEdit={handleEditGeneratedProject}
         onUseProject={handleUseGeneratedProject}
