@@ -1066,11 +1066,18 @@ export default function CandidateDetailPage() {
         // ASSIGN PROJECT AFTER APPROVAL
         // ------------------------------------------------
 
-        const result =
-          await projectService.assignProjectToCandidate(
-            selectedProjectId,
-            candidate.id
-          );
+        await projectService.assignProjectToCandidate(
+          selectedProjectId,
+          candidate.id
+        );
+
+        const assignedProject = projects.find(
+          (project) => project.id === selectedProjectId
+        );
+
+        const assignedProjectTitle =
+          assignedProject?.title ||
+          "the selected project";
 
         // ------------------------------------------------
         // CLOSE
@@ -1088,7 +1095,7 @@ export default function CandidateDetailPage() {
             "Candidate approved",
 
           description:
-            `${candidate.name} was assigned to "${result.project.title}" and approved.`,
+            `${candidate.name} was assigned to "${assignedProjectTitle}" and approved.`,
         });
 
 
