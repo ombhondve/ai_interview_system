@@ -1,0 +1,2 @@
+import { NextResponse } from "next/server"; import { getInterview } from "@/lib/server-store"; import { requireAdmin } from "@/lib/auth-server";
+export async function GET(_:Request,{params}:{params:{interviewId:string}}){try{requireAdmin();const i=getInterview(params.interviewId);return i?NextResponse.json(i):NextResponse.json({message:"Interview not found"},{status:404})}catch{return NextResponse.json({message:"Unauthorized"},{status:401})}}
