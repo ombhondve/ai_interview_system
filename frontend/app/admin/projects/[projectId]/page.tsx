@@ -640,7 +640,7 @@ export default function ProjectDetailsPage() {
                       const id =
                         String(
                           candidate.id ||
-                            candidate._id ||
+                            (candidate as AssignedCandidate & { _id?: string })._id ||
                             ""
                         );
 
@@ -732,7 +732,7 @@ export default function ProjectDetailsPage() {
       {editOpen && (
         <ProjectEditModal
           open={editOpen}
-          project={project}
+          project={project ? { ...project } : null}
           onClose={() =>
             setEditOpen(false)
           }
@@ -821,7 +821,7 @@ function normalizeCandidate(
     }
 
     return {
-      ...(item as AssignedCandidate),
+      ...(item as unknown as AssignedCandidate),
       id: String(id),
       name:
         typeof item.name ===
