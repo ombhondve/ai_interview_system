@@ -930,6 +930,8 @@ export default function ProjectsPage() {
 
     setShowCreateModal(false);
     setGeneratedProject(null);
+    setSelectedStudent(null);
+    setAiDraft(null);
   };
 
   /* =======================================================
@@ -1084,6 +1086,8 @@ export default function ProjectsPage() {
               type="button"
               onClick={() => {
                 setGeneratedProject(null);
+                setSelectedStudent(null);
+                setAiDraft(null);
                 setShowCreateModal(true);
               }}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700 active:scale-[0.98]"
