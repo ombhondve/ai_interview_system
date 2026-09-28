@@ -25,24 +25,17 @@ import {
 } from "lucide-react";
 
 import type { Candidate } from "@/types";
+import type {
+  ProjectDifficulty,
+  ProjectType,
+  StudentEducation,
+} from "@/services/project.api";
 
 /* =========================================================
    TYPES
 ========================================================= */
 
-export type ProjectDifficulty =
-  | "junior"
-  | "mid"
-  | "senior";
-
-export type ProjectType =
-  | "backend"
-  | "frontend"
-  | "fullstack"
-  | "mobile"
-  | "ai_ml"
-  | "data_science"
-  | "devops";
+export type { ProjectDifficulty, ProjectType, StudentEducation } from "@/services/project.api";
 
 export type ProjectFocus =
   | "authentication"
@@ -69,19 +62,6 @@ export type ProjectFocus =
   | "scalability"
   | "data_visualization"
   | "recommendation_system";
-
-export interface StudentEducation {
-  degree: string;
-  college: string;
-  year: string;
-
-  /*
-   * Allow the student education object to be passed through
-   * the shared project-generation service contract, which
-   * supports additional education fields.
-   */
-  [key: string]: unknown;
-}
 
 export interface ProjectAIGeneratorData {
   role: string;
