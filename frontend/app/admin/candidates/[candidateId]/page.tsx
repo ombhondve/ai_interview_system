@@ -21,6 +21,7 @@ import {
   projectService,
   type Project,
   type ProjectDifficulty,
+  type ProjectStatus,
 } from "@/services/project.api";
 
 import ProjectForm, {
@@ -739,6 +740,11 @@ export default function CandidateDetailPage() {
           ? projectData.difficulty
           : "junior";
 
+      const status: ProjectStatus =
+        projectData.status === "archived"
+          ? "archived"
+          : "active";
+
       const focus =
         Array.isArray(projectData.focus)
           ? projectData.focus
@@ -783,8 +789,7 @@ export default function CandidateDetailPage() {
           technologies,
           briefUrl:
             projectData.briefUrl || "",
-          status:
-            projectData.status || "active",
+          status,
           pdfUrl:
             projectData.pdfUrl || undefined,
           detailedPdfUrl:
@@ -1437,17 +1442,39 @@ export default function CandidateDetailPage() {
                     ? {
                         title: generatedProject.title,
                         role: generatedProject.role,
-                        difficulty: generatedProject.difficulty,
+                        difficulty:
+                          generatedProject.difficulty === "mid" ||
+                          generatedProject.difficulty === "senior"
+                            ? generatedProject.difficulty
+                            : "junior",
                         description: generatedProject.description,
                         technologies: generatedProject.technologies,
-                        briefUrl: generatedProject.briefUrl,
-                        status: generatedProject.status,
-                        pdfUrl: generatedProject.pdfUrl,
-                        detailedPdfUrl: generatedProject.detailedPdfUrl,
+                        briefUrl: generatedProject.briefUrl ?? undefined,
+                        status:
+                          generatedProject.status === "archived"
+                            ? "archived"
+                            : "active",
+                        pdfUrl: generatedProject.pdfUrl ?? undefined,
+                        detailedPdfUrl:
+                          generatedProject.detailedPdfUrl ?? undefined,
                         projectType: generatedProject.projectType,
-                        duration: generatedProject.duration,
-                        focus: generatedProject.focus,
-                        requirements: generatedProject.requirements,
+                        duration:
+                          generatedProject.duration != null
+                            ? String(generatedProject.duration)
+                            : undefined,
+                        focus:
+                          Array.isArray(generatedProject.focus)
+                            ? generatedProject.focus.join(", ")
+                            : generatedProject.focus,
+                        requirements:
+                          Array.isArray(generatedProject.requirements)
+                            ? generatedProject.requirements
+                            : typeof generatedProject.requirements === "string"
+                              ? generatedProject.requirements
+                                  .split("\n")
+                                  .map((item) => item.trim())
+                                  .filter(Boolean)
+                              : undefined,
                         studentId: candidate.id,
                         studentName: candidate.name,
                         generatedByAI: true,
