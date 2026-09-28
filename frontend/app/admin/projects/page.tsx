@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -1785,7 +1786,7 @@ export default function ProjectsPage() {
                     For a Specific Student
                   </h3>
                   <p className="mt-2 text-sm leading-5 text-slate-500 dark:text-slate-400">
-                    Create a project tailored to a student's skills,
+                    Create a project tailored to a student&apos;s skills,
                     education, role, and JD match.
                   </p>
                 </div>
@@ -1970,9 +1971,11 @@ export default function ProjectsPage() {
                         {/* AVATAR */}
                         <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-indigo-50 text-sm font-bold text-indigo-600 ring-1 ring-indigo-100 dark:bg-indigo-500/10 dark:text-indigo-400 dark:ring-indigo-500/20">
                           {student.avatarUrl ? (
-                            <img
+                            <Image
                               src={student.avatarUrl}
                               alt=""
+                              width={48}
+                              height={48}
                               className="h-full w-full object-cover"
                             />
                           ) : (

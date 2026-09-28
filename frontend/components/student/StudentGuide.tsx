@@ -190,7 +190,7 @@ export function StudentGuide({
             </div>
 
             <h2 className="mt-5 text-xl font-bold text-slate-900 dark:text-white sm:text-2xl">
-              You're ready!
+              You&apos;re ready!
             </h2>
 
             <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500 dark:text-slate-400 sm:text-base">

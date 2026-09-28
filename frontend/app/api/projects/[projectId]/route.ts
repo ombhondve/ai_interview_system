@@ -101,7 +101,7 @@ export async function GET(
     // AUTHENTICATION
     // -------------------------------------------------
 
-    requireAdmin();
+    await requireAdmin();
 
 
     // -------------------------------------------------
@@ -259,7 +259,7 @@ export async function PATCH(
     // -------------------------------------------------
 
     const admin =
-      requireAdmin();
+      await requireAdmin();
 
 
     // -------------------------------------------------
@@ -551,7 +551,7 @@ export async function DELETE(
     // -------------------------------------------------
 
     const admin =
-      requireAdmin();
+      await requireAdmin();
 
 
     // -------------------------------------------------

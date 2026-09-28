@@ -41,7 +41,7 @@ export async function GET(
 ) {
   try {
     // Make sure only an admin can access candidate details.
-    requireAdmin();
+    await requireAdmin();
 
     const candidate = await findCandidateById(params.id);
 

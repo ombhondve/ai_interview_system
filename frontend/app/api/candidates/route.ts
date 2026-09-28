@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { listCandidates } from "@/lib/server-store";
+import { handleApiError } from "@/lib/api-error";
 import { requireAdmin } from "@/lib/auth-server";
 //import { handleApiError } from "@/lib/api-error";
 import type { CandidateStatus } from "@/types";
@@ -9,7 +10,7 @@ const SORT_FIELDS: SortField[] = ["name", "jdMatchScore", "receivedDate"];
 
 export async function GET(req: Request) {
   try {
-    requireAdmin();
+    await requireAdmin();
 
     const params = new URL(req.url).searchParams;
 
@@ -43,6 +44,6 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ data, total, page, pageSize, roles, batches });
   } catch (err) {
-    //return handleApiError(err);
+    return handleApiError(err);
   }
 }
