@@ -556,8 +556,19 @@ export default function CandidateDetailPage() {
 
       setCreateProjectError("");
 
+      // The generator modal uses UI-friendly values:
+      // duration is a number, focus is an array, and requirements is a
+      // free-form string. Convert them to the backend service contract here.
       const generated =
-        await projectService.generateProject(data);
+        await projectService.generateProject({
+          ...data,
+          duration: String(data.duration),
+          focus: data.focus.join(", "),
+          requirements: data.requirements
+            .split("\n")
+            .map((item) => item.trim())
+            .filter(Boolean),
+        });
 
       setGeneratedProject(
         generated as unknown as GeneratedProject
