@@ -466,8 +466,9 @@ export default function CandidateDetailPage() {
           undefined,
         duration:
           data.duration ||
-          draft?.duration ||
-          undefined,
+          (draft?.duration != null
+            ? String(draft.duration)
+            : undefined),
         focus:
           data.focus ||
           draft?.focus ||
