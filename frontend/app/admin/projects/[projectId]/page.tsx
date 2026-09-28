@@ -36,9 +36,7 @@ import {
   ProjectEditModal,
 } from "@/components/projects/ProjectEditModal";
 
-import {
-  ProjectAssignModal,
-} from "@/components/projects/ProjectAssignModal";
+import ProjectAssignModal from "@/components/projects/ProjectAssignModal";
 
 /* =========================================================
    PAGE
