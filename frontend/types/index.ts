@@ -92,6 +92,13 @@ export interface Candidate {
   rejectionReason?: string;
 
   finalDecision?: "selected" | "rejected" | "pending";
+
+  createdAt?: string;
+  resumeUrl?: string;
+  resumeFileName?: string;
+  interviewDate?: string;
+  interviewUrl?: string;
+  assignedProjectId?: string;
 }
 
 /* =========================================================
@@ -371,4 +378,16 @@ export interface ToastMessage {
   title: string;
 
   description?: string;
+}
+
+export type CandidateEducation = {
+  degree: string;
+  college: string;
+  year: string;
+};
+
+export function getEducationList(education: unknown): CandidateEducation[] {
+  if (Array.isArray(education)) return education as CandidateEducation[];
+  if (education && typeof education === "object") return [education as CandidateEducation];
+  return [];
 }
