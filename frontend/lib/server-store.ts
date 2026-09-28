@@ -157,7 +157,7 @@ const initialProjects: StoredProject[] = [
 // ADMINS
 // =====================================================
 
-const admins: AdminUser[] = [
+export const admins: AdminUser[] = [
   {
     id: "adm-1",
     name: "Admin User",
@@ -969,6 +969,110 @@ export function getCandidate(
     ) ?? null
   );
 
+}
+
+
+// =====================================================
+// CANDIDATE API HELPERS
+// =====================================================
+
+export function findCandidateById(id: string) {
+  return getCandidate(id);
+}
+
+export function updateCandidateStatus(
+  id: string,
+  status: Candidate["status"]
+) {
+  return updateCandidate(id, (candidate) => ({
+    ...candidate,
+    status,
+  }));
+}
+
+export function updateManyCandidateStatus(
+  ids: string[],
+  status: Candidate["status"]
+) {
+  return ids
+    .map((id) => updateCandidateStatus(id, status))
+    .filter((candidate): candidate is Candidate => candidate !== null);
+}
+
+type CandidateListOptions = {
+  search?: string;
+  status?: Candidate["status"] | "all";
+  role?: string;
+  batch?: string;
+  jdMatchMin?: number;
+  sortBy?: "name" | "jdMatchScore" | "receivedDate";
+  sortDir?: "asc" | "desc";
+  page?: number;
+  pageSize?: number;
+};
+
+export function listCandidates(options: CandidateListOptions = {}) {
+  const {
+    search,
+    status = "all",
+    role = "all",
+    batch = "all",
+    jdMatchMin,
+    sortBy = "receivedDate",
+    sortDir = "desc",
+    page = 1,
+    pageSize = 6,
+  } = options;
+
+  let filtered = [...candidates];
+  const normalizedSearch = search?.trim().toLowerCase();
+
+  if (normalizedSearch) {
+    filtered = filtered.filter((candidate) =>
+      [candidate.name, candidate.email, candidate.phone, candidate.location, candidate.role]
+        .some((value) => String(value ?? "").toLowerCase().includes(normalizedSearch))
+    );
+  }
+
+  if (status !== "all") {
+    filtered = filtered.filter((candidate) => candidate.status === status);
+  }
+
+  if (role !== "all") {
+    filtered = filtered.filter((candidate) => candidate.role === role);
+  }
+
+  if (batch !== "all") {
+    filtered = filtered.filter((candidate) => candidate.batch === batch);
+  }
+
+  if (jdMatchMin !== undefined && Number.isFinite(jdMatchMin)) {
+    filtered = filtered.filter((candidate) => candidate.jdMatchScore >= jdMatchMin);
+  }
+
+  filtered.sort((a, b) => {
+    let comparison = 0;
+    if (sortBy === "name") {
+      comparison = a.name.localeCompare(b.name);
+    } else if (sortBy === "jdMatchScore") {
+      comparison = a.jdMatchScore - b.jdMatchScore;
+    } else {
+      comparison = new Date(a.receivedDate).getTime() - new Date(b.receivedDate).getTime();
+    }
+    return sortDir === "asc" ? comparison : -comparison;
+  });
+
+  const total = filtered.length;
+  const safePage = Math.max(1, page);
+  const safePageSize = Math.min(100, Math.max(1, pageSize));
+  const start = (safePage - 1) * safePageSize;
+
+  return {
+    data: filtered.slice(start, start + safePageSize),
+    total,
+    roles: [...new Set(candidates.map((candidate) => candidate.role).filter(Boolean))],
+    batches: [...new Set(candidates.map((candidate) => candidate.batch).filter(Boolean))],
+  };
 }
 
 
