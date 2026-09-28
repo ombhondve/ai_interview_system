@@ -471,8 +471,11 @@ export default function CandidateDetailPage() {
             : undefined),
         focus:
           data.focus ||
-          draft?.focus ||
-          undefined,
+          (draft?.focus != null
+            ? Array.isArray(draft.focus)
+              ? draft.focus.join(", ")
+              : String(draft.focus)
+            : undefined),
         requirements:
           Array.isArray(data.requirements)
             ? data.requirements
