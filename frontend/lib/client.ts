@@ -1,15 +1,19 @@
-const BACKEND_API_URL =
-  process.env.NEXT_PUBLIC_API_URL ||process.env.BACKEND_URL ||
-  "/api";
+const API_BASE_URL = "/api";
 
 export function apiUrl(path: string): string {
-  if (path.startsWith("http://") || path.startsWith("https://")) return path;
-  const base = BACKEND_API_URL.replace(/\/+$/, "");
-  const target = path.startsWith("/") ? path : "/" + path;
-  if (base.endsWith("/api") && target.startsWith("/api/")) {
-    return base + target.slice(4);
+  if (path.startsWith("http://") || path.startsWith("https://")) {
+    return path;
   }
-  return base + target;
+
+  const target = path.startsWith("/")
+    ? path
+    : `/${path}`;
+
+  if (target === "/api" || target.startsWith("/api/")) {
+    return target;
+  }
+
+  return `${API_BASE_URL}${target}`;
 }
 
 export async function request<T>(
@@ -25,11 +29,14 @@ export async function request<T>(
     },
     cache: "no-store",
   });
+
   const data = await response.json().catch(() => ({}));
+
   if (!response.ok) {
     throw new Error(
-      data?.message || "Request failed (" + response.status + ")"
+      data?.message || `Request failed (${response.status})`
     );
   }
+
   return data as T;
 }

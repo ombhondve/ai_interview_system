@@ -7,7 +7,7 @@ import { Mail, Lock } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+
 export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -27,7 +27,7 @@ export default function LoginPage() {
 
   setLoading(true);
   try {
-    const res = await fetch(`${API_URL}/api/auth/login`, {
+    const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
