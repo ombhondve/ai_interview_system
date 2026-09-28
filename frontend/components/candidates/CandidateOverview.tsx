@@ -1,4 +1,4 @@
-import { Candidate } from "@/types";
+import { Candidate, getEducationList } from "@/types";
 import {
   Card,
   CardHeader,
@@ -12,6 +12,8 @@ export function CandidateOverview({
 }: {
   candidate: Candidate;
 }) {
+  const educationList = getEducationList(candidate.education);
+
   return (
     <div className="grid gap-5 lg:grid-cols-3">
 
@@ -92,9 +94,9 @@ export function CandidateOverview({
         <CardContent className="space-y-4">
 
           {candidate.education &&
-          candidate.education.length > 0 ? (
+          educationList.length > 0 ? (
 
-            candidate.education.map(
+            educationList.map(
               (education, index) => (
                 <Field
                   key={`education-${index}`}
