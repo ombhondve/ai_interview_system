@@ -10,7 +10,7 @@ import aiRoutes from "./modules/ai/ai.routes.js";
 import studentRoutes from "./modules/student/student.routes.js";
 import verificationRoutes from "./modules/verification/verification.routes.js";
 import authRoutes from "./modules/auth/auth.routes.js";
-
+import cookieParser from "./middleware/cookieParser.middleware.js";
 const app = express();
 
 // =====================================================
@@ -100,7 +100,7 @@ app.use(
     limit: "10mb",
   })
 );
-
+app.use(cookieParser);
 // =====================================================
 // STATIC UPLOADS
 // =====================================================
