@@ -124,7 +124,7 @@ export default function StudentProjectGeneratorModal({
       student={student}
       mode="student"
       onGenerate={onGenerate}
-      onGenerated={onGenerated}
+      onGenerated={onGenerated as ((project: unknown) => void) | undefined}
       initialData={initialData}
       loading={loading}
     />
