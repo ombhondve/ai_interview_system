@@ -1682,7 +1682,6 @@ export {
   candidates,
   interviews,
   slots,
-  admins,
   notifications,
   auditLogs,
 };
