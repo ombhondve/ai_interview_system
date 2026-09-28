@@ -1,6 +1,3 @@
-import { PDFParse } from "pdf-parse";
-import mupdf from "mupdf";
-import { createWorker } from "tesseract.js";
 
 /**
  * ============================================================
@@ -126,6 +123,7 @@ function hasResumeSignals(text) {
  * This is much faster than OCR for normal text-based PDFs.
  */
 async function extractNativePDFText(pdfBuffer) {
+    const { PDFParse } = await import("pdf-parse"); 
     let parser = null;
 
     try {
@@ -177,6 +175,8 @@ async function extractNativePDFText(pdfBuffer) {
  * avoids the API/Worker version mismatch we had earlier.
  */
 async function extractTextUsingOCR(pdfBuffer) {
+    const mupdf = (await import("mupdf")).default;     // add this line
+    const { createWorker } = await import("tesseract.js"); // add this line
     let worker = null;
     let document = null;
 
