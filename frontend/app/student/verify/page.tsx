@@ -23,6 +23,7 @@ interface Candidate {
   role: string;
   status: string;
 }
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
 
 function VerifyInner() {
   const params = useSearchParams();
@@ -70,9 +71,7 @@ function VerifyInner() {
         setError("");
 
         const response = await fetch(
-          `/api/student/invite?token=${encodeURIComponent(
-            token
-          )}`,
+          `/api/student/invite?token=${encodeURIComponent(token)}`,
           {
             method: "GET",
             cache: "no-store",
@@ -152,16 +151,12 @@ function VerifyInner() {
         "/api/verification/send",
         {
           method: "POST",
-
           headers: {
-            "Content-Type":
-              "application/json",
+            "Content-Type": "application/json",
           },
-
           body: JSON.stringify({
             candidateId: candidate.id,
-            identifier:
-              identifier.trim(),
+            identifier: identifier.trim(),
           }),
         }
       );
@@ -229,17 +224,12 @@ function VerifyInner() {
         "/api/verification/verify",
         {
           method: "POST",
-
           headers: {
-            "Content-Type":
-              "application/json",
+            "Content-Type": "application/json",
           },
-
           credentials: "include",
-
           body: JSON.stringify({
-            identifier:
-              identifier.trim(),
+            identifier: identifier.trim(),
             otp,
           }),
         }

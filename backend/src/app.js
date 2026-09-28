@@ -10,7 +10,6 @@ import aiRoutes from "./modules/ai/ai.routes.js";
 import studentRoutes from "./modules/student/student.routes.js";
 import verificationRoutes from "./modules/verification/verification.routes.js";
 import authRoutes from "./modules/auth/auth.routes.js";
-import cookieParser from "./middleware/cookieParser.middleware.js";
 
 const app = express();
 
@@ -25,30 +24,51 @@ const __dirname = path.dirname(__filename);
 // CORS CONFIGURATION
 // =====================================================
 
+// Frontend URLs allowed to call this backend.
 const allowedOrigins = [
   "http://localhost:3000",
+  "http://127.0.0.1:3000",
   process.env.FRONTEND_URL,
 ].filter(Boolean);
+
+console.log("Allowed CORS origins:", allowedOrigins);
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Requests such as Postman/server-to-server
-      // may not contain an Origin header.
+      // Allow requests without an Origin header.
+      // Examples: Postman, server-to-server requests.
       if (!origin) {
         return callback(null, true);
       }
 
+      // Allow configured frontend origins.
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
 
       console.log("CORS blocked origin:", origin);
 
-      return callback(new Error("Not allowed by CORS"));
+      return callback(
+        new Error("Not allowed by CORS")
+      );
     },
 
     credentials: true,
+
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS",
+    ],
+
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+    ],
   })
 );
 
@@ -57,10 +77,15 @@ app.use(
 // =====================================================
 
 app.use((req, res, next) => {
-  console.log(`${req.method} ${req.originalUrl}`);
+  console.log(
+    `${req.method} ${req.originalUrl}`
+  );
 
   if (req.headers.origin) {
-    console.log("Origin:", req.headers.origin);
+    console.log(
+      "Origin:",
+      req.headers.origin
+    );
   }
 
   next();
@@ -91,14 +116,6 @@ app.use(
 // URL:
 //
 // http://localhost:5000/uploads/...
-//
-// Example:
-//
-// backend/uploads/projects/project-123.pdf
-//
-// becomes:
-//
-// http://localhost:5000/uploads/projects/project-123.pdf
 // =====================================================
 
 app.use(
@@ -115,9 +132,27 @@ app.use(
 app.get("/", (req, res) => {
   res.status(200).json({
     success: true,
-    message: "RecruitAI backend is running",
+    message:
+      "RecruitAI backend is running",
   });
 });
+
+// =====================================================
+// HEALTH CHECK
+// =====================================================
+
+app.get(
+  "/api/health",
+  (req, res) => {
+    res.status(200).json({
+      success: true,
+      message:
+        "RecruitAI backend is running",
+      timestamp:
+        new Date().toISOString(),
+    });
+  }
+);
 
 // =====================================================
 // WHATSAPP
@@ -174,18 +209,12 @@ app.use(
 );
 
 // =====================================================
-// HEALTH CHECK
+// AUTHENTICATION
 // =====================================================
 
-app.get(
-  "/api/health",
-  (req, res) => {
-    res.status(200).json({
-      success: true,
-      message: "RecruitAI backend is running",
-      timestamp: new Date().toISOString(),
-    });
-  }
+app.use(
+  "/api/auth",
+  authRoutes
 );
 
 // =====================================================
@@ -196,7 +225,8 @@ app.use(
   (req, res) => {
     res.status(404).json({
       success: false,
-      message: "API endpoint not found",
+      message:
+        "API endpoint not found",
       path: req.originalUrl,
     });
   }
@@ -208,7 +238,10 @@ app.use(
 
 app.use(
   (err, req, res, next) => {
-    console.error("Backend error:", err);
+    console.error(
+      "Backend error:",
+      err
+    );
 
     // -------------------------------------------------
     // CORS ERROR
@@ -232,7 +265,8 @@ app.use(
     return res.status(500).json({
       success: false,
       message:
-        process.env.NODE_ENV === "production"
+        process.env.NODE_ENV ===
+        "production"
           ? "Internal server error"
           : err.message ||
             "Internal server error",
