@@ -3,11 +3,19 @@ import { updateManyCandidateStatus, type CandidateStatus } from "@/lib/server-st
 import { requireAdmin } from "@/lib/auth-server";
 import { handleApiError } from "@/lib/api-error";
 
-const VALID_STATUSES: CandidateStatus[] = ["pending", "approved", "rejected"];
+const VALID_STATUSES: CandidateStatus[] = [
+  "received",
+  "under_review",
+  "approved",
+  "rejected",
+  "scheduled",
+  "completed",
+  "decided",
+];
 
 export async function PATCH(req: Request) {
   try {
-    requireAdmin();
+    await requireAdmin();
 
     const body = await req.json().catch(() => null);
     const ids = body?.ids as string[] | undefined;
