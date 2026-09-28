@@ -13,7 +13,7 @@ export async function POST(
   { params }: { params: { candidateId: string } }
 ) {
   try {
-    const admin = requireAdmin();
+    const admin = await requireAdmin();
     const current = getCandidate(params.candidateId);
 
     if (!current)
