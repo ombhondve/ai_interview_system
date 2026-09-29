@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ComponentProps } from "react";
+import { useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
@@ -52,15 +52,25 @@ type Project = {
   difficulty: Difficulty;
   description: string;
   technologies: string[];
+
   briefUrl: string;
+
   pdfUrl?: string;
   detailedPdfUrl?: string;
+
+  // Temporary PDF data used during AI preview.
+  // This is uploaded to Cloudinary only after Save/Confirm.
+  pdfData?: string;
+  pdfFilename?: string;
+
   projectType?: string;
   duration?: string;
   focus?: string;
   requirements?: string[];
+
   assigned: number;
   status: ProjectStatus;
+
   studentId?: string;
   studentName?: string;
 };
@@ -355,106 +365,147 @@ export default function ProjectsPage() {
   ======================================================= */
 
   const handleCreateProject = async (
-    data: ProjectFormData
-  ) => {
-    try {
-      setActionLoading(true);
+  data: ProjectFormData
+) => {
+  try {
+    setActionLoading(true);
 
-      /*
-       * If this form was opened from the AI preview, preserve
-       * the generated PDF and AI metadata when saving.
-       *
-       * IMPORTANT:
-       * AI generation is draft-only. This POST is the point where
-       * the project is actually created in MongoDB.
-       */
-      const draft = generatedProject;
+    /*
+     * If this form was opened from the AI preview, preserve
+     * the generated PDF and AI metadata when saving.
+     *
+     * IMPORTANT:
+     * AI generation is draft-only. This POST is the point where
+     * the project is actually created in MongoDB.
+     */
+    const draft = generatedProject;
 
-      const generationContext =
-        draft &&
-        "generationContext" in draft
-          ? (draft as GeneratedProject & {
-              generationContext?: {
-                projectType?: string;
-                duration?: number;
-                focus?: string[];
-                requirements?: string;
-                studentId?: string;
-              };
-            }).generationContext
-          : undefined;
+    const generationContext =
+      draft &&
+      "generationContext" in draft
+        ? (draft as GeneratedProject & {
+            generationContext?: {
+              projectType?: string;
+              duration?: number;
+              focus?: string[];
+              requirements?: string;
+              studentId?: string;
+            };
+          }).generationContext
+        : undefined;
 
-      const savedProject =
-        await projectService.createProject({
-          title: data.title,
-          role: data.role,
-          difficulty: data.difficulty,
-          description: data.description,
-          technologies: data.technologies,
-          briefUrl:
-            data.briefUrl || draft?.briefUrl || "",
-          status: data.status ?? "active",
+    const savedProject =
+      await projectService.createProject({
+        title: data.title,
+        role: data.role,
+        difficulty: data.difficulty,
+        description: data.description,
+        technologies: data.technologies,
 
-          /*
-           * Prefer the values from ProjectForm.
-           * This is important when the admin clicked Edit on
-           * the AI preview and changed any generated field.
-           * Fall back to the original AI draft for compatibility.
-           */
-          pdfUrl:
-            data.pdfUrl ||
-            draft?.pdfUrl ||
-            undefined,
+        briefUrl:
+          data.briefUrl ||
+          draft?.briefUrl ||
+          "",
 
-          detailedPdfUrl:
-            data.detailedPdfUrl ||
-            draft?.detailedPdfUrl ||
-            undefined,
+        status:
+          data.status ?? "active",
 
-          projectType:
-            data.projectType ||
-            draft?.projectType ||
-            generationContext?.projectType ||
-            undefined,
+        /*
+         * =====================================================
+         * PDF SAVE FLOW
+         * =====================================================
+         *
+         * AI-generated PDF stays in memory/base64 until
+         * the admin confirms the save.
+         *
+         * The backend receives pdfData and uploads it
+         * to Cloudinary.
+         */
 
-          duration:
-            data.duration ||
-            (draft?.duration != null ? String(draft.duration) : undefined) ||
-            (generationContext?.duration != null
-              ? formatGeneratorDuration(generationContext.duration)
-              : undefined),
+        pdfData:
+          typeof draft?.pdfData === "string"
+            ? draft.pdfData
+            : undefined,
 
-          focus:
-            data.focus ||
-            (Array.isArray(draft?.focus)
-              ? draft.focus.join(", ")
-              : draft?.focus) ||
-            (generationContext?.focus?.length
-              ? generationContext.focus.join(", ")
-              : undefined),
+        pdfFilename:
+          typeof draft?.pdfFilename === "string"
+            ? draft.pdfFilename
+            : undefined,
 
-          requirements:
-            Array.isArray(data.requirements)
-              ? data.requirements
-              : Array.isArray(draft?.requirements)
-                ? draft.requirements
-                : [],
+        /*
+         * Do NOT send the temporary preview data URL.
+         *
+         * If pdfData exists, backend must upload that PDF
+         * to Cloudinary and generate the real URL.
+         */
+        pdfUrl:
+          typeof draft?.pdfData === "string"
+            ? undefined
+            : data.pdfUrl || undefined,
 
-          studentId:
-            data.studentId ||
-            draft?.studentId ||
-            generationContext?.studentId ||
-            selectedStudent?.id ||
-            undefined,
+        detailedPdfUrl:
+          typeof draft?.pdfData === "string"
+            ? undefined
+            : data.detailedPdfUrl || undefined,
 
-          studentName:
-            data.studentName ||
-            draft?.studentName ||
-            selectedStudent?.name ||
-            undefined,
-        });
+        /*
+         * =====================================================
+         * PROJECT METADATA
+         * =====================================================
+         */
 
-      let finalProject = savedProject;
+        projectType:
+          data.projectType ||
+          draft?.projectType ||
+          generationContext?.projectType ||
+          undefined,
+
+        duration:
+          data.duration ||
+          (draft?.duration != null
+            ? String(draft.duration)
+            : undefined) ||
+          (generationContext?.duration != null
+            ? formatGeneratorDuration(
+                generationContext.duration
+              )
+            : undefined),
+
+        focus:
+          data.focus ||
+          (Array.isArray(draft?.focus)
+            ? draft.focus.join(", ")
+            : draft?.focus) ||
+          (generationContext?.focus?.length
+            ? generationContext.focus.join(", ")
+            : undefined),
+
+        requirements:
+          Array.isArray(data.requirements)
+            ? data.requirements
+            : Array.isArray(draft?.requirements)
+              ? draft.requirements
+              : [],
+
+        /*
+         * =====================================================
+         * STUDENT
+         * =====================================================
+         */
+
+        studentId:
+          data.studentId ||
+          draft?.studentId ||
+          generationContext?.studentId ||
+          selectedStudent?.id ||
+          undefined,
+
+        studentName:
+          data.studentName ||
+          draft?.studentName ||
+          selectedStudent?.name ||
+          undefined,
+      });
 
       /*
        * Assignment happens ONLY after MongoDB has returned the
@@ -475,9 +526,9 @@ export default function ProjectsPage() {
       }
 
       setProjects((current) => [
-        finalProject,
+        savedProject,
         ...current.filter(
-          (project) => project.id !== finalProject.id
+          (project) => project.id !== savedProject.id
         ),
       ]);
 
@@ -523,10 +574,9 @@ export default function ProjectsPage() {
        * POST /api/projects/generate
        *    ↓
        * AI generation
+       * PDF generation in memory
        *    ↓
-       * PDF generation
-       *    ↓
-       * Draft project + PDF URL
+       * Draft project + transient PDF base64
        *
        * IMPORTANT: generation is draft-only.
        * MongoDB save happens only after confirmation.
@@ -577,8 +627,8 @@ export default function ProjectsPage() {
        * POST /api/projects/generate
        *
        * and normalizes:
-       * - pdfUrl
-       * - detailedPdfUrl
+       * - pdfData
+       * - pdfFilename
        */
       const generated = await projectService.generateProject({
         role: data.role.trim(),
@@ -625,18 +675,19 @@ export default function ProjectsPage() {
       /*
        * Generation returns the PDF as transient base64 data.
        * It is NOT uploaded to Cloudinary yet.
+       * Cloudinary upload happens only inside the confirmed-save API request.
        */
       const pdfData =
-        typeof (generated as { pdfData?: unknown }).pdfData ===
-          "string"
-          ? (generated as { pdfData: string }).pdfData
+        typeof generated.pdfData === "string"
+          ? generated.pdfData
           : "";
 
       const pdfFilename =
-        typeof (generated as { pdfFilename?: unknown }).pdfFilename ===
-          "string"
-          ? (generated as { pdfFilename: string }).pdfFilename
+        typeof generated.pdfFilename === "string" &&
+        generated.pdfFilename.trim()
+          ? generated.pdfFilename
           : "project-preview.pdf";
+
 
       if (!pdfData) {
         throw new Error(
@@ -663,8 +714,8 @@ export default function ProjectsPage() {
         {
           ...generated,
 
-          // Preview-only data URL. This is replaced by a Cloudinary URL
-          // when the admin confirms the save.
+          // Preview-only browser data URL. It is NEVER stored in MongoDB.
+          // The backend uploads pdfData to Cloudinary only on confirmed save.
           pdfUrl: pdfPreviewUrl,
 
           detailedPdfUrl: pdfPreviewUrl,
@@ -694,8 +745,10 @@ export default function ProjectsPage() {
           id?: string;
 
           pdfUrl?: string;
-
           detailedPdfUrl?: string;
+
+          pdfData?: string;
+          pdfFilename?: string;
 
           generationContext: {
             projectType: string;
@@ -895,8 +948,6 @@ export default function ProjectsPage() {
             undefined,
         });
 
-      let finalProject = savedProject;
-
       /*
        * Assign only after the project has been created and has
        * a real MongoDB ID.
@@ -915,9 +966,9 @@ export default function ProjectsPage() {
       }
 
       setProjects((current) => [
-        finalProject,
+        savedProject,
         ...current.filter(
-          (item) => item.id !== finalProject.id
+          (item) => item.id !== savedProject.id
         ),
       ]);
 
@@ -2306,7 +2357,7 @@ function StatCard({
   label,
   value,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   label: string;
   value: number;
 }) {

@@ -25,43 +25,36 @@ export interface Project {
   description: string;
   technologies: string[];
 
-  /*
-   * Existing project/brief URL.
-   */
   briefUrl: string;
 
-  /*
-   * Generated project PDF URLs.
-   */
   pdfUrl?: string;
   detailedPdfUrl?: string;
 
   /*
-   * Optional project metadata.
+   * Temporary AI-generated PDF.
+   *
+   * This exists only during:
+   *
+   * Generate → Preview → Confirm Save
+   *
+   * It is NOT stored in MongoDB.
    */
+  pdfData?: string;
+  pdfFilename?: string;
+
   projectType?: string;
   duration?: string;
   focus?: string;
   requirements?: string[];
 
-  /*
-   * Assignment information.
-   */
   assigned: number;
   assignedCount: number;
 
   status: ProjectStatus;
 
-  /*
-   * Student/candidate information when
-   * the project is generated for a student.
-   */
   studentId?: string;
   studentName?: string;
 
-  /*
-   * Backend timestamps.
-   */
   createdAt?: string;
   updatedAt?: string;
 }
@@ -80,10 +73,19 @@ export interface CreateProjectData {
   briefUrl?: string;
 
   /*
-   * Optional generated PDF URL.
+   * Existing/saved PDF URLs.
    */
   pdfUrl?: string;
   detailedPdfUrl?: string;
+
+  /*
+   * Temporary AI-generated PDF.
+   *
+   * Sent to backend only when the admin confirms
+   * the project save.
+   */
+  pdfData?: string;
+  pdfFilename?: string;
 
   projectType?: string;
   duration?: string;
@@ -276,17 +278,41 @@ interface RawProject {
   briefUrl?: string;
 
   /*
-   * PDF fields returned by backend.
+   * =========================================================
+   * PDF FIELDS
+   * =========================================================
+   *
+   * pdfUrl / detailedPdfUrl:
+   * - Cloudinary URL after the project is saved
+   * - temporary data URL during frontend preview
+   *
+   * pdfData / pdfFilename:
+   * - temporary AI-generated PDF data
+   * - used only between Generate → Preview → Save
+   * - NOT stored directly in MongoDB
    */
   pdfUrl?: string;
   detailedPdfUrl?: string;
 
+  pdfData?: string;
+  pdfFilename?: string;
+
+  /*
+   * =========================================================
+   * PROJECT METADATA
+   * =========================================================
+   */
   projectType?: string;
   duration?: string;
   focus?: string;
 
   requirements?: unknown;
 
+  /*
+   * =========================================================
+   * ASSIGNMENT COUNTS
+   * =========================================================
+   */
   assigned?: number;
   assignedCount?: number;
 
@@ -301,16 +327,29 @@ interface RawProject {
   assignedStudentCount?: number;
   assignedStudentsCount?: number;
 
+  /*
+   * =========================================================
+   * PROJECT STATUS
+   * =========================================================
+   */
   status?:
     | ProjectStatus
     | string;
 
+  /*
+   * =========================================================
+   * STUDENT / CANDIDATE
+   * =========================================================
+   */
   studentId?: string;
   studentName?: string;
 
   /*
-   * Candidates may or may not be populated
-   * in the main project response.
+   * =========================================================
+   * ASSIGNED CANDIDATES
+   * =========================================================
+   *
+   * Backend may return candidates in different formats.
    */
   assignedCandidates?: unknown[];
 
@@ -318,21 +357,48 @@ interface RawProject {
    * Alternative assignment fields.
    */
   assignedCandidate?: unknown;
+
   assignedStudents?: unknown[];
+
   assignedStudent?: unknown;
+
   candidates?: unknown[];
+
   students?: unknown[];
+
   assignees?: unknown[];
+
   assignedUsers?: unknown[];
 
+  /*
+   * =========================================================
+   * ASSIGNMENT ID ARRAYS
+   * =========================================================
+   */
   assignedCandidateIds?: unknown[];
+
   assignedStudentIds?: unknown[];
+
   candidateIds?: unknown[];
+
   studentIds?: unknown[];
 
+  /*
+   * =========================================================
+   * TIMESTAMPS
+   * =========================================================
+   */
   createdAt?: string;
   updatedAt?: string;
 
+  /*
+   * =========================================================
+   * FORWARD COMPATIBILITY
+   * =========================================================
+   *
+   * Allows the backend to return additional fields
+   * without breaking this frontend type.
+   */
   [key: string]: unknown;
 }
 
@@ -565,6 +631,22 @@ function normalizeProject(
 
     detailedPdfUrl:
       project.detailedPdfUrl ||
+      undefined,
+
+    /*
+     * Temporary AI-generated PDF.
+     *
+     * These fields are preserved so the frontend can carry
+     * the in-memory PDF from Generate -> Preview -> Confirm Save.
+     * The backend uploads the PDF to Cloudinary only when the
+     * confirmed create/save request is made.
+     */
+    pdfData:
+      project.pdfData ||
+      undefined,
+
+    pdfFilename:
+      project.pdfFilename ||
       undefined,
 
     projectType:
@@ -1299,6 +1381,12 @@ export const projectService = {
       );
     }
 
+    /*
+     * IMPORTANT:
+     * normalizeProject() preserves pdfData/pdfFilename so the
+     * generated PDF remains available to the preview component.
+     * No Cloudinary upload happens in this client method.
+     */
     return normalizeProject(
       result.project
     );
@@ -1530,6 +1618,29 @@ export const projectService = {
     ) {
       body.detailedPdfUrl =
         data.detailedPdfUrl.trim();
+    }
+
+    /*
+     * Temporary AI-generated PDF.
+     *
+     * These values are sent only when explicitly provided.
+     * The backend is responsible for validating the PDF,
+     * uploading it to Cloudinary, and saving the final URL.
+     */
+    if (
+      data.pdfData !==
+      undefined
+    ) {
+      body.pdfData =
+        data.pdfData;
+    }
+
+    if (
+      data.pdfFilename !==
+      undefined
+    ) {
+      body.pdfFilename =
+        data.pdfFilename.trim();
     }
 
     if (
