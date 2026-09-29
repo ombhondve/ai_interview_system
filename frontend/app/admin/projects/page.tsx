@@ -830,9 +830,26 @@ export default function ProjectsPage() {
           status:
             (project.status as ProjectStatus) || "active",
 
-          pdfUrl: project.pdfUrl || undefined,
+          // Keep the preview PDF transient until this confirmed-save request.
+          pdfData:
+            typeof project.pdfData === "string"
+              ? project.pdfData
+              : undefined,
+
+          pdfFilename:
+            typeof project.pdfFilename === "string"
+              ? project.pdfFilename
+              : undefined,
+
+          pdfUrl:
+            typeof project.pdfData === "string"
+              ? undefined
+              : project.pdfUrl || undefined,
+
           detailedPdfUrl:
-            project.detailedPdfUrl || undefined,
+            typeof project.pdfData === "string"
+              ? undefined
+              : project.detailedPdfUrl || undefined,
 
           projectType:
             project.projectType ||
