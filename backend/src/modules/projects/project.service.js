@@ -1032,7 +1032,8 @@ export async function generateProject(
     try {
       const pdf =
         await generateProjectPdf(
-          draft
+          draft,
+          { upload: false }
         );
 
       if (!pdf) {
