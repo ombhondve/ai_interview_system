@@ -1,5 +1,3 @@
-import fs from "fs";
-import path from "path";
 import crypto from "crypto";
 import { generateAIResponse } from "../ai/ai.service.js";
 import { resumeAnalysisPrompt, whatsappChatPrompt  } from "../ai/ai.prompt.js";
@@ -7,6 +5,7 @@ import { extractTextFromPDF } from "../resume/resume.parser.js";
 import { createCandidate, findCandidateByPhone } from "../candidate/candidate.service.js";
 import {
     downloadWhatsAppMedia,
+    uploadResumeToCloudinary,
     sendWhatsAppMessage
 } from "./whatsapp.service.js";
 
@@ -296,38 +295,25 @@ export const handleWebhook = async (req, res) => {
               }
             else{
 
-                // RESUME FOLDER
-                
-                const resumeFolder =
-                    path.join(
-                        process.cwd(),
-                        "uploads",
-                        "resumes"
+                // =================================================
+                // UPLOAD RESUME TO CLOUDINARY
+                // =================================================
+
+                const uniqueId = crypto.randomUUID();
+                const safeFilename = "resume_" + uniqueId + ".pdf";
+
+                const cloudinaryResult =
+                    await uploadResumeToCloudinary(
+                        pdfBuffer,
+                        safeFilename
                     );
 
-                fs.mkdirSync(
-                    resumeFolder,
-                    {
-                        recursive: true
-                    }
-                );
+                result.resumeFileName = safeFilename;
+                result.resumeUrl = cloudinaryResult.secure_url;
 
-
-
-                // SAFE FILE NAME
-
-
-                const uniqueId =crypto.randomUUID();
-                const safeFilename =`resume_${uniqueId}.pdf`;
-                result.resumeFileName =safeFilename;
-                result.resumeUrl =`/uploads/resumes/${safeFilename}`;
-                const filePath =path.join(resumeFolder,safeFilename);
-
-                // SAVE PDF
-
-                fs.writeFileSync(
-                    filePath,
-                    pdfBuffer
+                console.log(
+                    "Resume uploaded to Cloudinary:",
+                    cloudinaryResult.secure_url
                 );
                 console.log(
                     filePath
