@@ -3,11 +3,11 @@
  * RESUME PDF PARSER
  * ============================================================
  *
- * Extraction pipeline:
+ * PDF extraction pipeline:
  *
  * PDF Buffer
  *    |
- *    +--> Native PDF text extraction using pdf-parse
+ *    +--> Native text extraction using MuPDF
  *    |         |
  *    |         +--> Enough text -> return text
  *    |
@@ -17,32 +17,16 @@
  *              |
  *              +--> Not enough -> return ""
  *
+ * IMPORTANT:
+ * - pdf-parse is NOT used.
+ * - pdfjs-dist is NOT used.
+ * - MuPDF handles native PDF extraction.
+ * - MuPDF also renders pages for OCR.
+ * - Tesseract handles OCR only when native text is insufficient.
+ *
  * This file does NOT decide whether the document is a resume.
  * Resume classification is handled by the AI layer.
  */
-
-
-/**
- * ============================================================
- * PDF.JS / PDF-PARSE NODE COMPATIBILITY
- * ============================================================
- *
- * pdf-parse uses PDF.js internally.
- *
- * In Vercel/Node.js environments, PDF.js may expect DOMMatrix
- * to exist globally.
- *
- * node-canvas provides DOMMatrix.
- *
- * IMPORTANT:
- * This must be initialized before importing pdf-parse.
- */
-
-import { DOMMatrix } from "canvas";
-
-if (typeof globalThis.DOMMatrix === "undefined") {
-    globalThis.DOMMatrix = DOMMatrix;
-}
 
 
 /**
@@ -51,23 +35,28 @@ if (typeof globalThis.DOMMatrix === "undefined") {
  * ============================================================
  */
 
+/**
+ * Minimum amount of extracted text considered usable.
+ */
 const MIN_TEXT_LENGTH = 80;
 
+
 /**
- * Maximum number of pages that OCR will process.
+ * Maximum number of pages to process with OCR.
  *
- * This prevents extremely large/scanned PDFs from consuming
- * excessive CPU and memory.
+ * This protects the Vercel function from very large scanned PDFs.
  */
 const MAX_OCR_PAGES = 10;
+
 
 /**
  * OCR rendering scale.
  *
- * Higher values can improve OCR quality but consume more
- * memory and CPU.
+ * 2x provides better OCR quality than 1x while keeping
+ * processing reasonably controlled.
  */
 const OCR_SCALE = 2;
+
 
 /**
  * Maximum accepted PDF size.
@@ -78,8 +67,36 @@ const MAX_PDF_SIZE = 10 * 1024 * 1024;
 
 
 /**
+ * Tesseract.js version installed in the project.
+ *
+ * Your package.json currently uses:
+ *
+ * "tesseract.js": "^7.0.0"
+ *
+ * Tesseract.js 7 uses tesseract.js-core 7.x.
+ */
+const TESSERACT_CORE_VERSION = "7.0.0";
+
+
+/**
+ * Tesseract core files are loaded from jsDelivr.
+ *
+ * This avoids Vercel failing to package:
+ *
+ * tesseract-core-relaxedsimd.wasm
+ *
+ * and the other WASM files.
+ *
+ * Tesseract documentation expects corePath to point to a
+ * directory containing the required core builds.
+ */
+const TESSERACT_CORE_PATH =
+    `https://cdn.jsdelivr.net/npm/tesseract.js-core@${TESSERACT_CORE_VERSION}`;
+
+
+/**
  * ============================================================
- * TEXT VALIDATION
+ * TEXT NORMALIZATION
  * ============================================================
  */
 
@@ -104,19 +121,27 @@ function normalizeText(text) {
  * Check whether extracted text contains enough usable content.
  */
 function isUsableText(text) {
-    const normalizedText = normalizeText(text);
+    const normalizedText =
+        normalizeText(text);
 
-    return normalizedText.length >= MIN_TEXT_LENGTH;
+    return (
+        normalizedText.length >=
+        MIN_TEXT_LENGTH
+    );
 }
 
 
 /**
- * Check whether extracted text contains common resume signals.
+ * ============================================================
+ * RESUME SIGNAL DETECTION
+ * ============================================================
  *
- * IMPORTANT:
- * This function is diagnostic only.
- * It does NOT decide whether a document is a resume.
+ * Diagnostic only.
+ *
+ * This function does NOT classify the document as a resume.
+ * AI classification happens later.
  */
+
 function hasResumeSignals(text) {
     const normalizedText =
         normalizeText(text).toLowerCase();
@@ -170,7 +195,7 @@ function hasResumeSignals(text) {
  */
 
 /**
- * Validate the input PDF buffer.
+ * Validate incoming PDF buffer.
  */
 function validatePDFBuffer(pdfBuffer) {
     if (!Buffer.isBuffer(pdfBuffer)) {
@@ -206,67 +231,366 @@ function validatePDFBuffer(pdfBuffer) {
 
 /**
  * ============================================================
+ * LOAD MUPDF
+ * ============================================================
+ */
+
+async function loadMuPDF() {
+    const mupdfModule =
+        await import("mupdf");
+
+    const mupdf =
+        mupdfModule.default ||
+        mupdfModule;
+
+    if (!mupdf) {
+        throw new Error(
+            "MuPDF module could not be loaded."
+        );
+    }
+
+    if (
+        !mupdf.PDFDocument ||
+        typeof mupdf.PDFDocument.openDocument !== "function"
+    ) {
+        throw new Error(
+            "MuPDF PDFDocument API is unavailable."
+        );
+    }
+
+    return mupdf;
+}
+
+
+/**
+ * ============================================================
  * NATIVE PDF TEXT EXTRACTION
  * ============================================================
  *
- * First attempt:
+ * IMPORTANT:
  *
- * PDF
- *   |
- *   v
+ * We no longer use:
+ *
  * pdf-parse
- *   |
- *   v
- * Extract text directly
+ * pdfjs-dist
+ * PDF.js worker
  *
- * This is significantly faster than OCR for normal
- * text-based PDFs.
+ * This avoids the Vercel errors:
+ *
+ * Cannot find module '@napi-rs/canvas'
+ *
+ * Setting up fake worker failed
+ *
+ * Cannot find pdf.worker.mjs
+ *
+ * MuPDF is used directly instead.
  */
 
 async function extractNativePDFText(pdfBuffer) {
-    let parser = null;
+    let document = null;
 
     try {
-        /**
-         * Import pdf-parse only after DOMMatrix has been
-         * initialized globally.
-         */
-        const pdfParseModule =
-            await import("pdf-parse");
+        console.log(
+            "========== MUPDF NATIVE TEXT EXTRACTION START =========="
+        );
 
-        const PDFParse =
-            pdfParseModule.PDFParse;
+        const mupdf =
+            await loadMuPDF();
 
-        if (typeof PDFParse !== "function") {
+        document =
+            mupdf.PDFDocument.openDocument(
+                pdfBuffer,
+                "application/pdf"
+            );
+
+        if (!document) {
             throw new Error(
-                "PDFParse was not found in pdf-parse."
+                "MuPDF could not open the PDF."
             );
         }
 
-        parser = new PDFParse({
-            data: pdfBuffer
-        });
+        const totalPages =
+            document.countPages();
 
-        const pdfData =
-            await parser.getText();
+        console.log(
+            "MuPDF native extraction pages:",
+            totalPages
+        );
 
-        const text =
-            pdfData?.text || "";
+        if (
+            !Number.isInteger(totalPages) ||
+            totalPages <= 0
+        ) {
+            throw new Error(
+                "PDF contains no pages."
+            );
+        }
 
-        return normalizeText(text);
+        const pageTexts = [];
+
+        for (
+            let pageIndex = 0;
+            pageIndex < totalPages;
+            pageIndex++
+        ) {
+            let page = null;
+
+            try {
+                const pageNumber =
+                    pageIndex + 1;
+
+                console.log(
+                    `Extracting native text from page ${pageNumber}/${totalPages}`
+                );
+
+                page =
+                    document.loadPage(
+                        pageIndex
+                    );
+
+                if (!page) {
+                    console.error(
+                        `Could not load page ${pageNumber}`
+                    );
+
+                    continue;
+                }
+
+                /**
+                 * MuPDF structured text extraction.
+                 */
+                const structuredText =
+                    page.toStructuredText();
+
+                if (!structuredText) {
+                    console.warn(
+                        `No structured text returned for page ${pageNumber}`
+                    );
+
+                    continue;
+                }
+
+                /**
+                 * Convert structured text to normal text.
+                 */
+                const pageText =
+                    typeof structuredText.asText === "function"
+                        ? structuredText.asText()
+                        : "";
+
+                const normalizedPageText =
+                    normalizeText(
+                        pageText
+                    );
+
+                console.log(
+                    `Page ${pageNumber} native text length:`,
+                    normalizedPageText.length
+                );
+
+                if (normalizedPageText) {
+                    pageTexts.push(
+                        `--- PAGE ${pageNumber} ---\n${normalizedPageText}`
+                    );
+                }
+
+            } catch (pageError) {
+                console.error(
+                    `MuPDF native extraction failed for page ${
+                        pageIndex + 1
+                    }:`,
+                    pageError?.message ||
+                    pageError
+                );
+
+            } finally {
+                if (page) {
+                    try {
+                        if (
+                            typeof page.destroy === "function"
+                        ) {
+                            page.destroy();
+                        }
+                    } catch (error) {
+                        console.error(
+                            `Page ${
+                                pageIndex + 1
+                            } cleanup failed:`,
+                            error?.message ||
+                            error
+                        );
+                    }
+                }
+            }
+        }
+
+        const finalText =
+            normalizeText(
+                pageTexts.join("\n\n")
+            );
+
+        console.log(
+            "Total MuPDF native text length:",
+            finalText.length
+        );
+
+        if (finalText) {
+            console.log(
+                "Native text preview:"
+            );
+
+            console.log(
+                finalText.substring(
+                    0,
+                    1000
+                )
+            );
+
+            if (finalText.length > 1000) {
+                console.log(
+                    "... native text preview truncated ..."
+                );
+            }
+        }
+
+        console.log(
+            "========== MUPDF NATIVE TEXT EXTRACTION END =========="
+        );
+
+        return finalText;
 
     } finally {
-        if (parser) {
+        if (document) {
             try {
-                await parser.destroy();
+                if (
+                    typeof document.destroy === "function"
+                ) {
+                    document.destroy();
+                }
             } catch (error) {
                 console.error(
-                    "PDF parser cleanup failed:",
-                    error?.message || error
+                    "MuPDF document cleanup failed:",
+                    error?.message ||
+                    error
                 );
             }
         }
     }
+}
+
+
+/**
+ * ============================================================
+ * LOAD TESSERACT
+ * ============================================================
+ */
+
+async function loadTesseract() {
+    const tesseractModule =
+        await import("tesseract.js");
+
+    const createWorker =
+        tesseractModule.createWorker;
+
+    if (
+        typeof createWorker !== "function"
+    ) {
+        throw new Error(
+            "Tesseract createWorker could not be loaded."
+        );
+    }
+
+    return createWorker;
+}
+
+
+/**
+ * ============================================================
+ * CREATE TESSERACT WORKER
+ * ============================================================
+ *
+ * The important part here is:
+ *
+ * corePath:
+ * https://cdn.jsdelivr.net/npm/tesseract.js-core@7.0.0
+ *
+ * This prevents Vercel from looking for the missing local:
+ *
+ * tesseract-core-relaxedsimd.wasm
+ *
+ * inside /var/task.
+ */
+
+async function createTesseractWorker() {
+    const createWorker =
+        await loadTesseract();
+
+    console.log(
+        "Creating Tesseract worker..."
+    );
+
+    const worker =
+        await createWorker(
+            "eng",
+            1,
+            {
+                corePath:
+                    TESSERACT_CORE_PATH,
+
+                /**
+                 * Let Tesseract use its default language
+                 * download location.
+                 */
+                logger: (message) => {
+                    if (
+                        message &&
+                        typeof message === "object"
+                    ) {
+                        if (
+                            message.status === "recognizing text"
+                        ) {
+                            return;
+                        }
+
+                        if (
+                            message.status === "loading language traineddata"
+                        ) {
+                            console.log(
+                                "Tesseract:",
+                                message.status,
+                                message.progress
+                            );
+
+                            return;
+                        }
+
+                        if (
+                            message.status === "initializing api"
+                        ) {
+                            console.log(
+                                "Tesseract:",
+                                message.status,
+                                message.progress
+                            );
+
+                            return;
+                        }
+                    }
+                }
+            }
+        );
+
+    if (!worker) {
+        throw new Error(
+            "Tesseract worker could not be created."
+        );
+    }
+
+    console.log(
+        "Tesseract worker started successfully."
+    );
+
+    return worker;
 }
 
 
@@ -293,10 +617,6 @@ async function extractNativePDFText(pdfBuffer) {
  *   |
  *   v
  * Text
- *
- * We intentionally do not use pdfjs-dist here because the
- * previous implementation had PDF.js API/Worker version
- * mismatch problems.
  */
 
 async function extractTextUsingOCR(pdfBuffer) {
@@ -310,37 +630,12 @@ async function extractTextUsingOCR(pdfBuffer) {
 
         /**
          * --------------------------------------------------------
-         * Load dependencies
+         * Load MuPDF
          * --------------------------------------------------------
          */
 
-        const mupdfModule =
-            await import("mupdf");
-
         const mupdf =
-            mupdfModule.default ||
-            mupdfModule;
-
-        const tesseractModule =
-            await import("tesseract.js");
-
-        const createWorker =
-            tesseractModule.createWorker;
-
-        if (!mupdf) {
-            throw new Error(
-                "MuPDF module could not be loaded."
-            );
-        }
-
-        if (
-            typeof createWorker !== "function"
-        ) {
-            throw new Error(
-                "Tesseract createWorker could not be loaded."
-            );
-        }
-
+            await loadMuPDF();
 
         /**
          * --------------------------------------------------------
@@ -356,7 +651,7 @@ async function extractTextUsingOCR(pdfBuffer) {
 
         if (!document) {
             throw new Error(
-                "MuPDF could not open the PDF."
+                "MuPDF could not open the PDF for OCR."
             );
         }
 
@@ -379,7 +674,6 @@ async function extractTextUsingOCR(pdfBuffer) {
             return "";
         }
 
-
         /**
          * --------------------------------------------------------
          * Determine OCR page count
@@ -397,26 +691,14 @@ async function extractTextUsingOCR(pdfBuffer) {
             pagesToProcess
         );
 
-
         /**
          * --------------------------------------------------------
          * Create Tesseract worker
          * --------------------------------------------------------
          */
 
-        console.log(
-            "Starting Tesseract worker..."
-        );
-
         worker =
-            await createWorker(
-                "eng"
-            );
-
-        console.log(
-            "Tesseract worker started."
-        );
-
+            await createTesseractWorker();
 
         /**
          * --------------------------------------------------------
@@ -461,7 +743,6 @@ async function extractTextUsingOCR(pdfBuffer) {
                     continue;
                 }
 
-
                 /**
                  * ------------------------------------------------
                  * Render page
@@ -489,7 +770,6 @@ async function extractTextUsingOCR(pdfBuffer) {
                     continue;
                 }
 
-
                 /**
                  * ------------------------------------------------
                  * Convert rendered page to PNG
@@ -516,7 +796,6 @@ async function extractTextUsingOCR(pdfBuffer) {
                     "bytes"
                 );
 
-
                 /**
                  * ------------------------------------------------
                  * OCR
@@ -530,7 +809,8 @@ async function extractTextUsingOCR(pdfBuffer) {
 
                 const pageText =
                     normalizeText(
-                        result?.data?.text || ""
+                        result?.data?.text ||
+                        ""
                     );
 
                 console.log(
@@ -554,24 +834,29 @@ async function extractTextUsingOCR(pdfBuffer) {
             } finally {
                 /**
                  * ------------------------------------------------
-                 * Release page resources.
+                 * Release page
                  * ------------------------------------------------
                  */
 
                 if (page) {
                     try {
-                        page.destroy();
+                        if (
+                            typeof page.destroy === "function"
+                        ) {
+                            page.destroy();
+                        }
                     } catch (error) {
                         console.error(
                             `Page ${pageNumber} cleanup failed:`,
-                            error?.message || error
+                            error?.message ||
+                            error
                         );
                     }
                 }
 
                 /**
                  * ------------------------------------------------
-                 * Release pixmap resources if supported.
+                 * Release pixmap
                  * ------------------------------------------------
                  */
 
@@ -584,13 +869,13 @@ async function extractTextUsingOCR(pdfBuffer) {
                     } catch (error) {
                         console.error(
                             `Pixmap ${pageNumber} cleanup failed:`,
-                            error?.message || error
+                            error?.message ||
+                            error
                         );
                     }
                 }
             }
         }
-
 
         /**
          * --------------------------------------------------------
@@ -608,7 +893,6 @@ async function extractTextUsingOCR(pdfBuffer) {
             finalOCRText.length
         );
 
-
         /**
          * --------------------------------------------------------
          * OCR preview
@@ -616,18 +900,15 @@ async function extractTextUsingOCR(pdfBuffer) {
          */
 
         if (finalOCRText) {
-            const preview =
-                finalOCRText.substring(
-                    0,
-                    1000
-                );
-
             console.log(
                 "OCR TEXT PREVIEW:"
             );
 
             console.log(
-                preview
+                finalOCRText.substring(
+                    0,
+                    1000
+                )
             );
 
             if (
@@ -646,6 +927,14 @@ async function extractTextUsingOCR(pdfBuffer) {
         return finalOCRText;
 
     } catch (error) {
+        /**
+         * IMPORTANT:
+         *
+         * Any Tesseract/MuPDF failure should be converted into
+         * a normal empty result instead of crashing the whole
+         * webhook process.
+         */
+
         console.error(
             "OCR extraction failed:",
             error?.message ||
@@ -678,7 +967,6 @@ async function extractTextUsingOCR(pdfBuffer) {
             }
         }
 
-
         /**
          * --------------------------------------------------------
          * Cleanup MuPDF
@@ -687,7 +975,11 @@ async function extractTextUsingOCR(pdfBuffer) {
 
         if (document) {
             try {
-                document.destroy();
+                if (
+                    typeof document.destroy === "function"
+                ) {
+                    document.destroy();
+                }
 
             } catch (error) {
                 console.error(
@@ -710,7 +1002,7 @@ async function extractTextUsingOCR(pdfBuffer) {
  *
  * PDF
  *  |
- *  +--> Native extraction
+ *  +--> MuPDF native extraction
  *  |       |
  *  |       +--> usable -> return
  *  |
@@ -827,7 +1119,7 @@ export async function extractTextFromPDF(
 
     /**
      * ========================================================
-     * STEP 3: NATIVE EXTRACTION FAILED
+     * STEP 3: NATIVE EXTRACTION FAILED / INSUFFICIENT
      * ========================================================
      */
 
