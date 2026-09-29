@@ -79,6 +79,70 @@ function uploadPdfToCloudinary(doc, filename, title) {
   });
 }
 
+/**
+ * Upload a completed project PDF buffer to Cloudinary.
+ * This is intentionally called only from the confirmed-save flow.
+ */
+export async function uploadProjectPdfBuffer(
+  pdfBuffer,
+  filename = "project.pdf",
+  title = "AI Generated Project"
+) {
+  if (!Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {
+    throw new Error("Project PDF buffer is empty.");
+  }
+
+  if (pdfBuffer.length > 10 * 1024 * 1024) {
+    throw new Error("Project PDF must be 10 MB or smaller.");
+  }
+
+  const signature = pdfBuffer.subarray(0, 5).toString("ascii");
+  if (signature !== "%PDF-") {
+    throw new Error("Only valid PDF files can be uploaded.");
+  }
+
+  const safeBase = String(filename || "project.pdf")
+    .replace(/\.pdf$/i, "")
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .slice(0, 120) || "project";
+
+  const publicId = "project-" + crypto.randomUUID() + "-" + safeBase;
+
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw",
+        type: "upload",
+        folder: CLOUDINARY_FOLDER,
+        public_id: publicId,
+        format: "pdf",
+        overwrite: false,
+        use_filename: false,
+        unique_filename: false,
+        context: {
+          title: String(title || "AI Generated Project"),
+        },
+      },
+      (error, result) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        if (!result?.secure_url) {
+          reject(new Error("Cloudinary did not return a secure project PDF URL."));
+          return;
+        }
+
+        resolve(result);
+      }
+    );
+
+    uploadStream.once("error", reject);
+    uploadStream.end(pdfBuffer);
+  });
+}
+
 /* ============================================================
    ADMIN-UPLOADED PDF
 ============================================================ */
@@ -1635,7 +1699,8 @@ function validateProject(project) {
    MAIN PDF GENERATOR
 ============================================================ */
 
-export async function generateProjectPdf(project) {
+export async function generateProjectPdf(project, options = {}) {
+  const upload = options.upload !== false;
   validateProject(project);
 
   const filename = `project-${crypto.randomUUID()}-${Date.now()}.pdf`;
@@ -1741,19 +1806,33 @@ export async function generateProjectPdf(project) {
     renderRemainingFields(doc, state, project);
     renderFinalNote(doc, state);
 
-    // ----------------------------------------------------------
-    // UPLOAD DIRECTLY TO CLOUDINARY
-    // ----------------------------------------------------------
+    // Preview mode: finish the PDF in memory and return the bytes.
+    // Nothing is uploaded to Cloudinary in this mode.
+    if (!upload) {
+      const chunks = [];
 
+      const buffer = await new Promise((resolve, reject) => {
+        doc.on("data", (chunk) => chunks.push(chunk));
+        doc.once("error", reject);
+        doc.once("end", () => resolve(Buffer.concat(chunks)));
+
+        doc.end();
+      });
+
+      return {
+        filename,
+        buffer,
+        bytes: buffer.length,
+        format: "pdf",
+      };
+    }
+
+    // Confirmed-save mode: upload the completed PDF to Cloudinary.
     const result = await uploadPdfToCloudinary(
       doc,
       filename,
       title
     );
-
-    // ----------------------------------------------------------
-    // RETURN CLOUDINARY URL
-    // ----------------------------------------------------------
 
     return {
       filename,
@@ -1763,10 +1842,6 @@ export async function generateProjectPdf(project) {
       resourceType: result.resource_type,
       bytes: result.bytes,
       format: result.format || "pdf",
-
-      // Backward compatibility:
-      // existing project.service.js can continue using
-      // pdf.relativeUrl.
       relativeUrl: result.secure_url,
     };
   } catch (error) {
