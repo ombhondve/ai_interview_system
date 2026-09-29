@@ -96,7 +96,7 @@ function VerifyInner() {
         setCandidate(data.candidate);
 
         /*
-         * Use the candidate's phone as the
+          Use the candidate's phone as the
          * default OTP destination.
          *
          * This is useful because your current
