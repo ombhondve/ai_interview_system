@@ -1,5 +1,8 @@
 import crypto from "crypto";
-import { generateAIResponse } from "../ai/ai.service.js";
+import {
+    generateAIResponse,
+    generateWhatsAppChatResponse
+} from "../ai/ai.service.js";
 import { resumeAnalysisPrompt, whatsappChatPrompt  } from "../ai/ai.prompt.js";
 import { extractTextFromPDF } from "../resume/resume.parser.js";
 import { createCandidate, findCandidateByPhone } from "../candidate/candidate.service.js";
@@ -105,7 +108,7 @@ export const handleWebhook = async (req, res) => {
                 }
             ];
 
-            const aiResult = await generateAIResponse(messages);
+            const aiResult = await generateWhatsAppChatResponse(messages);
             await sendWhatsAppMessage(
                 message.from,
                 aiResult
