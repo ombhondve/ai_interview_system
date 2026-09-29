@@ -80,6 +80,70 @@ function uploadPdfToCloudinary(doc, filename, title) {
 }
 
 /* ============================================================
+   ADMIN-UPLOADED PDF
+============================================================ */
+
+const ADMIN_PDF_FOLDER = "recruitai/admin-pdfs";
+
+/**
+ * Upload an administrator-supplied PDF buffer directly to Cloudinary.
+ * No PDF is written to the backend filesystem.
+ */
+export async function uploadAdminProjectPdf(pdfBuffer, filename = "admin-project.pdf") {
+  if (!Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {
+    throw new Error("Admin PDF buffer is empty.");
+  }
+
+  if (pdfBuffer.length > 10 * 1024 * 1024) {
+    throw new Error("Admin PDF must be 10 MB or smaller.");
+  }
+
+  const signature = pdfBuffer.subarray(0, 5).toString("ascii");
+  if (signature !== "%PDF-") {
+    throw new Error("Only valid PDF files can be uploaded.");
+  }
+
+  const safeBase = String(filename || "admin-project.pdf")
+    .replace(/\\.pdf$/i, "")
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .slice(0, 120) || "admin-project";
+
+  const publicId = "admin-" + crypto.randomUUID() + "-" + safeBase;
+
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw",
+        type: "upload",
+        folder: ADMIN_PDF_FOLDER,
+        public_id: publicId,
+        format: "pdf",
+        overwrite: false,
+        use_filename: false,
+        unique_filename: false,
+        context: { source: "admin-upload" },
+      },
+      (error, result) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        if (!result?.secure_url) {
+          reject(new Error("Cloudinary did not return an admin PDF URL."));
+          return;
+        }
+
+        resolve(result);
+      }
+    );
+
+    uploadStream.once("error", reject);
+    uploadStream.end(pdfBuffer);
+  });
+}
+
+/* ============================================================
    PAGE
 ============================================================ */
 
