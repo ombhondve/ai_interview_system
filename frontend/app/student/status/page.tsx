@@ -45,7 +45,7 @@ function formatStatus(status?: string) {
 /**
  * ============================================
  * STATUS STYLES
- * ============================================
+ * =========================================
  */
 
 function getStatusStyles(status?: string) {
