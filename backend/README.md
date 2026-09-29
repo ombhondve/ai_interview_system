@@ -9,3 +9,4 @@ download this npm install mupdf
 downlaod npm install nodemailer twilio for mail service 
 downlaod this npm install twilio for SMS service 
 npm install groq-sdk pdfkit
+npm install cloudinary
