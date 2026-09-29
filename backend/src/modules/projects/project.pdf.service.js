@@ -14,7 +14,7 @@ function getCloudinaryUploadOptions(filename, title) {
     type: "upload",
     folder: CLOUDINARY_FOLDER,
 
-    // Keep the Cloudinary public ID extension-free.
+    // Keep the Cloudinary public ID extension-fr
     public_id: filename.replace(/\.pdf$/i, ""),
     format: "pdf",
 
