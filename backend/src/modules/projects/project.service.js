@@ -3,7 +3,7 @@ import Project from "./project.model.js";
 import Candidate from "../candidate/candidate.model.js";
 import { generateStructuredAI } from "../ai/ai.service.js";
 import { projectGenerationPrompt } from "../ai/ai.prompt.js";
-import { generateProjectPdf } from "./project.pdf.service.js";
+import { generateProjectPdf, uploadProjectPdfBuffer } from "./project.pdf.service.js";
 
 /* =========================================================
    HELPERS
@@ -1041,22 +1041,22 @@ export async function generateProject(
         );
       }
 
-      const relativeUrl =
-        pdf.relativeUrl ||
-        pdf.url ||
-        "";
-
-      if (!relativeUrl) {
+      if (!pdf?.buffer) {
         throw new Error(
-          "PDF generation returned no URL."
+          "PDF generation returned no PDF data."
         );
       }
 
-      draft.pdfUrl =
-        relativeUrl;
+      draft.pdfData =
+        pdf.buffer.toString("base64");
 
-      draft.detailedPdfUrl =
-        relativeUrl;
+      draft.pdfFilename =
+        pdf.filename || "project-preview.pdf";
+
+      // IMPORTANT:
+      // Do not set pdfUrl/detailedPdfUrl here.
+      // Cloudinary upload happens only in createProject
+      // after the admin clicks Confirm & Save.
     } catch (pdfError) {
       console.error(
         "Project PDF generation failed:",
