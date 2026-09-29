@@ -1,14 +1,83 @@
-import fs from "node:fs/promises";
-import fsSync from "node:fs";
-import path from "node:path";
 import crypto from "node:crypto";
 import PDFDocument from "pdfkit";
+import cloudinary from "../../config/cloudinary.js";
 
 /* ============================================================
-   PATH
+   CLOUDINARY
 ============================================================ */
 
-const uploadsRoot = path.resolve(process.cwd(), "uploads", "projects");
+const CLOUDINARY_FOLDER = "recruitai/projects";
+
+function getCloudinaryUploadOptions(filename, title) {
+  return {
+    resource_type: "raw",
+    type: "upload",
+    folder: CLOUDINARY_FOLDER,
+
+    // Keep the Cloudinary public ID extension-free.
+    public_id: filename.replace(/\.pdf$/i, ""),
+    format: "pdf",
+
+    overwrite: true,
+    use_filename: false,
+    unique_filename: false,
+
+    context: {
+      title: String(title || "AI Generated Project"),
+    },
+  };
+}
+
+/**
+ * Stream PDFKit output directly to Cloudinary.
+ * No permanent PDF is written to the deployment filesystem.
+ */
+function uploadPdfToCloudinary(doc, filename, title) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    const resolveOnce = (result) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
+
+    const rejectOnce = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    try {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        getCloudinaryUploadOptions(filename, title),
+        (error, result) => {
+          if (error) {
+            rejectOnce(error);
+            return;
+          }
+
+          if (!result?.secure_url) {
+            rejectOnce(
+              new Error("Cloudinary did not return a secure PDF URL.")
+            );
+            return;
+          }
+
+          resolveOnce(result);
+        }
+      );
+
+      uploadStream.once("error", rejectOnce);
+
+      // PDFKit -> Cloudinary
+      doc.pipe(uploadStream);
+      doc.end();
+    } catch (error) {
+      rejectOnce(error);
+    }
+  });
+}
 
 /* ============================================================
    PAGE
@@ -928,8 +997,7 @@ function renderArchitecture(doc, state, project) {
       doc.strokeColor(COLORS.blue).lineWidth(1)
         .moveTo(PAGE.width / 2, doc.y).lineTo(PAGE.width / 2, doc.y + 10).stroke();
 
-      doc.fillColor(COLORS.blue)
-        .moveTo(PAGE.width / 2 - 4, doc.y + 6)
+      doc.fillColor(COLORS.blue)        .moveTo(PAGE.width / 2 - 4, doc.y + 6)
         .lineTo(PAGE.width / 2 + 4, doc.y + 6)
         .lineTo(PAGE.width / 2, doc.y + 11)
         .closePath().fill();
@@ -1500,57 +1568,29 @@ function validateProject(project) {
 }
 
 /* ============================================================
-   FINISH PDF
-============================================================ */
-
-function finishPdf(doc, stream) {
-  return new Promise((resolve, reject) => {
-    let done = false;
-
-    const resolveOnce = () => { if (!done) { done = true; resolve(); } };
-    const rejectOnce = (error) => { if (!done) { done = true; reject(error); } };
-
-    stream.once("finish", resolveOnce);
-    stream.once("error", rejectOnce);
-    doc.once("error", rejectOnce);
-
-    try {
-      doc.end();
-    } catch (error) {
-      rejectOnce(error);
-    }
-  });
-}
-
-/* ============================================================
    MAIN PDF GENERATOR
 ============================================================ */
 
 export async function generateProjectPdf(project) {
   validateProject(project);
 
-  await fs.mkdir(uploadsRoot, { recursive: true });
-
   const filename = `project-${crypto.randomUUID()}-${Date.now()}.pdf`;
-  const absolutePath = path.join(uploadsRoot, filename);
   const title = projectTitle(project);
 
   const doc = new PDFDocument({
     size: "A4",
-    // Margins are intentionally 0: this file tracks its own content
-    // area (CONTENT_TOP / CONTENT_BOTTOM) and positions every piece of
-    // text with explicit x/y coordinates. If PDFKit is also given real
-    // margins, it independently treats anything drawn past its own
-    // margin boundary as "overflow" and silently calls addPage() -
-    // which re-fires the pageAdded handler, which redraws the same
-    // footer, which overflows again, forever. That infinite loop is
-    // what was crashing PDF generation with a stack overflow. Setting
-    // margins to 0 hands full control of pagination to our own
-    // ensureSpace()/ensureSectionSpace() logic, which is the only
-    // thing that should be deciding when a new page is needed.
-    margins: { top: 0, bottom: 0, left: 0, right: 0 },
+
+    // This renderer controls pagination itself.
+    margins: {
+      top: 0,
+      bottom: 0,
+      left: 0,
+      right: 0,
+    },
+
     autoFirstPage: true,
     compress: true,
+
     info: {
       Title: title,
       Author: "RecruitAI",
@@ -1564,49 +1604,63 @@ export async function generateProjectPdf(project) {
   setFont(doc, "regular");
   doc.fontSize(9).fillColor(COLORS.text);
 
-  const stream = fsSync.createWriteStream(absolutePath);
   const state = createState();
 
-  // Handles both explicit doc.addPage() calls and pages PDFKit
-  // creates automatically when content overflows, so page numbers,
-  // header and footer stay correct no matter how a page was created.
+  // PDFKit does not emit pageAdded for the initial page.
+  state.page = 1;
+  drawPageChrome(doc, state);
+
+  doc.x = PAGE.margin;
+  doc.y = CONTENT_TOP;
+
+  // Add header/footer to every subsequent page.
   doc.on("pageAdded", () => {
     state.page += 1;
+
     drawPageChrome(doc, state);
+
     doc.x = PAGE.margin;
     doc.y = CONTENT_TOP;
   });
 
-  // PDFKit creates page 1 automatically, so "pageAdded" never fires
-  // for it - the chrome for page 1 has to be drawn manually here.
-  state.page = 1;
-  drawPageChrome(doc, state);
-  doc.x = PAGE.margin;
-  doc.y = CONTENT_TOP;
-
   try {
-    doc.pipe(stream);
+    // ----------------------------------------------------------
+    // COVER
+    // ----------------------------------------------------------
 
     renderCover(doc, state, project);
 
-    // Exactly one explicit new page; the pageAdded listener handles
-    // the page number/header/footer for it.
+    // Detailed specification starts on a new page.
     startPage(doc);
+
+    // ----------------------------------------------------------
+    // PROJECT CONTENT
+    // ----------------------------------------------------------
 
     renderOverview(doc, state, project);
     renderCandidate(doc, state, project);
     renderTechnologyStack(doc, state, project);
 
     renderRequirements(
-      doc, state, "Functional Requirements",
-      project?.functionalRequirements || project?.functional || project?.requirements,
-      COLORS.blue, COLORS.blueSoft
+      doc,
+      state,
+      "Functional Requirements",
+      project?.functionalRequirements ||
+        project?.functional ||
+        project?.requirements,
+      COLORS.blue,
+      COLORS.blueSoft
     );
 
     renderRequirements(
-      doc, state, "Non-Functional Requirements",
-      project?.nonFunctionalRequirements || project?.nonFunctional || project?.qualityRequirements,
-      COLORS.purple, COLORS.purpleSoft
+      doc,
+      state,
+      "Non-Functional Requirements",
+      project?.nonFunctionalRequirements ||
+        project?.nonFunctional ||
+        project?.qualityRequirements,
+      COLORS.purple,
+      COLORS.purpleSoft
     );
 
     renderModules(doc, state, project);
@@ -1623,39 +1677,47 @@ export async function generateProjectPdf(project) {
     renderRemainingFields(doc, state, project);
     renderFinalNote(doc, state);
 
-    await finishPdf(doc, stream);
+    // ----------------------------------------------------------
+    // UPLOAD DIRECTLY TO CLOUDINARY
+    // ----------------------------------------------------------
+
+    const result = await uploadPdfToCloudinary(
+      doc,
+      filename,
+      title
+    );
+
+    // ----------------------------------------------------------
+    // RETURN CLOUDINARY URL
+    // ----------------------------------------------------------
+
+    return {
+      filename,
+      url: result.secure_url,
+      secureUrl: result.secure_url,
+      publicId: result.public_id,
+      resourceType: result.resource_type,
+      bytes: result.bytes,
+      format: result.format || "pdf",
+
+      // Backward compatibility:
+      // existing project.service.js can continue using
+      // pdf.relativeUrl.
+      relativeUrl: result.secure_url,
+    };
   } catch (error) {
-    try {
-      if (!stream.destroyed) stream.destroy();
-    } catch {
-      // Ignore cleanup error.
-    }
+    console.error(
+      "Project PDF generation/upload failed:",
+      error
+    );
 
-    try {
-      await fs.unlink(absolutePath);
-    } catch {
-      // Ignore cleanup error.
-    }
-
-    throw new Error(`Failed to generate project PDF: ${error?.message || "Unknown PDF generation error"}`);
+    throw new Error(
+      `Failed to generate/upload project PDF: ${
+        error?.message ||
+        "Unknown PDF generation/upload error"
+      }`
+    );
   }
-
-  try {
-    await fs.access(absolutePath);
-  } catch {
-    throw new Error("PDF file was not created.");
-  }
-
-  const stats = await fs.stat(absolutePath);
-  if (!stats.isFile() || stats.size < 100) {
-    throw new Error("Generated PDF is empty or invalid.");
-  }
-
-  return {
-    filename,
-    absolutePath,
-    relativeUrl: `/uploads/projects/${filename}`,
-  };
 }
 
 export default { generateProjectPdf };
