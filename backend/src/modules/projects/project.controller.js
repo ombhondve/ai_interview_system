@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Project from "./project.model.js";
 import { uploadAdminProjectPdf } from "./project.pdf.service.js";
 
