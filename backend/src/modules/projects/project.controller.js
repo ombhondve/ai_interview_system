@@ -1,6 +1,9 @@
 import mongoose from "mongoose";
 import Project from "./project.model.js";
-import { uploadAdminProjectPdf } from "./project.pdf.service.js";
+import {
+  uploadAdminProjectPdf,
+  uploadProjectPdfBuffer,
+} from "./project.pdf.service.js";
 
 import {
   getProjects as getProjectsService,
@@ -323,6 +326,59 @@ export const createProject = async (
        CREATE PROJECT
     ----------------------------------------- */
 
+    /* -----------------------------------------
+       UPLOAD GENERATED PDF ONLY AFTER CONFIRM & SAVE
+    ----------------------------------------- */
+
+    let pdfUrl = cleanString(body.pdfUrl);
+    let detailedPdfUrl = cleanString(body.detailedPdfUrl);
+
+    const pdfData =
+      typeof body.pdfData === "string"
+        ? body.pdfData.trim()
+        : "";
+
+    if (pdfData) {
+      try {
+        const base64 = pdfData.replace(
+          /^data:application\/pdf;base64,/i,
+          ""
+        );
+
+        const pdfBuffer =
+          Buffer.from(base64, "base64");
+
+        const uploadedPdf =
+          await uploadProjectPdfBuffer(
+            pdfBuffer,
+            cleanString(
+              body.pdfFilename,
+              "project.pdf"
+            ),
+            title
+          );
+
+        pdfUrl = uploadedPdf.secure_url;
+        detailedPdfUrl = uploadedPdf.secure_url;
+      } catch (pdfError) {
+        console.error(
+          "Confirmed project PDF upload failed:",
+          pdfError
+        );
+
+        return res.status(400).json({
+          success: false,
+          message:
+            pdfError?.message ||
+            "Failed to save the project PDF.",
+        });
+      }
+    }
+
+    /* -----------------------------------------
+       CREATE PROJECT
+    ----------------------------------------- */
+
     const project =
       await createProjectService({
         title,
@@ -344,15 +400,9 @@ export const createProject = async (
             body.briefUrl
           ),
 
-        pdfUrl:
-          cleanString(
-            body.pdfUrl
-          ),
+        pdfUrl,
 
-        detailedPdfUrl:
-          cleanString(
-            body.detailedPdfUrl
-          ),
+        detailedPdfUrl,
 
         projectType:
           cleanString(
