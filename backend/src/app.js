@@ -97,7 +97,7 @@ app.use((req, res, next) => {
 
 app.use(
   express.json({
-    limit: "10mb",
+    limit: "15mb",
   })
 );
 app.use(cookieParser);
