@@ -623,28 +623,34 @@ export default function ProjectsPage() {
       });
 
       /*
-       * The backend should return at least one PDF URL.
+       * Generation returns the PDF as transient base64 data.
+       * It is NOT uploaded to Cloudinary yet.
        */
-      const pdfUrl =
-        generated.detailedPdfUrl ||
-        generated.pdfUrl ||
-        "";
+      const pdfData =
+        typeof (generated as { pdfData?: unknown }).pdfData ===
+          "string"
+          ? (generated as { pdfData: string }).pdfData
+          : "";
 
-      console.log(
-        "AI project generated successfully:",
-        generated
-      );
+      const pdfFilename =
+        typeof (generated as { pdfFilename?: unknown }).pdfFilename ===
+          "string"
+          ? (generated as { pdfFilename: string }).pdfFilename
+          : "project-preview.pdf";
 
-      console.log(
-        "Generated PDF URL:",
-        pdfUrl
-      );
-
-      if (!pdfUrl) {
+      if (!pdfData) {
         throw new Error(
-          "The project was generated, but the backend did not return a PDF URL. Check the backend PDF generation and response."
+          "The project was generated, but no PDF preview data was returned."
         );
       }
+
+      const pdfPreviewUrl =
+        `data:application/pdf;base64,${pdfData}`;
+
+      console.log(
+        "AI project generated successfully. PDF is still transient and has not been uploaded.",
+        generated
+      );
 
       /*
        * ProjectAIPreview has a richer GeneratedProject type.
@@ -657,13 +663,15 @@ export default function ProjectsPage() {
         {
           ...generated,
 
-          pdfUrl:
-            generated.pdfUrl ||
-            pdfUrl,
+          // Preview-only data URL. This is replaced by a Cloudinary URL
+          // when the admin confirms the save.
+          pdfUrl: pdfPreviewUrl,
 
-          detailedPdfUrl:
-            generated.detailedPdfUrl ||
-            pdfUrl,
+          detailedPdfUrl: pdfPreviewUrl,
+
+          pdfData,
+
+          pdfFilename,
 
           generationContext: {
             projectType:
