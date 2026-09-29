@@ -7,6 +7,7 @@ import {
   generateProject,
   regenerateProject,
   updateProject,
+  uploadAdminPdf,
   archiveProject,
   deleteProject,
   getAssignedCandidates,
@@ -43,6 +44,11 @@ router.post(
 router.patch(
   "/:id",
   updateProject
+);
+
+router.post(
+  "/:id/admin-pdf",
+  uploadAdminPdf
 );
 
 router.put(
