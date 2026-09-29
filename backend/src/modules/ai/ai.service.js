@@ -118,6 +118,41 @@ function extractJson(content) {
   }
 }
 
+/**
+ * Generate a normal conversational response.
+ *
+ * IMPORTANT:
+ * WhatsApp chat must return plain text. Do not use
+ * response_format: { type: "json_object" } here.
+ */
+export const generateWhatsAppChatResponse = async (messages) => {
+  if (!process.env.GROQ_API_KEY) {
+    throw new Error("GROQ_API_KEY is not configured.");
+  }
+
+  const response = await groq.chat.completions.create({
+    model: MODEL,
+    messages,
+    max_completion_tokens: 1000,
+    temperature: 0.4,
+    stream: false,
+  });
+
+  const content =
+    response?.choices?.[0]?.message?.content;
+
+  if (
+    typeof content !== "string" ||
+    !content.trim()
+  ) {
+    throw new Error(
+      "Groq returned an empty WhatsApp chat response."
+    );
+  }
+
+  return content.trim();
+};
+
 export const generateAIResponse = async (messages) => {
   if (!process.env.GROQ_API_KEY) {
     throw new Error("GROQ_API_KEY is not configured.");
