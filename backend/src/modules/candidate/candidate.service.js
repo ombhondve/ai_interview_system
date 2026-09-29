@@ -2,10 +2,236 @@
 // CANDIDATE SERVICE
 // =====================================================
 
+import crypto from "node:crypto";
+
 import Candidate from "./candidate.model.js";
-import crypto from "crypto";
 import CandidatePortalToken from "./CandidatePortalToken.js";
-import { URLsender } from "../../modules/whatsapp/whatsapp.controller.js";
+
+import {
+    sendWhatsAppMessage
+} from "../../modules/whatsapp/whatsapp.service.js";
+
+
+// =====================================================
+// CONSTANTS
+// =====================================================
+
+const PORTAL_TOKEN_EXPIRY_HOURS = 48;
+
+
+// =====================================================
+// GENERIC HELPERS
+// =====================================================
+
+function cleanString(value) {
+    if (value === undefined || value === null) {
+        return "";
+    }
+
+    return String(value).trim();
+}
+
+
+function normalizeEmail(email) {
+    const value = cleanString(email);
+
+    return value
+        ? value.toLowerCase()
+        : "";
+}
+
+
+function normalizePhone(phone) {
+    const value = cleanString(phone);
+
+    if (!value) {
+        return "";
+    }
+
+    return value.startsWith("+")
+        ? value
+        : `+${value}`;
+}
+
+
+/**
+ * Convert common AI output variations into arrays.
+ *
+ * Examples:
+ *
+ * "Python, JavaScript"
+ *     -> ["Python", "JavaScript"]
+ *
+ * ["Python", "JavaScript"]
+ *     -> ["Python", "JavaScript"]
+ *
+ * [{...}]
+ *     -> [{...}]
+ */
+function normalizeArray(value) {
+    if (value === undefined || value === null) {
+        return [];
+    }
+
+    if (Array.isArray(value)) {
+        return value;
+    }
+
+    if (typeof value === "string") {
+        const text = value.trim();
+
+        if (!text) {
+            return [];
+        }
+
+        return text
+            .split(/\n|,|;/)
+            .map((item) => item.trim())
+            .filter(Boolean);
+    }
+
+    return [value];
+}
+
+
+/**
+ * Preserve structured objects while normalizing primitive values.
+ *
+ * We do NOT invent schema-specific properties here.
+ */
+function normalizeStructuredArray(value) {
+    if (value === undefined || value === null) {
+        return [];
+    }
+
+    if (Array.isArray(value)) {
+        return value
+            .filter(
+                (item) =>
+                    item !== undefined &&
+                    item !== null &&
+                    item !== ""
+            );
+    }
+
+    if (typeof value === "string") {
+        const text = value.trim();
+
+        if (!text) {
+            return [];
+        }
+
+        return [text];
+    }
+
+    return [value];
+}
+
+
+/**
+ * Normalize the candidate object returned by AI.
+ *
+ * This keeps the AI structure instead of destroying information.
+ */
+function normalizeResumeCandidate(candidate) {
+    if (
+        !candidate ||
+        typeof candidate !== "object" ||
+        Array.isArray(candidate)
+    ) {
+        return {};
+    }
+
+    const normalized = {
+        ...candidate
+    };
+
+
+    if (normalized.name !== undefined) {
+        normalized.name =
+            cleanString(normalized.name);
+    }
+
+
+    if (normalized.phone !== undefined) {
+        normalized.phone =
+            normalizePhone(normalized.phone);
+    }
+
+
+    if (normalized.email !== undefined) {
+        normalized.email =
+            normalizeEmail(normalized.email);
+    }
+
+
+    if (normalized.location !== undefined) {
+        normalized.location =
+            cleanString(normalized.location);
+    }
+
+
+    if (normalized.role !== undefined) {
+        normalized.role =
+            cleanString(normalized.role);
+    }
+
+
+    /*
+     * Keep these fields as arrays.
+     *
+     * Structured objects returned by AI remain unchanged.
+     */
+    if ("education" in normalized) {
+        normalized.education =
+            normalizeStructuredArray(
+                normalized.education
+            );
+    }
+
+
+    if ("experience" in normalized) {
+        normalized.experience =
+            normalizeStructuredArray(
+                normalized.experience
+            );
+    }
+
+
+    if ("projects" in normalized) {
+        normalized.projects =
+            normalizeStructuredArray(
+                normalized.projects
+            );
+    }
+
+
+    if ("certifications" in normalized) {
+        normalized.certifications =
+            normalizeStructuredArray(
+                normalized.certifications
+            );
+    }
+
+
+    if ("skills" in normalized) {
+        normalized.skills =
+            normalizeArray(
+                normalized.skills
+            );
+    }
+
+
+    if (
+        normalized.additional === undefined ||
+        normalized.additional === null
+    ) {
+        normalized.additional = {};
+    }
+
+
+    return normalized;
+}
 
 
 // =====================================================
@@ -19,10 +245,6 @@ function formatCandidate(candidate) {
     }
 
 
-    // =================================================
-    // AI RESUME DATA
-    // =================================================
-
     const resumeCandidate =
         candidate.resumeData?.candidate || {};
 
@@ -34,7 +256,7 @@ function formatCandidate(candidate) {
         // =================================================
 
         id:
-            candidate._id.toString(),
+            candidate._id?.toString(),
 
         name:
             candidate.name ||
@@ -105,11 +327,9 @@ function formatCandidate(candidate) {
         certifications:
             resumeCandidate.certifications || [],
 
-        // Additional information extracted by AI
         additional:
             resumeCandidate.additional || {},
 
-        // Complete AI resume data
         resumeData:
             candidate.resumeData || null,
 
@@ -155,9 +375,9 @@ function formatCandidate(candidate) {
         // =================================================
 
         assignedProjectId:
-        candidate.assignedProjectId
-            ? candidate.assignedProjectId.toString()
-            : null,
+            candidate.assignedProjectId
+                ? candidate.assignedProjectId.toString()
+                : null,
 
         submissionUrl:
             candidate.submissionUrl,
@@ -187,6 +407,106 @@ export async function createCandidate(data) {
 
     try {
 
+        if (
+            !data ||
+            typeof data !== "object"
+        ) {
+            throw new Error(
+                "Candidate data is required."
+            );
+        }
+
+
+        // =================================================
+        // NORMALIZE CANDIDATE DATA
+        // =================================================
+
+        const normalizedCandidate =
+            normalizeResumeCandidate(
+                data.candidate
+            );
+
+
+        // =================================================
+        // PHONE
+        // =================================================
+
+        const phone =
+            normalizePhone(
+                data.phone ||
+                normalizedCandidate.phone
+            );
+
+
+        if (!phone) {
+            throw new Error(
+                "Candidate phone number is required."
+            );
+        }
+
+
+        normalizedCandidate.phone =
+            phone;
+
+
+        // =================================================
+        // EMAIL
+        // =================================================
+
+        const email =
+            normalizeEmail(
+                data.email ||
+                normalizedCandidate.email
+            );
+
+
+        if (email) {
+            normalizedCandidate.email =
+                email;
+        }
+
+
+        // =================================================
+        // DUPLICATE CHECK
+        //
+        // This protects against race conditions where
+        // controller-level duplicate checking happened
+        // slightly earlier.
+        // =================================================
+
+        const existingCandidate =
+            await findCandidateByPhone(
+                phone,
+                email || undefined
+            );
+
+
+        if (existingCandidate) {
+
+            console.log(
+                "Candidate already exists:",
+                existingCandidate._id
+            );
+
+            return formatCandidate(
+                existingCandidate
+            );
+        }
+
+
+        // =================================================
+        // RAW AI DATA
+        // =================================================
+
+        const rawAIResult =
+            data.rawAIResult ??
+            data;
+
+
+        // =================================================
+        // CREATE CANDIDATE
+        // =================================================
+
         const candidate =
             await Candidate.create({
 
@@ -195,25 +515,29 @@ export async function createCandidate(data) {
                 // =================================================
 
                 name:
-                    data.candidate?.name ??
+                    cleanString(
+                        data.name ||
+                        normalizedCandidate.name
+                    ) ||
                     "Unknown",
 
-                // WhatsApp formatted phone number
-                phone:
-                    data.phone ??
-                    data.candidate?.phone,
+                phone,
 
                 email:
-                    data.candidate?.email ??
-                    undefined,
+                    email || undefined,
 
                 location:
-                    data.candidate?.location ??
+                    cleanString(
+                        data.location ||
+                        normalizedCandidate.location
+                    ) ||
                     undefined,
 
                 role:
-                    data.role ??
-                    data.candidate?.role ??
+                    cleanString(
+                        data.role ||
+                        normalizedCandidate.role
+                    ) ||
                     undefined,
 
 
@@ -222,13 +546,15 @@ export async function createCandidate(data) {
                 // =================================================
 
                 status:
-                    data.status ??
+                    data.status ||
                     "received",
 
                 jdMatchScore:
-                    data.jdMatchScore ??
-                    data.candidate?.jdMatchScore ??
-                    0,
+                    Number(
+                        data.jdMatchScore ??
+                        normalizedCandidate.jdMatchScore ??
+                        0
+                    ),
 
 
                 // =================================================
@@ -236,7 +562,7 @@ export async function createCandidate(data) {
                 // =================================================
 
                 verificationStatus:
-                    data.verificationStatus ??
+                    data.verificationStatus ||
                     "pending",
 
 
@@ -245,34 +571,25 @@ export async function createCandidate(data) {
                 // =================================================
 
                 resumeFileName:
-                    data.resumeFileName,
+                    data.resumeFileName ||
+                    undefined,
 
                 resumeUrl:
-                    data.resumeUrl,
+                    data.resumeUrl ||
+                    undefined,
 
 
                 // =================================================
                 // AI RESUME DATA
                 // =================================================
 
-                // IMPORTANT:
-                // Store BOTH:
-                //
-                // 1. raw       -> complete AI response
-                // 2. candidate  -> extracted candidate data
-                //
-                // Because resume structures can be different.
-                // =================================================
-
                 resumeData: {
 
                     raw:
-                        data.rawAIResult ??
-                        data,
+                        rawAIResult,
 
                     candidate:
-                        data.candidate ??
-                        {},
+                        normalizedCandidate,
 
                     analyzedAt:
                         new Date()
@@ -284,8 +601,9 @@ export async function createCandidate(data) {
                 // =================================================
 
                 activity:
-                    data.activity ??
-                    [],
+                    Array.isArray(data.activity)
+                        ? data.activity
+                        : [],
 
 
                 // =================================================
@@ -293,22 +611,27 @@ export async function createCandidate(data) {
                 // =================================================
 
                 submissionUrl:
-                    data.submissionUrl
+                    data.submissionUrl ||
+                    undefined
             });
 
 
         console.log(
-            "Candidate created:",
+            "Candidate created successfully:",
             candidate._id
         );
 
 
-        return formatCandidate(candidate);
+        return formatCandidate(
+            candidate
+        );
 
     } catch (error) {
 
         console.error(
             "Error creating candidate:",
+            error?.stack ||
+            error?.message ||
             error
         );
 
@@ -329,26 +652,37 @@ export async function findCandidateByPhone(
 
     try {
 
+        const normalizedPhone =
+            normalizePhone(phone);
+
+        const normalizedEmail =
+            normalizeEmail(email);
+
+
         const conditions = [];
 
 
-        if (phone) {
+        if (normalizedPhone) {
 
             conditions.push({
-                phone: phone
+                phone:
+                    normalizedPhone
             });
         }
 
 
-        if (email) {
+        if (normalizedEmail) {
 
             conditions.push({
-                email: email
+                email:
+                    normalizedEmail
             });
         }
 
 
-        if (conditions.length === 0) {
+        if (
+            conditions.length === 0
+        ) {
             return null;
         }
 
@@ -365,6 +699,8 @@ export async function findCandidateByPhone(
 
         console.error(
             "Error checking duplicate candidate:",
+            error?.stack ||
+            error?.message ||
             error
         );
 
@@ -410,25 +746,31 @@ export async function getCandidates({
 
         if (search) {
 
+            const searchValue =
+                cleanString(search);
+
             filter.$or = [
 
                 {
                     name: {
-                        $regex: search,
+                        $regex:
+                            searchValue,
                         $options: "i"
                     }
                 },
 
                 {
                     email: {
-                        $regex: search,
+                        $regex:
+                            searchValue,
                         $options: "i"
                     }
                 },
 
                 {
                     phone: {
-                        $regex: search,
+                        $regex:
+                            searchValue,
                         $options: "i"
                     }
                 }
@@ -446,7 +788,8 @@ export async function getCandidates({
             status !== "all"
         ) {
 
-            filter.status = status;
+            filter.status =
+                status;
         }
 
 
@@ -459,7 +802,8 @@ export async function getCandidates({
             role !== "all"
         ) {
 
-            filter.role = role;
+            filter.role =
+                role;
         }
 
 
@@ -472,7 +816,8 @@ export async function getCandidates({
             batch !== "all"
         ) {
 
-            filter.batchId = batch;
+            filter.batchId =
+                batch;
         }
 
 
@@ -486,9 +831,19 @@ export async function getCandidates({
             jdMatchMin !== ""
         ) {
 
-            filter.jdMatchScore = {
-                $gte: Number(jdMatchMin)
-            };
+            const minimumScore =
+                Number(jdMatchMin);
+
+            if (
+                Number.isFinite(
+                    minimumScore
+                )
+            ) {
+                filter.jdMatchScore = {
+                    $gte:
+                        minimumScore
+                };
+            }
         }
 
 
@@ -633,13 +988,14 @@ export async function getCandidates({
 
             batches:
                 batches.filter(Boolean)
-
         };
 
     } catch (error) {
 
         console.error(
             "Error getting candidates:",
+            error?.stack ||
+            error?.message ||
             error
         );
 
@@ -655,6 +1011,13 @@ export async function getCandidates({
 export async function getCandidateById(id) {
 
     try {
+
+        if (!id) {
+            throw new Error(
+                "Candidate ID is required."
+            );
+        }
+
 
         const candidate =
             await Candidate.findById(id);
@@ -673,6 +1036,8 @@ export async function getCandidateById(id) {
 
         console.error(
             "Error getting candidate:",
+            error?.stack ||
+            error?.message ||
             error
         );
 
@@ -699,6 +1064,13 @@ export async function approveCandidate(id) {
 
         if (!candidate) {
             return null;
+        }
+
+
+        if (!candidate.phone) {
+            throw new Error(
+                "Candidate does not have a WhatsApp phone number."
+            );
         }
 
 
@@ -736,13 +1108,15 @@ export async function approveCandidate(id) {
 
         // =================================================
         // 5. SET TOKEN EXPIRY
-        // 48 HOURS
         // =================================================
 
         const expiresAt =
             new Date(
                 Date.now() +
-                48 * 60 * 60 * 1000
+                PORTAL_TOKEN_EXPIRY_HOURS *
+                60 *
+                60 *
+                1000
             );
 
 
@@ -755,15 +1129,12 @@ export async function approveCandidate(id) {
             candidateId:
                 candidate._id,
 
-            tokenHash:
-                tokenHash,
+            tokenHash,
 
             purpose:
                 "candidate_portal",
 
-            expiresAt:
-                expiresAt
-
+            expiresAt
         });
 
 
@@ -771,18 +1142,53 @@ export async function approveCandidate(id) {
         // 7. CREATE CANDIDATE PORTAL URL
         // =================================================
 
+        const frontendUrl =
+            cleanString(
+                process.env.FRONTEND_URL
+            ).replace(/\/+$/, "");
+
+
+        if (!frontendUrl) {
+            throw new Error(
+                "FRONTEND_URL is not configured."
+            );
+        }
+
+
         const portalUrl =
-            `${process.env.FRONTEND_URL}/student/verify?token=${rawToken}`;
+            `${frontendUrl}/student/verify?token=${encodeURIComponent(rawToken)}`;
 
 
         // =================================================
         // 8. SEND WHATSAPP MESSAGE
         // =================================================
 
-        await URLsender(
+        const message =
+            `Hello ${candidate.name || "Candidate"},
+
+Your application has been approved for the next stage of the recruitment process.
+
+Please select your interview slot using the link below:
+
+🔗 Candidate Portal
+${portalUrl}
+
+Please complete your slot selection before the link expires.
+
+Important:
+• This link is unique to you.
+• Please do not share it with anyone.
+• This is an automated message. Please do not reply.
+
+For any questions, please contact the recruitment team through the official communication channel.
+
+Regards,
+RecruitAI Team`;
+
+
+        await sendWhatsAppMessage(
             candidate.phone,
-            portalUrl,
-            candidate.name
+            message
         );
 
 
@@ -795,13 +1201,14 @@ export async function approveCandidate(id) {
             candidate,
 
             portalUrl
-
         };
 
     } catch (error) {
 
         console.error(
             "Error approving candidate:",
+            error?.stack ||
+            error?.message ||
             error
         );
 
@@ -821,6 +1228,10 @@ export async function rejectCandidate(
 
     try {
 
+        const rejectionReason =
+            cleanString(reason);
+
+
         const candidate =
             await Candidate.findByIdAndUpdate(
 
@@ -831,7 +1242,7 @@ export async function rejectCandidate(
                         "rejected",
 
                     rejectionReason:
-                        reason
+                        rejectionReason
                 },
 
                 {
@@ -839,7 +1250,6 @@ export async function rejectCandidate(
 
                     runValidators: true
                 }
-
             );
 
 
@@ -856,6 +1266,8 @@ export async function rejectCandidate(
 
         console.error(
             "Error rejecting candidate:",
+            error?.stack ||
+            error?.message ||
             error
         );
 
@@ -868,9 +1280,6 @@ export async function rejectCandidate(
 // ASSIGN PROJECT TO CANDIDATE
 // =====================================================
 //
-// This function is called after the project has been
-// successfully created in MongoDB.
-//
 // Flow:
 //
 // 1. Admin generates project with AI
@@ -878,8 +1287,8 @@ export async function rejectCandidate(
 // 3. Admin clicks Confirm & Save
 // 4. Project is created in MongoDB
 // 5. Frontend calls:
-//       POST /api/candidates/:candidateId/project
-// 6. This function stores the project ID on candidate
+//      POST /api/candidates/:candidateId/project
+// 6. Project ID is stored on candidate
 //
 // =====================================================
 
@@ -895,9 +1304,8 @@ export async function assignProjectToCandidate(
         // =================================================
 
         if (!candidateId) {
-
             throw new Error(
-                "Candidate ID is required"
+                "Candidate ID is required."
             );
         }
 
@@ -907,9 +1315,8 @@ export async function assignProjectToCandidate(
         // =================================================
 
         if (!projectId) {
-
             throw new Error(
-                "Project ID is required"
+                "Project ID is required."
             );
         }
 
@@ -925,7 +1332,6 @@ export async function assignProjectToCandidate(
 
 
         if (!candidate) {
-
             return null;
         }
 
@@ -937,7 +1343,24 @@ export async function assignProjectToCandidate(
         candidate.assignedProjectId =
             projectId;
 
-        candidate.status = "Project Assigned";
+
+        /*
+         * Do not blindly use "Project Assigned".
+         *
+         * Your Candidate schema may use an enum.
+         * "approved" is already part of the existing
+         * application flow and is safer than inventing
+         * another status value.
+         */
+        if (
+            candidate.status !==
+            "completed"
+        ) {
+            candidate.status =
+                "approved";
+        }
+
+
         // =================================================
         // SAVE CANDIDATE
         // =================================================
@@ -957,6 +1380,8 @@ export async function assignProjectToCandidate(
 
         console.error(
             "Error assigning project to candidate:",
+            error?.stack ||
+            error?.message ||
             error
         );
 

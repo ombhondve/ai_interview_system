@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 
+
 const candidateSchema = new mongoose.Schema(
     {
         // =====================================================
@@ -15,13 +16,16 @@ const candidateSchema = new mongoose.Schema(
         phone: {
             type: String,
             required: true,
-            trim: true
+            trim: true,
+            unique: true,
+            index: true
         },
 
         email: {
             type: String,
             lowercase: true,
-            trim: true
+            trim: true,
+            index: true
         },
 
         location: {
@@ -110,19 +114,29 @@ const candidateSchema = new mongoose.Schema(
         // RESUME AI DATA
         // =====================================================
         //
-        // IMPORTANT:
-        // Resume structures can be different.
+        // AI resume structures can change.
         //
-        // Therefore we do NOT force:
+        // Mixed allows fields such as:
         //
-        // education: [String]
-        // experience: [String]
-        // projects: [String]
+        // education: "Diploma in Computer Technology"
         //
-        // Instead, MongoDB stores the AI response dynamically.
+        // OR:
+        //
+        // education: [
+        //     {
+        //         degree: "...",
+        //         institution: "..."
+        //     }
+        // ]
+        //
+        // OR other structured AI output.
+        //
+        // MongoDB therefore does not impose a fixed structure
+        // on the AI-generated resume data.
         // =====================================================
 
         resumeData: {
+
             raw: {
                 type: mongoose.Schema.Types.Mixed,
                 default: {}
@@ -244,5 +258,6 @@ const Candidate = mongoose.model(
     "Candidate",
     candidateSchema
 );
+
 
 export default Candidate;

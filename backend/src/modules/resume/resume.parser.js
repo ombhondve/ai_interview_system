@@ -1,3 +1,26 @@
+/**
+ * ============================================================
+ * RESUME PDF PARSER
+ * ============================================================
+ *
+ * Extraction pipeline:
+ *
+ * PDF Buffer
+ *    |
+ *    +--> Native PDF text extraction using pdf-parse
+ *    |         |
+ *    |         +--> Enough text -> return text
+ *    |
+ *    +--> OCR fallback using MuPDF + Tesseract
+ *              |
+ *              +--> Enough text -> return text
+ *              |
+ *              +--> Not enough -> return ""
+ *
+ * This file does NOT decide whether the document is a resume.
+ * Resume classification is handled by the AI layer.
+ */
+
 
 /**
  * ============================================================
@@ -5,28 +28,30 @@
  * ============================================================
  */
 
-/**
- * Minimum amount of extracted text considered usable.
- *
- * This is intentionally kept relatively low because some
- * resumes can be short.
- */
 const MIN_TEXT_LENGTH = 80;
 
 /**
- * Maximum number of PDF pages to process with OCR.
+ * Maximum number of pages that OCR will process.
  *
- * Increase this if your resumes commonly contain more pages.
+ * This prevents extremely large/scanned PDFs from consuming
+ * excessive CPU and memory.
  */
 const MAX_OCR_PAGES = 10;
 
 /**
  * OCR rendering scale.
  *
- * Higher scale can improve OCR quality but increases memory
- * usage and processing time.
+ * Higher values can improve OCR quality but consume more
+ * memory and CPU.
  */
 const OCR_SCALE = 2;
+
+/**
+ * Maximum accepted PDF size.
+ *
+ * WhatsApp controller currently uses the same 10 MB limit.
+ */
+const MAX_PDF_SIZE = 10 * 1024 * 1024;
 
 
 /**
@@ -36,38 +61,46 @@ const OCR_SCALE = 2;
  */
 
 /**
- * Check whether extracted text contains enough usable content.
+ * Normalize extracted text.
  */
-function isUsableText(text) {
-    if (!text) {
-        return false;
+function normalizeText(text) {
+    if (typeof text !== "string") {
+        return "";
     }
 
-    const cleanedText = text
-        .replace(/\s+/g, " ")
+    return text
+        .replace(/\r\n/g, "\n")
+        .replace(/\r/g, "\n")
+        .replace(/[ \t]+/g, " ")
+        .replace(/\n{3,}/g, "\n\n")
         .trim();
-
-    return cleanedText.length >= MIN_TEXT_LENGTH;
 }
 
 
 /**
- * Check whether the extracted text contains common resume
- * signals.
+ * Check whether extracted text contains enough usable content.
+ */
+function isUsableText(text) {
+    const normalizedText = normalizeText(text);
+
+    return normalizedText.length >= MIN_TEXT_LENGTH;
+}
+
+
+/**
+ * Check whether extracted text contains common resume signals.
  *
  * IMPORTANT:
- * This function does NOT decide whether the document is
- * actually a resume.
- *
- * It is only diagnostic information for the extraction
- * process.
+ * This function is diagnostic only.
+ * It does NOT decide whether a document is a resume.
  */
 function hasResumeSignals(text) {
-    if (!text) {
+    const normalizedText =
+        normalizeText(text).toLowerCase();
+
+    if (!normalizedText) {
         return false;
     }
-
-    const normalizedText = text.toLowerCase();
 
     const signals = [
         "education",
@@ -109,40 +142,101 @@ function hasResumeSignals(text) {
 
 /**
  * ============================================================
+ * PDF VALIDATION
+ * ============================================================
+ */
+
+/**
+ * Validate the input PDF buffer.
+ */
+function validatePDFBuffer(pdfBuffer) {
+    if (!Buffer.isBuffer(pdfBuffer)) {
+        throw new Error(
+            "extractTextFromPDF expected a Buffer."
+        );
+    }
+
+    if (pdfBuffer.length === 0) {
+        throw new Error(
+            "PDF buffer is empty."
+        );
+    }
+
+    if (pdfBuffer.length > MAX_PDF_SIZE) {
+        throw new Error(
+            "PDF exceeds the 10MB limit."
+        );
+    }
+
+    const pdfHeader =
+        pdfBuffer
+            .subarray(0, 5)
+            .toString("ascii");
+
+    if (pdfHeader !== "%PDF-") {
+        throw new Error(
+            "Invalid PDF file."
+        );
+    }
+}
+
+
+/**
+ * ============================================================
  * NATIVE PDF TEXT EXTRACTION
  * ============================================================
  *
  * First attempt:
  *
  * PDF
- *   ↓
+ *   |
+ *   v
  * pdf-parse
- *   ↓
+ *   |
+ *   v
  * Extract text directly
  *
- * This is much faster than OCR for normal text-based PDFs.
+ * This is significantly faster than OCR for normal
+ * text-based PDFs.
  */
+
 async function extractNativePDFText(pdfBuffer) {
-    const { PDFParse } = await import("pdf-parse"); 
     let parser = null;
 
     try {
+        const pdfParseModule =
+            await import("pdf-parse");
+
+        const PDFParse =
+            pdfParseModule.PDFParse;
+
+        if (typeof PDFParse !== "function") {
+            throw new Error(
+                "PDFParse was not found in pdf-parse."
+            );
+        }
+
         parser = new PDFParse({
             data: pdfBuffer
         });
 
-        const pdfData = await parser.getText();
+        const pdfData =
+            await parser.getText();
 
-        return pdfData?.text?.trim() || "";
+        const text =
+            pdfData?.text || "";
+
+        return normalizeText(text);
 
     } finally {
+
         if (parser) {
             try {
                 await parser.destroy();
             } catch (error) {
                 console.error(
                     "PDF parser cleanup failed:",
-                    error.message
+                    error?.message || error
                 );
             }
         }
@@ -152,58 +246,112 @@ async function extractNativePDFText(pdfBuffer) {
 
 /**
  * ============================================================
- * OCR FALLBACK USING MUPDF + TESSERACT
+ * OCR FALLBACK
  * ============================================================
  *
- * Used when native PDF text extraction is insufficient.
- *
- * Flow:
+ * Uses:
  *
  * PDF
- *   ↓
+ *   |
+ *   v
  * MuPDF
- *   ↓
- * Render PDF page
- *   ↓
+ *   |
+ *   v
+ * Render page
+ *   |
+ *   v
  * PNG
- *   ↓
+ *   |
+ *   v
  * Tesseract
- *   ↓
+ *   |
+ *   v
  * Text
  *
- * This avoids directly importing pdfjs-dist and therefore
- * avoids the API/Worker version mismatch we had earlier.
+ * We intentionally do not use pdfjs-dist here because the
+ * previous implementation had PDF.js API/Worker version
+ * mismatch problems.
  */
+
 async function extractTextUsingOCR(pdfBuffer) {
-    const mupdf = (await import("mupdf")).default;     // add this line
-    const { createWorker } = await import("tesseract.js"); // add this line
     let worker = null;
     let document = null;
 
     try {
+
         console.log(
             "========== OCR FALLBACK START =========="
         );
 
+
         /**
-         * ----------------------------------------------------
-         * STEP 1: Open PDF with MuPDF
-         * ----------------------------------------------------
+         * --------------------------------------------------------
+         * Load dependencies
+         * --------------------------------------------------------
          */
 
-        document = mupdf.PDFDocument.openDocument(
-            pdfBuffer,
-            "application/pdf"
-        );
+        const mupdfModule =
+            await import("mupdf");
 
-        const totalPages = document.countPages();
+        const mupdf =
+            mupdfModule.default ||
+            mupdfModule;
+
+        const tesseractModule =
+            await import("tesseract.js");
+
+        const createWorker =
+            tesseractModule.createWorker;
+
+        if (!mupdf) {
+            throw new Error(
+                "MuPDF module could not be loaded."
+            );
+        }
+
+        if (
+            typeof createWorker !== "function"
+        ) {
+            throw new Error(
+                "Tesseract createWorker could not be loaded."
+            );
+        }
+
+
+        /**
+         * --------------------------------------------------------
+         * Open PDF
+         * --------------------------------------------------------
+         */
+
+        document =
+            mupdf.PDFDocument.openDocument(
+                pdfBuffer,
+                "application/pdf"
+            );
+
+
+        if (!document) {
+            throw new Error(
+                "MuPDF could not open the PDF."
+            );
+        }
+
+
+        const totalPages =
+            document.countPages();
+
 
         console.log(
             "PDF pages:",
             totalPages
         );
 
-        if (totalPages <= 0) {
+
+        if (
+            !Number.isInteger(totalPages) ||
+            totalPages <= 0
+        ) {
             console.error(
                 "PDF contains no pages."
             );
@@ -213,15 +361,17 @@ async function extractTextUsingOCR(pdfBuffer) {
 
 
         /**
-         * ----------------------------------------------------
-         * STEP 2: Determine number of pages
-         * ----------------------------------------------------
+         * --------------------------------------------------------
+         * Determine OCR page count
+         * --------------------------------------------------------
          */
 
-        const pagesToProcess = Math.min(
-            totalPages,
-            MAX_OCR_PAGES
-        );
+        const pagesToProcess =
+            Math.min(
+                totalPages,
+                MAX_OCR_PAGES
+            );
+
 
         console.log(
             "OCR pages to process:",
@@ -230,16 +380,21 @@ async function extractTextUsingOCR(pdfBuffer) {
 
 
         /**
-         * ----------------------------------------------------
-         * STEP 3: Create Tesseract worker
-         * ----------------------------------------------------
+         * --------------------------------------------------------
+         * Create Tesseract worker
+         * --------------------------------------------------------
          */
 
         console.log(
             "Starting Tesseract worker..."
         );
 
-        worker = await createWorker("eng");
+
+        worker =
+            await createWorker(
+                "eng"
+            );
+
 
         console.log(
             "Tesseract worker started."
@@ -247,128 +402,188 @@ async function extractTextUsingOCR(pdfBuffer) {
 
 
         /**
-         * ----------------------------------------------------
-         * STEP 4: Process pages
-         * ----------------------------------------------------
+         * --------------------------------------------------------
+         * Process pages
+         * --------------------------------------------------------
          */
 
         const pageTexts = [];
+
 
         for (
             let pageIndex = 0;
             pageIndex < pagesToProcess;
             pageIndex++
         ) {
-            const pageNumber = pageIndex + 1;
+
+            const pageNumber =
+                pageIndex + 1;
+
 
             console.log(
                 `OCR processing page ${pageNumber}/${pagesToProcess}`
             );
 
 
-            /**
-             * Load PDF page.
-             */
-            const page =
-                document.loadPage(pageIndex);
+            let page = null;
+            let pixmap = null;
 
 
-            /**
-             * ------------------------------------------------
-             * Render page
-             * ------------------------------------------------
-             *
-             * Scale 2 means the page is rendered at roughly
-             * twice the normal resolution.
-             */
-
-            const matrix =
-                mupdf.Matrix.scale(
-                    OCR_SCALE,
-                    OCR_SCALE
-                );
-
-
-            /**
-             * Render to RGB pixmap.
-             */
-            const pixmap =
-                page.toPixmap(
-                    matrix,
-                    mupdf.ColorSpace.DeviceRGB,
-                    false
-                );
-
-
-            /**
-             * Convert rendered page to PNG.
-             */
-            const imageBuffer =
-                pixmap.asPNG();
-
-
-            console.log(
-                `Page ${pageNumber} image size:`,
-                imageBuffer.length,
-                "bytes"
-            );
-
-
-            /**
-             * ------------------------------------------------
-             * OCR
-             * ------------------------------------------------
-             */
-
-            const result =
-                await worker.recognize(
-                    imageBuffer
-                );
-
-
-            const pageText =
-                result?.data?.text?.trim() || "";
-
-
-            console.log(
-                `Page ${pageNumber} OCR text length:`,
-                pageText.length
-            );
-
-
-            /**
-             * Store text if OCR found something.
-             */
-            if (pageText) {
-
-                pageTexts.push(
-                    `--- PAGE ${pageNumber} ---\n${pageText}`
-                );
-            }
-
-
-            /**
-             * Release page resources.
-             */
             try {
-                page.destroy();
-            } catch (error) {
-                console.error(
-                    `Page ${pageNumber} cleanup failed:`,
-                    error.message
+
+                /**
+                 * Load page
+                 */
+                page =
+                    document.loadPage(
+                        pageIndex
+                    );
+
+
+                if (!page) {
+                    console.error(
+                        `Could not load page ${pageNumber}`
+                    );
+
+                    continue;
+                }
+
+
+                /**
+                 * Render page
+                 */
+                const matrix =
+                    mupdf.Matrix.scale(
+                        OCR_SCALE,
+                        OCR_SCALE
+                    );
+
+
+                pixmap =
+                    page.toPixmap(
+                        matrix,
+                        mupdf.ColorSpace.DeviceRGB,
+                        false
+                    );
+
+
+                if (!pixmap) {
+                    console.error(
+                        `Could not render page ${pageNumber}`
+                    );
+
+                    continue;
+                }
+
+
+                /**
+                 * Convert rendered page to PNG
+                 */
+                const imageBuffer =
+                    pixmap.asPNG();
+
+
+                if (
+                    !Buffer.isBuffer(imageBuffer) ||
+                    imageBuffer.length === 0
+                ) {
+                    console.error(
+                        `Page ${pageNumber} produced an empty image`
+                    );
+
+                    continue;
+                }
+
+
+                console.log(
+                    `Page ${pageNumber} image size:`,
+                    imageBuffer.length,
+                    "bytes"
                 );
+
+
+                /**
+                 * OCR
+                 */
+                const result =
+                    await worker.recognize(
+                        imageBuffer
+                    );
+
+
+                const pageText =
+                    normalizeText(
+                        result?.data?.text || ""
+                    );
+
+
+                console.log(
+                    `Page ${pageNumber} OCR text length:`,
+                    pageText.length
+                );
+
+
+                if (pageText) {
+
+                    pageTexts.push(
+                        `--- PAGE ${pageNumber} ---\n${pageText}`
+                    );
+                }
+
+            } catch (pageError) {
+
+                console.error(
+                    `OCR failed for page ${pageNumber}:`,
+                    pageError?.message ||
+                    pageError
+                );
+
+            } finally {
+
+                /**
+                 * Release page resources.
+                 */
+                if (page) {
+                    try {
+                        page.destroy();
+                    } catch (error) {
+                        console.error(
+                            `Page ${pageNumber} cleanup failed:`,
+                            error?.message || error
+                        );
+                    }
+                }
+
+                /**
+                 * Release pixmap resources if supported.
+                 */
+                if (
+                    pixmap &&
+                    typeof pixmap.destroy === "function"
+                ) {
+                    try {
+                        pixmap.destroy();
+                    } catch (error) {
+                        console.error(
+                            `Pixmap ${pageNumber} cleanup failed:`,
+                            error?.message || error
+                        );
+                    }
+                }
             }
         }
 
 
         /**
-         * ----------------------------------------------------
-         * STEP 5: Combine OCR results
-         * ----------------------------------------------------
+         * --------------------------------------------------------
+         * Combine OCR results
+         * --------------------------------------------------------
          */
 
         const finalOCRText =
-            pageTexts.join("\n\n").trim();
+            normalizeText(
+                pageTexts.join("\n\n")
+            );
 
 
         console.log(
@@ -378,23 +593,32 @@ async function extractTextUsingOCR(pdfBuffer) {
 
 
         /**
-         * Display a small preview in logs.
-         *
-         * This prevents your terminal from being flooded by
-         * huge OCR output.
+         * --------------------------------------------------------
+         * OCR preview
+         * --------------------------------------------------------
          */
+
         if (finalOCRText) {
 
             const preview =
-                finalOCRText.substring(0, 1000);
+                finalOCRText.substring(
+                    0,
+                    1000
+                );
+
 
             console.log(
                 "OCR TEXT PREVIEW:"
             );
 
-            console.log(preview);
+            console.log(
+                preview
+            );
 
-            if (finalOCRText.length > 1000) {
+
+            if (
+                finalOCRText.length > 1000
+            ) {
                 console.log(
                     "... OCR preview truncated ..."
                 );
@@ -413,7 +637,8 @@ async function extractTextUsingOCR(pdfBuffer) {
 
         console.error(
             "OCR extraction failed:",
-            error.message
+            error?.message ||
+            error
         );
 
         return "";
@@ -421,9 +646,9 @@ async function extractTextUsingOCR(pdfBuffer) {
     } finally {
 
         /**
-         * ----------------------------------------------------
+         * --------------------------------------------------------
          * Cleanup Tesseract
-         * ----------------------------------------------------
+         * --------------------------------------------------------
          */
 
         if (worker) {
@@ -440,15 +665,19 @@ async function extractTextUsingOCR(pdfBuffer) {
 
                 console.error(
                     "Tesseract worker cleanup failed:",
-                    error.message
+                    error?.message ||
+                    error
                 );
             }
         }
 
 
         /**
-         * MuPDF document cleanup.
+         * --------------------------------------------------------
+         * Cleanup MuPDF
+         * --------------------------------------------------------
          */
+
         if (document) {
 
             try {
@@ -459,7 +688,8 @@ async function extractTextUsingOCR(pdfBuffer) {
 
                 console.error(
                     "PDF document cleanup failed:",
-                    error.message
+                    error?.message ||
+                    error
                 );
             }
         }
@@ -475,45 +705,34 @@ async function extractTextUsingOCR(pdfBuffer) {
  * Complete pipeline:
  *
  * PDF
- *  │
- *  ├── Native text extraction
- *  │       │
- *  │       ├── Enough text → return text
- *  │       │
- *  │       └── Not enough
- *  │
- *  └── OCR fallback
- *          │
- *          ├── OCR successful → return OCR text
- *          │
- *          └── OCR failed → return ""
+ *  |
+ *  +--> Native extraction
+ *  |       |
+ *  |       +--> usable -> return
+ *  |
+ *  +--> OCR fallback
+ *          |
+ *          +--> usable -> return
+ *          |
+ *          +--> failed -> return ""
  *
- * The function does NOT decide whether a document is a
- * resume. That decision belongs to the AI/classification
- * layer.
+ * This function does NOT determine whether the document is
+ * actually a resume.
  */
-export async function extractTextFromPDF(pdfBuffer) {
+
+export async function extractTextFromPDF(
+    pdfBuffer
+) {
 
     /**
      * --------------------------------------------------------
-     * Validate input
+     * Validate PDF
      * --------------------------------------------------------
      */
 
-    if (!Buffer.isBuffer(pdfBuffer)) {
-
-        throw new Error(
-            "extractTextFromPDF expected a Buffer"
-        );
-    }
-
-
-    if (pdfBuffer.length === 0) {
-
-        throw new Error(
-            "PDF buffer is empty"
-        );
-    }
+    validatePDFBuffer(
+        pdfBuffer
+    );
 
 
     console.log(
@@ -550,12 +769,12 @@ export async function extractTextFromPDF(pdfBuffer) {
             nativeText.length
         );
 
-
     } catch (error) {
 
         console.error(
             "Native PDF extraction failed:",
-            error.message
+            error?.message ||
+            error
         );
 
         nativeText = "";
@@ -568,15 +787,20 @@ export async function extractTextFromPDF(pdfBuffer) {
      * ========================================================
      */
 
-    if (isUsableText(nativeText)) {
+    if (
+        isUsableText(
+            nativeText
+        )
+    ) {
 
         /**
          * Diagnostic only.
-         *
-         * We don't reject text simply because it doesn't
-         * contain words such as "education" or "skills".
          */
-        if (hasResumeSignals(nativeText)) {
+        if (
+            hasResumeSignals(
+                nativeText
+            )
+        ) {
 
             console.log(
                 "Resume-related signals detected in native text."
@@ -612,7 +836,7 @@ export async function extractTextFromPDF(pdfBuffer) {
 
     /**
      * ========================================================
-     * STEP 3: NATIVE TEXT FAILED
+     * STEP 3: NATIVE EXTRACTION FAILED
      * ========================================================
      */
 
@@ -644,7 +868,11 @@ export async function extractTextFromPDF(pdfBuffer) {
      * ========================================================
      */
 
-    if (isUsableText(ocrText)) {
+    if (
+        isUsableText(
+            ocrText
+        )
+    ) {
 
         console.log(
             "OCR extraction successful."

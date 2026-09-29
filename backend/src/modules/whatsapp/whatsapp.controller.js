@@ -1,11 +1,22 @@
 import crypto from "crypto";
+
 import {
     generateAIResponse,
     generateWhatsAppChatResponse
 } from "../ai/ai.service.js";
-import { resumeAnalysisPrompt, whatsappChatPrompt  } from "../ai/ai.prompt.js";
+
+import {
+    resumeAnalysisPrompt,
+    whatsappChatPrompt
+} from "../ai/ai.prompt.js";
+
 import { extractTextFromPDF } from "../resume/resume.parser.js";
-import { createCandidate, findCandidateByPhone } from "../candidate/candidate.service.js";
+
+import {
+    createCandidate,
+    findCandidateByPhone
+} from "../candidate/candidate.service.js";
+
 import {
     downloadWhatsAppMedia,
     uploadResumeToCloudinary,
@@ -13,8 +24,13 @@ import {
 } from "./whatsapp.service.js";
 
 
-export const verifyWebhook = (req, res) => {
+/*
+|--------------------------------------------------------------------------
+| WhatsApp Webhook Verification
+|--------------------------------------------------------------------------
+*/
 
+export const verifyWebhook = (req, res) => {
     const mode = req.query["hub.mode"];
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
@@ -30,44 +46,69 @@ export const verifyWebhook = (req, res) => {
             .send(challenge);
     }
 
+    console.error("WhatsApp webhook verification failed");
+
     return res.sendStatus(403);
 };
+
+
+/*
+|--------------------------------------------------------------------------
+| Send Candidate Portal URL
+|--------------------------------------------------------------------------
+*/
+
 export async function URLsender(phoneNumber, url, name) {
-  try {
-    const message = `Hello ${name},
+    try {
+        const message = `Hello ${name},
 
-                    Your application has been approved for the next stage of the recruitment process.
+Your application has been approved for the next stage of the recruitment process.
 
-                    Please select your interview slot using the link below:
+Please select your interview slot using the link below:
 
-                    🔗 Candidate Portal
-                    ${url}
+🔗 Candidate Portal
+${url}
 
-                    Please complete your slot selection before the link expires.
+Please complete your slot selection before the link expires.
 
-                    Important:
-                    • This link is unique to you.
-                    • Please do not share it with anyone.
-                    • This is an automated message. Please do not reply.
+Important:
+• This link is unique to you.
+• Please do not share it with anyone.
+• This is an automated message. Please do not reply.
 
-                    For any questions, please contact the recruitment team through the official communication channel.
+For any questions, please contact the recruitment team through the official communication channel.
 
-                    Regards,
-                    RecruitAI Team`;
+Regards,
+RecruitAI Team`;
 
-    const result = await sendWhatsAppMessage(
-      phoneNumber,
-      message
-    );
+        const result = await sendWhatsAppMessage(
+            phoneNumber,
+            message
+        );
 
-    console.log("Approval WhatsApp message sent:", result);
+        console.log(
+            "Approval WhatsApp message sent:",
+            result
+        );
 
-    return result;
-  } catch (error) {
-    console.error("Failed to send approval WhatsApp message:", error);
-    throw error;
-  }
+        return result;
+
+    } catch (error) {
+        console.error(
+            "Failed to send approval WhatsApp message:",
+            error
+        );
+
+        throw error;
+    }
 }
+
+
+/*
+|--------------------------------------------------------------------------
+| Main WhatsApp Webhook
+|--------------------------------------------------------------------------
+*/
 
 export const handleWebhook = async (req, res) => {
 
@@ -75,15 +116,24 @@ export const handleWebhook = async (req, res) => {
 
         console.log("\n========== WHATSAPP WEBHOOK ==========");
 
+        /*
+        |--------------------------------------------------------------------------
+        | Extract WhatsApp payload
+        |--------------------------------------------------------------------------
+        */
+
         const value =
             req.body?.entry?.[0]?.changes?.[0]?.value;
 
+        /*
+        |--------------------------------------------------------------------------
+        | Support incoming messages and message echoes
+        |--------------------------------------------------------------------------
+        */
 
-        // Support both incoming messages and message echoes
         const message =
             value?.messages?.[0] ||
             value?.message_echoes?.[0];
-
 
         if (!message) {
 
@@ -94,49 +144,87 @@ export const handleWebhook = async (req, res) => {
             return res.sendStatus(200);
         }
 
-        // TEXT MESSAGE
+
+        /*
+        |--------------------------------------------------------------------------
+        | TEXT MESSAGE
+        |--------------------------------------------------------------------------
+        */
 
         if (message.type === "text") {
-          const messages = [
+
+            const text =
+                message.text?.body?.trim();
+
+            if (!text) {
+                return res.sendStatus(200);
+            }
+
+            const messages = [
                 {
                     role: "system",
                     content: whatsappChatPrompt
                 },
                 {
                     role: "user",
-                    content: message.text.body
+                    content: text
                 }
             ];
 
-            const aiResult = await generateWhatsAppChatResponse(messages);
-            await sendWhatsAppMessage(
-                message.from,
+            const aiResult =
+                await generateWhatsAppChatResponse(
+                    messages
+                );
+
+            if (aiResult) {
+                await sendWhatsAppMessage(
+                    message.from,
+                    aiResult
+                );
+            }
+
+            console.log(
+                "AI Result:",
                 aiResult
             );
-            console.log("AI Result:", aiResult);
 
             return res.sendStatus(200);
         }
 
-        // DOCUMENT
+
+        /*
+        |--------------------------------------------------------------------------
+        | DOCUMENT MESSAGE
+        |--------------------------------------------------------------------------
+        */
 
         if (message.type === "document") {
 
             const document =
                 message.document;
 
-            
+            /*
+            |--------------------------------------------------------------------------
+            | Validate document object
+            |--------------------------------------------------------------------------
+            */
+
             if (!document) {
 
                 await sendWhatsAppMessage(
                     message.from,
-                    "Document information missing please Check the file and send again"
+                    "Document information is missing. Please check the file and send it again."
                 );
 
                 return res.sendStatus(200);
             }
 
-            // CHECK PDF
+
+            /*
+            |--------------------------------------------------------------------------
+            | Only PDF files are accepted
+            |--------------------------------------------------------------------------
+            */
 
             if (
                 document.mime_type !==
@@ -145,41 +233,59 @@ export const handleWebhook = async (req, res) => {
 
                 await sendWhatsAppMessage(
                     message.from,
-                    "Rejected: File is not PDF"
+                    "Rejected: Only PDF resume files are accepted. Please send your resume as a PDF."
                 );
 
                 return res.sendStatus(200);
             }
 
-            // DOWNLOAD PDF FROM JALPI
+
+            /*
+            |--------------------------------------------------------------------------
+            | Download PDF from WhatsApp/Jalpi
+            |--------------------------------------------------------------------------
+            */
+
             const pdfBuffer =
                 await downloadWhatsAppMedia(
                     document.id
                 );
+
             console.log(
                 "PDF size:",
-                pdfBuffer.length,
+                pdfBuffer?.length,
                 "bytes"
             );
 
-            // CHECK FILE SIZE
 
-            const MAX_FILE_SIZE =
-                10 * 1024 * 1024;
-
+            /*
+            |--------------------------------------------------------------------------
+            | Validate downloaded buffer
+            |--------------------------------------------------------------------------
+            */
 
             if (
+                !Buffer.isBuffer(pdfBuffer) ||
                 pdfBuffer.length === 0
             ) {
 
                 await sendWhatsAppMessage(
                     message.from,
-                    "The PDF is empty or could not be downloaded. Please check the file and send again."
+                    "The PDF is empty or could not be downloaded. Please check the file and send it again."
                 );
 
                 return res.sendStatus(200);
             }
 
+
+            /*
+            |--------------------------------------------------------------------------
+            | Maximum file size = 10 MB
+            |--------------------------------------------------------------------------
+            */
+
+            const MAX_FILE_SIZE =
+                10 * 1024 * 1024;
 
             if (
                 pdfBuffer.length >
@@ -188,29 +294,74 @@ export const handleWebhook = async (req, res) => {
 
                 await sendWhatsAppMessage(
                     message.from,
-                    "pdf file size exceeds the 10MB limit. Please send a smaller file."
+                    "The PDF file size exceeds the 10MB limit. Please send a smaller resume."
                 );
+
                 return res.sendStatus(200);
             }
 
-            // CHECK PDF SIGNATURE
-         
+
+            /*
+            |--------------------------------------------------------------------------
+            | Validate PDF signature
+            |--------------------------------------------------------------------------
+            */
+
             const pdfHeader =
                 pdfBuffer
                     .subarray(0, 5)
                     .toString("ascii");
 
-
             if (pdfHeader !== "%PDF-") {
+
                 await sendWhatsAppMessage(
                     message.from,
-                    "invalid PDF file. Please check the file and send again."
+                    "Invalid PDF file. Please check your resume and send the PDF again."
                 );
+
                 return res.sendStatus(200);
             }
-            //sending file for text extraction 
-           const extractedText = await extractTextFromPDF(pdfBuffer);
-            console.log(extractedText);
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Extract resume text
+            |--------------------------------------------------------------------------
+            */
+
+            console.log(
+                "Extracting resume text..."
+            );
+
+            const extractedText =
+                await extractTextFromPDF(
+                    pdfBuffer
+                );
+
+            if (
+                !extractedText ||
+                !extractedText.trim()
+            ) {
+
+                await sendWhatsAppMessage(
+                    message.from,
+                    "We could not read any text from your resume. Please send a clear PDF resume and try again."
+                );
+
+                return res.sendStatus(200);
+            }
+
+            console.log(
+                "Resume text extracted successfully."
+            );
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Send resume to AI
+            |--------------------------------------------------------------------------
+            */
+
             const messages = [
                 {
                     role: "system",
@@ -222,50 +373,230 @@ export const handleWebhook = async (req, res) => {
                 }
             ];
 
-           const aiResult = await generateAIResponse(messages);
+            console.log(
+                "Sending resume to AI..."
+            );
 
-            console.log("========== AI RESULT ==========");
-            console.log("Type:", typeof aiResult);
-            console.log("Length:", aiResult?.length);
-            console.log(aiResult);
-            console.log("================================");
+            const aiResult =
+                await generateAIResponse(
+                    messages
+                );
 
-            if (!aiResult || !aiResult.trim()) {
-                throw new Error("Groq returned an empty response");
+
+            /*
+            |--------------------------------------------------------------------------
+            | Validate AI response
+            |--------------------------------------------------------------------------
+            */
+
+            console.log(
+                "========== AI RESULT =========="
+            );
+
+            console.log(
+                "Type:",
+                typeof aiResult
+            );
+
+            console.log(
+                "Length:",
+                aiResult?.length
+            );
+
+            console.log(
+                aiResult
+            );
+
+            console.log(
+                "================================"
+            );
+
+            if (
+                !aiResult ||
+                typeof aiResult !== "string" ||
+                !aiResult.trim()
+            ) {
+                throw new Error(
+                    "AI returned an empty response."
+                );
             }
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Parse AI JSON
+            |--------------------------------------------------------------------------
+            */
 
             let result;
 
             try {
-                // Remove markdown code fences if Groq happens to return them
-                const cleanResult = aiResult
-                    .trim()
-                    .replace(/^```json\s*/i, "")
-                    .replace(/^```\s*/i, "")
-                    .replace(/\s*```$/i, "")
-                    .trim();
 
-                result = JSON.parse(cleanResult);
+                let cleanResult =
+                    aiResult.trim();
+
+                /*
+                Remove ```json ... ```
+                */
+
+                cleanResult =
+                    cleanResult
+                        .replace(
+                            /^```json\s*/i,
+                            ""
+                        )
+                        .replace(
+                            /^```\s*/i,
+                            ""
+                        )
+                        .replace(
+                            /\s*```$/i,
+                            ""
+                        )
+                        .trim();
+
+                result =
+                    JSON.parse(
+                        cleanResult
+                    );
 
             } catch (error) {
 
-                console.error("========== GROQ JSON PARSE ERROR ==========");
-                console.error("Raw AI response:");
-                console.error(aiResult);
-                console.error("============================================");
+                console.error(
+                    "========== AI JSON PARSE ERROR =========="
+                );
+
+                console.error(
+                    "Raw AI response:"
+                );
+
+                console.error(
+                    aiResult
+                );
+
+                console.error(
+                    "=========================================="
+                );
 
                 throw new Error(
-                    "Groq returned invalid or incomplete JSON"
+                    "AI returned invalid or incomplete JSON."
                 );
             }
 
-            const formattedPhone = `+${message.from}`;
 
-            const existingCandidate =false
- /*               await findCandidateByPhone(
+            /*
+            |--------------------------------------------------------------------------
+            | Validate AI result object
+            |--------------------------------------------------------------------------
+            */
+
+            if (
+                !result ||
+                typeof result !== "object" ||
+                Array.isArray(result)
+            ) {
+                throw new Error(
+                    "AI returned an invalid result structure."
+                );
+            }
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Format phone number
+            |--------------------------------------------------------------------------
+            */
+
+            const rawPhone =
+                String(
+                    message.from || ""
+                ).trim();
+
+            if (!rawPhone) {
+
+                throw new Error(
+                    "WhatsApp sender phone number is missing."
+                );
+            }
+
+            const formattedPhone =
+                rawPhone.startsWith("+")
+                    ? rawPhone
+                    : `+${rawPhone}`;
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Make sure candidate object exists
+            |--------------------------------------------------------------------------
+            */
+
+            result.candidate =
+                result.candidate &&
+                typeof result.candidate === "object"
+                    ? result.candidate
+                    : {};
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Always use WhatsApp phone number
+            |--------------------------------------------------------------------------
+            */
+
+            result.candidate.phone =
+                formattedPhone;
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | CHECK IF THIS IS A RESUME
+            |--------------------------------------------------------------------------
+            */
+
+            if (result.isResume === false) {
+
+                await sendWhatsAppMessage(
+                    message.from,
+                    result.reason ||
+                    "The uploaded file does not appear to be a valid resume. Please send your resume as a PDF."
+                );
+
+                return res.sendStatus(200);
+            }
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | CHECK RESUME PROBLEMS
+            |--------------------------------------------------------------------------
+            */
+
+            if (result.hasProblem === true) {
+
+                await sendWhatsAppMessage(
+                    message.from,
+                    result.reason ||
+                    "There is a problem with your resume. Please check the resume and send it again."
+                );
+
+                return res.sendStatus(200);
+            }
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | CHECK DUPLICATE CANDIDATE
+            |--------------------------------------------------------------------------
+            */
+
+            const existingCandidate =
+                await findCandidateByPhone(
                     formattedPhone,
                     result.candidate?.email
-                );*/
+                );
+
+
             if (existingCandidate) {
 
                 console.log(
@@ -281,76 +612,193 @@ export const handleWebhook = async (req, res) => {
                 return res.sendStatus(200);
             }
 
-            // CHECK EXTRACTED TEXT
-            if (result.isResume === false) {
-                  await sendWhatsAppMessage(
-                      message.from,
-                      result.reason
-                  );
 
-                  return res.sendStatus(200);
-              }
-            else if (result.hasProblem === true && result.isResume === true) {
-                  await sendWhatsAppMessage(
-                      message.from,
-                      result.reason
-                  );
-              }
-            else{
+            /*
+            |--------------------------------------------------------------------------
+            | Upload resume to Cloudinary
+            |--------------------------------------------------------------------------
+            */
 
-                // =================================================
-                // UPLOAD RESUME TO CLOUDINARY
-                // =================================================
+            console.log(
+                "Uploading resume to Cloudinary..."
+            );
 
-                const uniqueId = crypto.randomUUID();
-                const safeFilename = "resume_" + uniqueId + ".pdf";
+            const uniqueId =
+                crypto.randomUUID();
 
-                const cloudinaryResult =
-                    await uploadResumeToCloudinary(
-                        pdfBuffer,
-                        safeFilename
-                    );
+            const safeFilename =
+                `resume_${uniqueId}.pdf`;
 
-                result.resumeFileName = safeFilename;
-                result.resumeUrl = cloudinaryResult.secure_url;
-
-                console.log(
-                    "Resume uploaded to Cloudinary:",
-                    cloudinaryResult.secure_url
+            const cloudinaryResult =
+                await uploadResumeToCloudinary(
+                    pdfBuffer,
+                    safeFilename
                 );
-                console.log(
-                    filePath
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Validate Cloudinary response
+            |--------------------------------------------------------------------------
+            */
+
+            if (
+                !cloudinaryResult ||
+                !cloudinaryResult.secure_url
+            ) {
+
+                throw new Error(
+                    "Resume upload to Cloudinary failed: secure URL was not returned."
                 );
-                result.candidate.phone = formattedPhone;
-                result.activity = [
-                    {
-                        id: crypto.randomUUID(),
-                        label: "Resume Received",
-                        description: "Resume received through WhatsApp",
-                        state: "complete"
-                    }
-                ]
-                await createCandidate(result);
-                console.log(result);
-                await sendWhatsAppMessage(
-                    message.from,
-                    result.reason
-                );
-       
             }
-            
-            
-          }
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Save Cloudinary information
+            |--------------------------------------------------------------------------
+            */
+
+            result.resumeFileName =
+                safeFilename;
+
+            result.resumeUrl =
+                cloudinaryResult.secure_url;
+
+
+            console.log(
+                "Resume uploaded to Cloudinary:",
+                cloudinaryResult.secure_url
+            );
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Add candidate activity
+            |--------------------------------------------------------------------------
+            */
+
+            result.activity = [
+                {
+                    id: crypto.randomUUID(),
+                    label: "Resume Received",
+                    description:
+                        "Resume received through WhatsApp",
+                    state: "complete"
+                }
+            ];
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Create candidate in MongoDB
+            |--------------------------------------------------------------------------
+            */
+
+            console.log(
+                "Creating candidate in MongoDB..."
+            );
+
+            const createdCandidate =
+                await createCandidate(
+                    result
+                );
+
+
+            console.log(
+                "Candidate created successfully:",
+                createdCandidate?._id
+            );
+
+
+            /*
+            |--------------------------------------------------------------------------
+            | Send SUCCESS WhatsApp message
+            |--------------------------------------------------------------------------
+            */
+
+            const successMessage =
+                "Your resume has been received successfully. Our recruitment team will review your application and contact you shortly.";
+
+            await sendWhatsAppMessage(
+                message.from,
+                successMessage
+            );
+
+
+            console.log(
+                "Resume processing completed successfully."
+            );
+
+            return res.sendStatus(200);
+        }
+
+
+        /*
+        |--------------------------------------------------------------------------
+        | Unsupported message type
+        |--------------------------------------------------------------------------
+        */
+
+        console.log(
+            "Unsupported WhatsApp message type:",
+            message.type
+        );
+
         return res.sendStatus(200);
 
 
     } catch (error) {
 
         console.error(
-            "Webhook error:",
-            error.response?.data ||
-            error.message
+            "\n========== WHATSAPP WEBHOOK ERROR =========="
         );
+
+        console.error(
+            error?.response?.data ||
+            error?.stack ||
+            error?.message ||
+            error
+        );
+
+        console.error(
+            "=============================================\n"
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | We don't expose internal errors to the candidate.
+        |--------------------------------------------------------------------------
+        */
+
+        try {
+
+            if (req.body?.entry?.[0]?.changes?.[0]?.value) {
+
+                const value =
+                    req.body.entry[0]
+                        .changes[0]
+                        .value;
+
+                const message =
+                    value?.messages?.[0];
+
+                if (message?.from) {
+
+                    await sendWhatsAppMessage(
+                        message.from,
+                        "We could not process your resume right now. Please try again in a few minutes."
+                    );
+                }
+            }
+
+        } catch (messageError) {
+
+            console.error(
+                "Failed to send error WhatsApp message:",
+                messageError
+            );
+        }
 
         return res.sendStatus(500);
     }
