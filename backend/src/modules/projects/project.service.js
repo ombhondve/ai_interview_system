@@ -1162,12 +1162,37 @@ export async function regenerateProject(
     );
 
   /*
-   * Update existing MongoDB project.
+   * Regeneration is for an already-saved project, so its new PDF
+   * should be uploaded immediately as part of this existing-project
+   * update. This does not affect the new-project preview flow.
    */
 
   const updateData = {
     ...result,
   };
+
+  if (result.pdfData) {
+    const uploadedPdf =
+      await uploadProjectPdfBuffer(
+        Buffer.from(
+          result.pdfData,
+          "base64"
+        ),
+        result.pdfFilename ||
+          "project-regenerated.pdf",
+        result.title ||
+          existing.title
+      );
+
+    updateData.pdfUrl =
+      uploadedPdf.secure_url;
+
+    updateData.detailedPdfUrl =
+      uploadedPdf.secure_url;
+
+    delete updateData.pdfData;
+    delete updateData.pdfFilename;
+  }
 
   /*
    * Never replace existing MongoDB _id.
