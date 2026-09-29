@@ -1,4 +1,5 @@
 import Project from "./project.model.js";
+import { uploadAdminProjectPdf } from "./project.pdf.service.js";
 
 import {
   getProjects as getProjectsService,
@@ -643,6 +644,60 @@ export const regenerateProject =
       });
     }
   };
+
+/* =========================================================
+   UPLOAD ADMIN PROJECT PDF
+   ========================================================= */
+
+export const uploadAdminPdf = async (req, res) => {
+  try {
+    const projectId = String(req.params.id || "").trim();
+    const { filename, data } = req.body || {};
+
+    if (!projectId) {
+      return res.status(400).json({ success: false, message: "Project ID is required." });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(projectId)) {
+      return res.status(400).json({ success: false, message: "Invalid project ID." });
+    }
+
+    if (typeof data !== "string" || !data.trim()) {
+      return res.status(400).json({ success: false, message: "PDF data is required." });
+    }
+
+    const base64 = data.replace(/^data:application\\/pdf;base64,/i, "").trim();
+    const pdfBuffer = Buffer.from(base64, "base64");
+
+    const result = await uploadAdminProjectPdf(
+      pdfBuffer,
+      typeof filename === "string" ? filename : "admin-project.pdf"
+    );
+
+    const project = await updateProjectService(projectId, {
+      briefUrl: result.secure_url,
+      pdfUrl: result.secure_url,
+      detailedPdfUrl: result.secure_url,
+    });
+
+    if (!project) {
+      return res.status(404).json({ success: false, message: "Project not found." });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Admin PDF uploaded successfully.",
+      url: result.secure_url,
+      project,
+    });
+  } catch (error) {
+    console.error("Admin PDF upload error:", error);
+    return res.status(400).json({
+      success: false,
+      message: error?.message || "Failed to upload admin PDF.",
+    });
+  }
+};
 
 /* =========================================================
    UPDATE PROJECT
