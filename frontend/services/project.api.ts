@@ -112,6 +112,10 @@ export interface UpdateProjectData {
   pdfUrl?: string;
   detailedPdfUrl?: string;
 
+  // Transient generated PDF data. Uploaded only on confirmed save.
+  pdfData?: string;
+  pdfFilename?: string;
+
   projectType?: string;
   duration?: string;
   focus?: string;
