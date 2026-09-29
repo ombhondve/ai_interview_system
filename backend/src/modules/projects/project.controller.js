@@ -667,7 +667,7 @@ export const uploadAdminPdf = async (req, res) => {
       return res.status(400).json({ success: false, message: "PDF data is required." });
     }
 
-    const base64 = data.replace(/^data:application\\/pdf;base64,/i, "").trim();
+    const base64 = data.replace(/^data:application\/pdf;base64,/i, "").trim();
     const pdfBuffer = Buffer.from(base64, "base64");
 
     const result = await uploadAdminProjectPdf(
