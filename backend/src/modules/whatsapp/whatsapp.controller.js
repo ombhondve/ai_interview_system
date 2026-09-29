@@ -111,29 +111,30 @@ RecruitAI Team`;
 */
 
 export const handleWebhook = async (req, res) => {
-
     try {
 
         console.log("\n========== WHATSAPP WEBHOOK ==========");
 
-        /*
-        |--------------------------------------------------------------------------
-        | Extract WhatsApp payload
-        |--------------------------------------------------------------------------
-        */
+        console.log("METHOD:", req.method);
+
+        console.log(
+            "HEADERS:",
+            JSON.stringify(req.headers, null, 2)
+        );
+
+        console.log(
+            "BODY:",
+            JSON.stringify(req.body, null, 2)
+        );
 
         const value =
             req.body?.entry?.[0]?.changes?.[0]?.value;
 
-        /*
-        |--------------------------------------------------------------------------
-        | Support incoming messages and message echoes
-        |--------------------------------------------------------------------------
-        */
-
         const message =
             value?.messages?.[0] ||
             value?.message_echoes?.[0];
+
+        // ...
 
         if (!message) {
 

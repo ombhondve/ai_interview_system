@@ -24,6 +24,29 @@
 
 /**
  * ============================================================
+ * PDF.JS / PDF-PARSE NODE COMPATIBILITY
+ * ============================================================
+ *
+ * pdf-parse uses PDF.js internally.
+ *
+ * In Vercel/Node.js environments, PDF.js may expect DOMMatrix
+ * to exist globally.
+ *
+ * node-canvas provides DOMMatrix.
+ *
+ * IMPORTANT:
+ * This must be initialized before importing pdf-parse.
+ */
+
+import { DOMMatrix } from "canvas";
+
+if (typeof globalThis.DOMMatrix === "undefined") {
+    globalThis.DOMMatrix = DOMMatrix;
+}
+
+
+/**
+ * ============================================================
  * CONFIGURATION
  * ============================================================
  */
@@ -204,6 +227,10 @@ async function extractNativePDFText(pdfBuffer) {
     let parser = null;
 
     try {
+        /**
+         * Import pdf-parse only after DOMMatrix has been
+         * initialized globally.
+         */
         const pdfParseModule =
             await import("pdf-parse");
 
@@ -229,7 +256,6 @@ async function extractNativePDFText(pdfBuffer) {
         return normalizeText(text);
 
     } finally {
-
         if (parser) {
             try {
                 await parser.destroy();
@@ -278,11 +304,9 @@ async function extractTextUsingOCR(pdfBuffer) {
     let document = null;
 
     try {
-
         console.log(
             "========== OCR FALLBACK START =========="
         );
-
 
         /**
          * --------------------------------------------------------
@@ -330,23 +354,19 @@ async function extractTextUsingOCR(pdfBuffer) {
                 "application/pdf"
             );
 
-
         if (!document) {
             throw new Error(
                 "MuPDF could not open the PDF."
             );
         }
 
-
         const totalPages =
             document.countPages();
-
 
         console.log(
             "PDF pages:",
             totalPages
         );
-
 
         if (
             !Number.isInteger(totalPages) ||
@@ -372,7 +392,6 @@ async function extractTextUsingOCR(pdfBuffer) {
                 MAX_OCR_PAGES
             );
 
-
         console.log(
             "OCR pages to process:",
             pagesToProcess
@@ -389,12 +408,10 @@ async function extractTextUsingOCR(pdfBuffer) {
             "Starting Tesseract worker..."
         );
 
-
         worker =
             await createWorker(
                 "eng"
             );
-
 
         console.log(
             "Tesseract worker started."
@@ -409,36 +426,32 @@ async function extractTextUsingOCR(pdfBuffer) {
 
         const pageTexts = [];
 
-
         for (
             let pageIndex = 0;
             pageIndex < pagesToProcess;
             pageIndex++
         ) {
-
             const pageNumber =
                 pageIndex + 1;
-
 
             console.log(
                 `OCR processing page ${pageNumber}/${pagesToProcess}`
             );
 
-
             let page = null;
             let pixmap = null;
 
-
             try {
-
                 /**
+                 * ------------------------------------------------
                  * Load page
+                 * ------------------------------------------------
                  */
+
                 page =
                     document.loadPage(
                         pageIndex
                     );
-
 
                 if (!page) {
                     console.error(
@@ -450,14 +463,16 @@ async function extractTextUsingOCR(pdfBuffer) {
 
 
                 /**
+                 * ------------------------------------------------
                  * Render page
+                 * ------------------------------------------------
                  */
+
                 const matrix =
                     mupdf.Matrix.scale(
                         OCR_SCALE,
                         OCR_SCALE
                     );
-
 
                 pixmap =
                     page.toPixmap(
@@ -465,7 +480,6 @@ async function extractTextUsingOCR(pdfBuffer) {
                         mupdf.ColorSpace.DeviceRGB,
                         false
                     );
-
 
                 if (!pixmap) {
                     console.error(
@@ -477,11 +491,13 @@ async function extractTextUsingOCR(pdfBuffer) {
 
 
                 /**
+                 * ------------------------------------------------
                  * Convert rendered page to PNG
+                 * ------------------------------------------------
                  */
+
                 const imageBuffer =
                     pixmap.asPNG();
-
 
                 if (
                     !Buffer.isBuffer(imageBuffer) ||
@@ -494,7 +510,6 @@ async function extractTextUsingOCR(pdfBuffer) {
                     continue;
                 }
 
-
                 console.log(
                     `Page ${pageNumber} image size:`,
                     imageBuffer.length,
@@ -503,35 +518,33 @@ async function extractTextUsingOCR(pdfBuffer) {
 
 
                 /**
+                 * ------------------------------------------------
                  * OCR
+                 * ------------------------------------------------
                  */
+
                 const result =
                     await worker.recognize(
                         imageBuffer
                     );
-
 
                 const pageText =
                     normalizeText(
                         result?.data?.text || ""
                     );
 
-
                 console.log(
                     `Page ${pageNumber} OCR text length:`,
                     pageText.length
                 );
 
-
                 if (pageText) {
-
                     pageTexts.push(
                         `--- PAGE ${pageNumber} ---\n${pageText}`
                     );
                 }
 
             } catch (pageError) {
-
                 console.error(
                     `OCR failed for page ${pageNumber}:`,
                     pageError?.message ||
@@ -539,10 +552,12 @@ async function extractTextUsingOCR(pdfBuffer) {
                 );
 
             } finally {
-
                 /**
+                 * ------------------------------------------------
                  * Release page resources.
+                 * ------------------------------------------------
                  */
+
                 if (page) {
                     try {
                         page.destroy();
@@ -555,8 +570,11 @@ async function extractTextUsingOCR(pdfBuffer) {
                 }
 
                 /**
+                 * ------------------------------------------------
                  * Release pixmap resources if supported.
+                 * ------------------------------------------------
                  */
+
                 if (
                     pixmap &&
                     typeof pixmap.destroy === "function"
@@ -585,7 +603,6 @@ async function extractTextUsingOCR(pdfBuffer) {
                 pageTexts.join("\n\n")
             );
 
-
         console.log(
             "Total OCR text length:",
             finalOCRText.length
@@ -599,13 +616,11 @@ async function extractTextUsingOCR(pdfBuffer) {
          */
 
         if (finalOCRText) {
-
             const preview =
                 finalOCRText.substring(
                     0,
                     1000
                 );
-
 
             console.log(
                 "OCR TEXT PREVIEW:"
@@ -614,7 +629,6 @@ async function extractTextUsingOCR(pdfBuffer) {
             console.log(
                 preview
             );
-
 
             if (
                 finalOCRText.length > 1000
@@ -625,16 +639,13 @@ async function extractTextUsingOCR(pdfBuffer) {
             }
         }
 
-
         console.log(
             "========== OCR FALLBACK END =========="
         );
 
-
         return finalOCRText;
 
     } catch (error) {
-
         console.error(
             "OCR extraction failed:",
             error?.message ||
@@ -644,7 +655,6 @@ async function extractTextUsingOCR(pdfBuffer) {
         return "";
 
     } finally {
-
         /**
          * --------------------------------------------------------
          * Cleanup Tesseract
@@ -652,9 +662,7 @@ async function extractTextUsingOCR(pdfBuffer) {
          */
 
         if (worker) {
-
             try {
-
                 await worker.terminate();
 
                 console.log(
@@ -662,7 +670,6 @@ async function extractTextUsingOCR(pdfBuffer) {
                 );
 
             } catch (error) {
-
                 console.error(
                     "Tesseract worker cleanup failed:",
                     error?.message ||
@@ -679,13 +686,10 @@ async function extractTextUsingOCR(pdfBuffer) {
          */
 
         if (document) {
-
             try {
-
                 document.destroy();
 
             } catch (error) {
-
                 console.error(
                     "PDF document cleanup failed:",
                     error?.message ||
@@ -723,7 +727,6 @@ async function extractTextUsingOCR(pdfBuffer) {
 export async function extractTextFromPDF(
     pdfBuffer
 ) {
-
     /**
      * --------------------------------------------------------
      * Validate PDF
@@ -734,11 +737,9 @@ export async function extractTextFromPDF(
         pdfBuffer
     );
 
-
     console.log(
         "========== PDF EXTRACTION START =========="
     );
-
 
     console.log(
         "PDF buffer size:",
@@ -755,14 +756,11 @@ export async function extractTextFromPDF(
 
     let nativeText = "";
 
-
     try {
-
         nativeText =
             await extractNativePDFText(
                 pdfBuffer
             );
-
 
         console.log(
             "Native PDF text length:",
@@ -770,7 +768,6 @@ export async function extractTextFromPDF(
         );
 
     } catch (error) {
-
         console.error(
             "Native PDF extraction failed:",
             error?.message ||
@@ -792,43 +789,37 @@ export async function extractTextFromPDF(
             nativeText
         )
     ) {
-
         /**
          * Diagnostic only.
          */
+
         if (
             hasResumeSignals(
                 nativeText
             )
         ) {
-
             console.log(
                 "Resume-related signals detected in native text."
             );
 
         } else {
-
             console.log(
                 "Native text is usable but resume signals are weak."
             );
         }
 
-
         console.log(
             "Using native PDF text."
         );
-
 
         console.log(
             "Final extracted text length:",
             nativeText.length
         );
 
-
         console.log(
             "========== PDF EXTRACTION END =========="
         );
-
 
         return nativeText;
     }
@@ -843,7 +834,6 @@ export async function extractTextFromPDF(
     console.log(
         "Native PDF text extraction returned insufficient text."
     );
-
 
     console.log(
         "Starting OCR fallback..."
@@ -873,22 +863,18 @@ export async function extractTextFromPDF(
             ocrText
         )
     ) {
-
         console.log(
             "OCR extraction successful."
         );
-
 
         console.log(
             "Final extracted text length:",
             ocrText.length
         );
 
-
         console.log(
             "========== PDF EXTRACTION END =========="
         );
-
 
         return ocrText;
     }
@@ -904,11 +890,9 @@ export async function extractTextFromPDF(
         "Both native PDF extraction and OCR failed."
     );
 
-
     console.log(
         "========== PDF EXTRACTION END =========="
     );
-
 
     return "";
 }
