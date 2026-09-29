@@ -1179,6 +1179,14 @@ export const projectService = {
               data.detailedPdfUrl ||
               undefined,
 
+            pdfData:
+              data.pdfData ||
+              undefined,
+
+            pdfFilename:
+              data.pdfFilename ||
+              undefined,
+
             projectType:
               data.projectType ||
               undefined,
