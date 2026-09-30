@@ -51,11 +51,6 @@ router.post(
   uploadAdminPdf
 );
 
-router.put(
-  "/:id",
-  updateProject
-);
-
 router.patch(
   "/:id/archive",
   archiveProject

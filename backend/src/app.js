@@ -29,6 +29,10 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
   process.env.FRONTEND_URL,
+  // Vercel preview and production domains
+  /\.vercel\.app$/,
+  /\.vercel\.dev$/,
+  /localhost:\d+$/,
 ].filter(Boolean);
 
 console.log("Allowed CORS origins:", allowedOrigins);
@@ -43,7 +47,14 @@ app.use(
       }
 
       // Allow configured frontend origins.
-      if (allowedOrigins.includes(origin)) {
+      const exactMatch = allowedOrigins.find(o => typeof o === 'string' && o === origin);
+      if (exactMatch) {
+        return callback(null, true);
+      }
+
+      // Allow regex pattern matches (for Vercel domains)
+      const regexMatch = allowedOrigins.find(o => o instanceof RegExp && o.test(origin));
+      if (regexMatch) {
         return callback(null, true);
       }
 
@@ -68,6 +79,9 @@ app.use(
     allowedHeaders: [
       "Content-Type",
       "Authorization",
+      "X-Requested-With",
+      "Accept",
+      "Origin",
     ],
   })
 );
@@ -197,6 +211,29 @@ app.use(
 app.use(
   "/api/student",
   studentRoutes
+);
+
+// =====================================================
+// SCHEDULING / SLOTS
+// =====================================================
+
+import slotRoutes from "./modules/scheduling/slot.routes.js";
+import enhancedSlotRoutes from "./modules/scheduling/enhancedSlot.routes.js";
+import enhancedBookingRoutes from "./modules/interview/enhancedBooking.routes.js";
+
+app.use(
+  "/api",
+  slotRoutes
+);
+
+app.use(
+  "/api",
+  enhancedSlotRoutes
+);
+
+app.use(
+  "/api/interviews",
+  enhancedBookingRoutes
 );
 
 // =====================================================

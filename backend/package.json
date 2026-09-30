@@ -6,7 +6,16 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "test": "jest --runInBand",
+    "test:bug5": "jest --runInBand --testPathPatterns=project.routes.bug"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/__tests__/**/*.test.cjs"
+    ],
+    "extensionsToTreatAsEsm": []
   },
   "dependencies": {
     "axios": "^1.20.0",
@@ -24,9 +33,16 @@
     "pdf-parse": "^2.4.5",
     "pdfkit": "^0.20.2",
     "tesseract.js": "^7.0.0",
-    "twilio": "^6.1.1"
+    "twilio": "^6.1.1",
+    "uuid": "^14.0.2"
   },
   "devDependencies": {
-    "nodemon": "^3.1.10"
+    "@babel/core": "^8.0.6",
+    "@babel/preset-env": "^8.0.6",
+    "@jest/globals": "^30.5.2",
+    "babel-jest": "^30.5.2",
+    "jest": "^30.5.2",
+    "nodemon": "^3.1.10",
+    "supertest": "^7.3.0"
   }
 }

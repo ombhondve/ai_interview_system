@@ -121,7 +121,9 @@ export const candidateService = {
     reason: string
   ): Promise<Candidate | null> {
 
-    return request<Candidate>(
+    const result = await request<{
+      candidate: Candidate;
+    }>(
       `/api/candidates/${id}/reject`,
       {
         method: "POST",
@@ -130,6 +132,8 @@ export const candidateService = {
         }),
       }
     );
+
+    return result.candidate;
   },
 
   getRoles(): string[] {

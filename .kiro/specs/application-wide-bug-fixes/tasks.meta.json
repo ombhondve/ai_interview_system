@@ -1,0 +1,631 @@
+{
+  "pbtResults": {
+    "1. Write bug condition exploration test (Bug 4)": {
+      "status": "passed",
+      "failingExample": "__tests__/candidateStatus.raw_check.ts:3:7 - error TS2322: Type '\"Project Assigned\"' is not assignable to type 'CandidateStatus'.\n__tests__/candidateStatus.raw_check.ts:4:7 - error TS2322: Type '\"Project Completed\"' is not assignable to type 'CandidateStatus'.\nFound 2 errors in the same file, starting at: __tests__/candidateStatus.raw_check.ts:3",
+      "lastRunTimestamp": 1790746645572
+    },
+    "5. Write bug condition exploration test (Bug 5)": {
+      "status": "passed",
+      "failingExample": "router.put(\"/:id\", updateProject) is present in project.route.js alongside router.patch(\"/:id\", updateProject). All registered project routes: GET /, POST /generate, POST /:id/regenerate, GET /:id/candidates, GET /:id, POST /, PATCH /:id, POST /:id/admin-pdf, PUT /:id, PATCH /:id/archive, DELETE /:id — confirming that PUT /api/projects/:id routes to updateProject (200) instead of returning 404.",
+      "lastRunTimestamp": 1790748323488
+    },
+    "9. Write bug condition exploration test (Bug 7)": {
+      "status": "passed",
+      "failingExample": "Type-level counterexample confirmed:\n- `ActualBackendRejectResponse` is NOT assignable to `Candidate` — the @ts-expect-error directive is satisfied, confirming structural incompatibility.\n- Runtime simulation: `(backendResponse as unknown as Candidate).name === undefined` → TRUE (bug exists)\n- The wrapper `{ candidate: { name: \"Alice\" } }` is returned instead of `{ name: \"Alice\" }`\n- `bugCounterexample.unfixedResultDotName` → `undefined` (should be \"Alice\")\n- `bugCounterexample.bugConfirmed` → `true`\nTypeScript exit code 0 — all type assertions are valid. The @ts-expect-error on line with `_wrapperIsNotCandidate` confirms the wrapper shape is structurally incompatible with `Candidate`.",
+      "lastRunTimestamp": 1790748745744
+    },
+    "10. Write preservation property tests — other candidateService methods unaffected (Bug 7)": {
+      "status": "passed",
+      "lastRunTimestamp": 1790748959480
+    },
+    "13. Write bug condition exploration test (Bug 1)": {
+      "status": "passed",
+      "failingExample": "BUG CONDITION test failed as expected on unfixed code: expect(received).toBe(expected) — Expected: \"llama3-70b-8192\", Received: \"openai/gpt-oss-20b\". Counterexample: MODEL fallback is \"openai/gpt-oss-20b\" — not a valid Groq model ID. When GROQ_MODEL env var is unset, all Groq API calls will fail with a 400/404 error.",
+      "lastRunTimestamp": 1790749599274
+    },
+    "14. Write preservation property tests — model env var and existing AI behavior (Bug 1)": {
+      "status": "passed",
+      "lastRunTimestamp": 1790749603567
+    },
+    "17. Write bug condition exploration test (Bug 6)": {
+      "status": "passed",
+      "failingExample": "BUG CONDITION test failed as expected on unfixed code: expect(received).toBe(expected) — Expected: true (isFixedGuard), Received: false. Parsed guard: 'message.role !== \"user\" && message.role !== \"system\"'. Counterexample: both system AND user messages match the modification path due to De Morgan's law (!(role !== user && role !== system) === role === user || role === system), so system message content gets the RETRY INSTRUCTION appended, corrupting the system prompt.",
+      "lastRunTimestamp": 1790749609267
+    },
+    "18. Write preservation property tests — retry still modifies user messages and first-attempt path (Bug 6)": {
+      "status": "passed",
+      "lastRunTimestamp": 1790749613414
+    }
+  },
+  "executionHistory": {
+    "1. Write bug condition exploration test (Bug 4)": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746544514
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746559614
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746662608
+      }
+    ],
+    "2. Write preservation property tests — existing CandidateStatus values (Bug 4)": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746544645
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746667287
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746735029
+      }
+    ],
+    "3.1 Implement the fix": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746544739
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746741862
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790747093787
+      }
+    ],
+    "3.2 Verify bug condition exploration test now passes": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746544817
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790747099380
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790747250474
+      }
+    ],
+    "3.3 Verify preservation tests still pass": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746544911
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790747255159
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790747261640
+      }
+    ],
+    "4. Checkpoint — Bug 4 complete": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746544975
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790747265988
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790747270494
+      }
+    ],
+    "5. Write bug condition exploration test (Bug 5)": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746545074
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790747276789
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790748365210
+      }
+    ],
+    "6. Write preservation property tests — other project routes unaffected (Bug 5)": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746545197
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790748370326
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790748375939
+      }
+    ],
+    "7.1 Implement the fix": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746545280
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790748380947
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790748461266
+      }
+    ],
+    "7.2 Verify bug condition exploration test now passes": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746545364
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790748465867
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790748569354
+      }
+    ],
+    "7.3 Verify preservation tests still pass": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746545439
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790748574094
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790748579155
+      }
+    ],
+    "8. Checkpoint — Bug 5 complete": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746545530
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790748583984
+      }
+    ],
+    "9. Write bug condition exploration test (Bug 7)": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746545619
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790748589820
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790748765313
+      }
+    ],
+    "10. Write preservation property tests — other candidateService methods unaffected (Bug 7)": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746545702
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790748770695
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790748972413
+      }
+    ],
+    "11.1 Implement the fix": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746545781
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790749012844
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790749057869
+      }
+    ],
+    "11.2 Verify bug condition exploration test now passes": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746545848
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790749062413
+      }
+    ],
+    "11.3 Verify preservation tests still pass": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746545927
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790749066707
+      }
+    ],
+    "12. Checkpoint — Bug 7 complete": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746546002
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790749071445
+      }
+    ],
+    "13. Write bug condition exploration test (Bug 1)": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746546079
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790749076699
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790749690123
+      }
+    ],
+    "14. Write preservation property tests — model env var and existing AI behavior (Bug 1)": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746546183
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790749696191
+      }
+    ],
+    "15.1 Implement the fix": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746546251
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790749701824
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790750081974
+      }
+    ],
+    "15.2 Verify bug condition exploration test now passes": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746546320
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790750086612
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790750100459
+      }
+    ],
+    "15.3 Verify preservation tests still pass": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746546415
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790750104937
+      }
+    ],
+    "16. Checkpoint — Bug 1 complete": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746546514
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790750109175
+      }
+    ],
+    "17. Write bug condition exploration test (Bug 6)": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746546601
+      },
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790750113777
+      }
+    ],
+    "18. Write preservation property tests — retry still modifies user messages and first-attempt path (Bug 6)": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746546679
+      }
+    ],
+    "19.1 Implement the fix": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746546754
+      }
+    ],
+    "19.2 Verify bug condition exploration test now passes": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746546837
+      }
+    ],
+    "19.3 Verify preservation tests still pass": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746546923
+      }
+    ],
+    "20. Checkpoint — Bug 6 complete": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746546989
+      }
+    ],
+    "21. Write bug condition exploration test (Bug 2)": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746547072
+      }
+    ],
+    "22. Write preservation property tests — existing routes still respond after app.js changes (Bug 2)": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746547140
+      }
+    ],
+    "23.1 Implement interview.controller.js": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746547203
+      }
+    ],
+    "23.2 Create interview.routes.js": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746547296
+      }
+    ],
+    "23.3 Mount interview routes in app.js": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746547383
+      }
+    ],
+    "23.4 Verify bug condition exploration test now passes": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746547484
+      }
+    ],
+    "23.5 Verify preservation tests still pass": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746547578
+      }
+    ],
+    "24. Checkpoint — Bug 2 complete": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746547685
+      }
+    ],
+    "25. Write bug condition exploration test (Bug 3 + Bug 8)": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746547762
+      }
+    ],
+    "26. Write preservation property tests — student invite/me routes and Slot schema unchanged (Bug 3 + 8)": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746547847
+      }
+    ],
+    "27.1 Implement slot.service.js": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746547937
+      }
+    ],
+    "27.2 Implement slot.controller.js": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746548013
+      }
+    ],
+    "27.3 Create slot.routes.js": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746548093
+      }
+    ],
+    "27.4 Implement reschedule.service.js": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746548173
+      }
+    ],
+    "27.5 Implement calendar.service.js": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746548238
+      }
+    ],
+    "27.6 Add student slot routes to student.routes.js": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746548326
+      }
+    ],
+    "27.7 Mount slot routes in app.js": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746548400
+      }
+    ],
+    "27.8 Verify bug condition exploration test now passes": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746548466
+      }
+    ],
+    "27.9 Verify preservation tests still pass": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746548548
+      }
+    ],
+    "28. Checkpoint — Bug 3 + Bug 8 complete": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790746548678
+      }
+    ],
+    "3. Fix Bug 4 — Add \"Project Assigned\" and \"Project Completed\" to CandidateStatus": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790747261721
+      }
+    ],
+    "7. Fix Bug 5 — Remove duplicate router.put(\"/:id\") from project.route.js": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790748579262
+      }
+    ],
+    "11. Fix Bug 7 — Unwrap { candidate } from rejectCandidate response": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790749066814
+      }
+    ],
+    "15. Fix Bug 1 — Change invalid model fallback to \"llama3-70b-8192\"": [
+      {
+        "executionId": "fbea9c6c-ba44-4429-8074-fd62ea0ca3a5",
+        "chatSessionId": "sess_45c5b0fc-cfaa-4773-a16e-75b266a74696",
+        "timestamp": 1790750105086
+      }
+    ]
+  }
+}

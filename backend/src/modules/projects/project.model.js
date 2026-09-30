@@ -361,6 +361,21 @@ const projectSchema = new mongoose.Schema(
       enum: ["active", "archived"],
       default: "active",
     },
+
+    // ---------------------------------------------------
+    // DEADLINE CONFIGURATION (NEW FIELDS)
+    // ---------------------------------------------------
+
+    durationDays: {
+      type: Number,
+      comment: "Parsed duration in days (e.g., 14 for '2 weeks')"
+    },
+
+    bufferDays: {
+      type: Number,
+      default: 1,
+      comment: "Buffer period after submission deadline (default 1 day)"
+    },
   },
 
   // =====================================================

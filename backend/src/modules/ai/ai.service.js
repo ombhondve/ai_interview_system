@@ -10,7 +10,7 @@ const groq = new Groq({
   apiKey: apiKey || "missing-groq-api-key",
 });
 
-const MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
+const MODEL = process.env.GROQ_MODEL || "llama3-70b-8192";
 
 function extractJson(content) {
   // ---------------------------------------------------------
@@ -193,10 +193,7 @@ export async function generateStructuredAI(messages) {
     );
 
     const retryMessages = messages.map((message) => {
-      if (
-        message.role !== "user" &&
-        message.role !== "system"
-      ) {
+      if (message.role !== "user") {
         return message;
       }
 

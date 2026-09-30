@@ -3,6 +3,8 @@ export type CandidateStatus =
   | "under_review"
   | "approved"
   | "rejected"
+  | "Project Assigned"
+  | "Project Completed"
   | "scheduled"
   | "completed"
   | "decided";
@@ -390,4 +392,158 @@ export function getEducationList(education: unknown): CandidateEducation[] {
   if (Array.isArray(education)) return education as CandidateEducation[];
   if (education && typeof education === "object") return [education as CandidateEducation];
   return [];
+}
+
+
+/* =========================================================
+   ENHANCED BOOKING TYPES (Phase 3)
+========================================================= */
+
+export interface EnhancedSlot {
+  id: string;
+  startTime: string;
+  endTime: string;
+  timezone: string;
+  capacity: number;
+  bookedCount: number;
+  status: "open" | "booked" | "cancelled" | "completed" | "hidden";
+  location?: string;
+  meetLink?: string;
+  duration?: number;
+  bufferTime?: {
+    before: number; // minutes
+    after: number; // minutes
+  };
+  requirements?: {
+    requiredDocuments?: string[];
+    completedProfile?: boolean;
+    minimumScore?: number;
+  };
+  bookingWindow?: {
+    maxHoursBefore: number;
+    minHoursBefore: number;
+  };
+  recurrencePattern?: {
+    type: "daily" | "weekly" | "monthly";
+    interval: number;
+    endDate?: string;
+    exceptions?: string[];
+  };
+  tags?: string[];
+  metadata?: {
+    source: string;
+    externalId?: string;
+  };
+  // Virtual/computed fields
+  availableSeats?: number;
+  isAvailable?: boolean;
+  bookingWindowStatus?: "too_early" | "too_late" | "within_window";
+}
+
+export interface InterviewPreparationStatus {
+  profileComplete: boolean;
+  testCompleted: boolean;
+  readinessScore: number;
+  documentsSubmitted?: string[];
+  preparationNotes?: string;
+  lastPreparationCheck?: string;
+}
+
+export interface InterviewBooking {
+  id: string;
+  candidateId: string;
+  slotId: string;
+  status: "scheduled" | "pending_preparation" | "ready" | "confirmed" | "in_progress" | "completed" | "cancelled" | "rescheduled" | "no_show" | "failed";
+  interviewType: "ai" | "mock" | "live";
+  preparationStatus: InterviewPreparationStatus;
+  bookingMetadata: {
+    bookedAt: string;
+    bookingSource: string;
+    ipAddress?: string;
+    userAgent?: string;
+    bookingSessionId: string;
+  };
+  aiConfig?: {
+    difficulty: "beginner" | "intermediate" | "advanced";
+    duration: number;
+  };
+  timeline: Array<{
+    event: string;
+    timestamp: string;
+    initiatedBy: "candidate" | "admin" | "system";
+    data?: Record<string, any>;
+  }>;
+  rescheduleHistory?: Array<{
+    fromSlot: string;
+    toSlot: string;
+    reason: string;
+    requestedBy: string;
+    timestamp: string;
+  }>;
+  cancellationData?: {
+    cancelledAt: string;
+    cancelledBy: string;
+    reason: string;
+    refundStatus: string;
+  };
+  calendarEventId?: string;
+  metadata?: {
+    source: string;
+    tags: string[];
+    calendarIntegration?: {
+      integrated: boolean;
+      eventId: string;
+      integratedAt: string;
+    };
+  };
+  // Populated fields (when returned from API)
+  slot?: EnhancedSlot;
+  candidate?: {
+    id: string;
+    name: string;
+    email: string;
+    phone?: string;
+    role?: string;
+  };
+}
+
+export interface BookingConfirmation {
+  success: boolean;
+  interview: InterviewBooking;
+  bookingSteps: string[];
+  nextStep: string;
+  message: string;
+}
+
+export interface InterviewStatusResponse {
+  success: boolean;
+  interview: InterviewBooking;
+  phase: "scheduled" | "upcoming" | "starting_soon" | "in_progress" | "completed" | "cancelled" | "missed" | "no_show";
+  timeline: {
+    currentTime: string;
+    interviewStart: string;
+    interviewEnd: string;
+    timeUntilStart: number;
+    hoursUntilStart: number;
+    formattedTimeUntil: string;
+  };
+  preparation: {
+    progress: number;
+    complete: boolean;
+    requirements: string[];
+  };
+  nextActions: Array<{
+    id: string;
+    label: string;
+    priority: "high" | "medium" | "low";
+  }>;
+  joinInstructions: {
+    link: string;
+    joinWindow: {
+      opens: string;
+      closes: string;
+    };
+    preparationTime: number;
+    requirements: string[];
+  };
 }

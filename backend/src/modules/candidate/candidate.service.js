@@ -1342,22 +1342,39 @@ export async function assignProjectToCandidate(
 
         candidate.assignedProjectId =
             projectId;
+        
+        // NEW: Set project assignment timestamp
+        candidate.projectAssignedAt = new Date();
+        
+        // NEW: Set project submission status
+        candidate.projectSubmissionStatus = "not_started";
 
 
         /*
-         * Do not blindly use "Project Assigned".
+         * Update status to "Project Assigned" if it exists in the enum.
+         * Otherwise keep as "approved".
          *
-         * Your Candidate schema may use an enum.
-         * "approved" is already part of the existing
-         * application flow and is safer than inventing
-         * another status value.
+         * Check if "Project Assigned" exists in the Candidate model enum.
          */
-        if (
-            candidate.status !==
-            "completed"
-        ) {
-            candidate.status =
-                "approved";
+        const candidateStatusEnum = [
+            "received",
+            "under_review", 
+            "approved",
+            "rejected",
+            "Project Assigned",
+            "Project Completed",
+            "scheduled",
+            "completed",
+            "decided"
+        ];
+        
+        if (candidateStatusEnum.includes("Project Assigned")) {
+            candidate.status = "Project Assigned";
+        } else {
+            // Fallback to "approved" if "Project Assigned" is not in enum
+            if (candidate.status !== "completed") {
+                candidate.status = "approved";
+            }
         }
 
 
