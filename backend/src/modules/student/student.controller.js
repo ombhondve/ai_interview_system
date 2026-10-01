@@ -34,8 +34,21 @@ export async function verifyCandidatePortalTokenController(
       typeof token !== "string"
     ) {
       return res.status(400).json({
+        success: false,
         message:
           "Invitation token is required.",
+      });
+    }
+
+    // Ensure database is connected
+    try {
+      const connectDatabase = (await import("../../config/database.js")).default;
+      await connectDatabase();
+    } catch (dbError) {
+      console.error("Database connection error:", dbError);
+      return res.status(500).json({
+        success: false,
+        message: "Database connection error. Please try again.",
       });
     }
 
@@ -54,6 +67,7 @@ export async function verifyCandidatePortalTokenController(
      */
     if (!candidate) {
       return res.status(401).json({
+        success: false,
         message:
           "Invitation link is invalid or expired.",
       });
@@ -77,6 +91,7 @@ export async function verifyCandidatePortalTokenController(
      * required by the frontend.
      */
     return res.status(200).json({
+      success: true,
       candidate: {
         id: candidate._id,
         name: candidate.name,
@@ -93,8 +108,10 @@ export async function verifyCandidatePortalTokenController(
     );
 
     return res.status(500).json({
+      success: false,
       message:
         "Unable to verify invitation.",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 }

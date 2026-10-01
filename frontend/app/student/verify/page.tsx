@@ -70,13 +70,26 @@ function VerifyInner() {
         setLoading(true);
         setError("");
 
+        // Use direct backend URL for testing
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://ai-interview-system-eewl.vercel.app";
         const response = await fetch(
-          `/api/student/invite?token=${encodeURIComponent(token)}`,
+          `${backendUrl}/api/student/invite?token=${encodeURIComponent(token)}`,
           {
             method: "GET",
             cache: "no-store",
+            headers: {
+              'Content-Type': 'application/json',
+            },
           }
         );
+
+        // Check if response is JSON
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          const text = await response.text();
+          console.error("Non-JSON response:", text.substring(0, 100));
+          throw new Error(`Server returned ${response.status}: ${text.substring(0, 50)}...`);
+        }
 
         const data = await response.json();
 
@@ -147,8 +160,9 @@ function VerifyInner() {
       setSending(true);
       setError("");
 
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://ai-interview-system-eewl.vercel.app";
       const response = await fetch(
-        "/api/verification/send",
+        `${backendUrl}/api/verification/send`,
         {
           method: "POST",
           headers: {
@@ -220,8 +234,9 @@ function VerifyInner() {
       setVerifying(true);
       setError("");
 
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://ai-interview-system-eewl.vercel.app";
       const response = await fetch(
-        "/api/verification/verify",
+        `${backendUrl}/api/verification/verify`,
         {
           method: "POST",
           headers: {

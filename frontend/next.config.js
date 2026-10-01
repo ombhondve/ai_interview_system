@@ -9,6 +9,8 @@ const nextConfig = {
       "https://ai-interview-system-eewl.vercel.app"
     ).replace(/\/+$/, "");
 
+    console.log("Backend URL for rewrites:", backendUrl);
+
     return [
       {
         source: "/api/:path*",

@@ -5,7 +5,7 @@
   "framework": "nextjs",
   "outputDirectory": ".next",
   "env": {
-    "NEXT_PUBLIC_BACKEND_URL": "https://your-backend-api.vercel.app"
+    "NEXT_PUBLIC_BACKEND_URL": "https://ai-interview-system-eewl.vercel.app"
   },
   "headers": [
     {
@@ -30,11 +30,5 @@
       ]
     }
   ],
-  "redirects": [
-    {
-      "source": "/",
-      "destination": "/student",
-      "permanent": false
-    }
-  ]
+  "redirects": []
 }
