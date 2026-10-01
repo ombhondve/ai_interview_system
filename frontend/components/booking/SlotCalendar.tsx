@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -37,11 +37,7 @@ export function SlotCalendar({ candidateId, onSlotSelect, filters }: SlotCalenda
 
   const dates = Object.keys(slotsByDate).sort();
 
-  useEffect(() => {
-    loadSlots();
-  }, [filters]);
-
-  const loadSlots = async () => {
+  const loadSlots = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -55,7 +51,11 @@ export function SlotCalendar({ candidateId, onSlotSelect, filters }: SlotCalenda
     } finally {
       setLoading(false);
     }
-  };
+  }, [filters]);
+
+  useEffect(() => {
+    loadSlots();
+  }, [filters, loadSlots]);
 
   const handleCheckEligibility = async (slotId: string) => {
     try {
@@ -79,22 +79,22 @@ export function SlotCalendar({ candidateId, onSlotSelect, filters }: SlotCalenda
 
   const getSlotStatusBadge = (slot: EnhancedSlot) => {
     if (!slot.isAvailable) {
-      return <Badge variant="destructive">Unavailable</Badge>;
+      return <Badge variant="danger">Unavailable</Badge>;
     }
     
     if (slot.bookingWindowStatus === "too_early") {
-      return <Badge variant="secondary">Booking opens soon</Badge>;
+      return <Badge variant="info">Booking opens soon</Badge>;
     }
     
     if (slot.bookingWindowStatus === "too_late") {
-      return <Badge variant="secondary">Booking closed</Badge>;
+      return <Badge variant="info">Booking closed</Badge>;
     }
     
     if (slot.availableSeats && slot.availableSeats > 0) {
       return <Badge variant="success">Available</Badge>;
     }
     
-    return <Badge variant="outline">Full</Badge>;
+    return <Badge variant="neutral">Full</Badge>;
   };
 
   if (loading) {
@@ -175,7 +175,7 @@ export function SlotCalendar({ candidateId, onSlotSelect, filters }: SlotCalenda
                 <Button
                   key={date}
                   size="sm"
-                  variant={selectedDate === date ? "default" : "outline"}
+                  variant={selectedDate === date ? "primary" : "outline"}
                   onClick={() => setSelectedDate(date)}
                 >
                   {new Date(date).toLocaleDateString("en-US", {

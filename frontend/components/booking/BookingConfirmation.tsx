@@ -22,11 +22,18 @@ export function BookingConfirmationModal({
 }: BookingConfirmationProps) {
   const [booking, setBooking] = useState(false);
   const [error, setError] = useState<string>("");
-  const [bookingData, setBookingData] = useState({
-    source: "portal",
-    interviewType: "ai" as const,
+  const [bookingData, setBookingData] = useState<{
+    source: string;
+    interviewType: "ai" | "mock" | "live";
     aiConfig: {
-      difficulty: "intermediate" as const,
+      difficulty: "intermediate" | "beginner" | "advanced";
+      duration: number;
+    };
+  }>({
+    source: "portal",
+    interviewType: "ai",
+    aiConfig: {
+      difficulty: "intermediate",
       duration: 30,
     },
   });
@@ -82,7 +89,7 @@ export function BookingConfirmationModal({
 
   return (
     <Modal
-      isOpen={true}
+      open={true}
       onClose={onCancel}
       title="Confirm Interview Booking"
       description="Please review the details before confirming your interview booking."

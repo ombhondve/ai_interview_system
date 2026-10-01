@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Progress } from "@/components/ui/Progress";
+import { ProgressBar } from "@/components/ui/Progress";
 import { Badge } from "@/components/ui/Badge";
 import { enhancedBookingService, InterviewBooking, PreparationStep } from "@/services/enhancedBooking.api";
 import { bookingHelpers } from "@/services/enhancedBooking.api";
@@ -28,11 +28,7 @@ export function PreparationWorkflow({
   const [steps, setSteps] = useState<PreparationStep[]>([]);
   const [completionPercentage, setCompletionPercentage] = useState(0);
 
-  useEffect(() => {
-    loadInterviewStatus();
-  }, [interviewId, candidateId]);
-
-  const loadInterviewStatus = async () => {
+  const loadInterviewStatus = useCallback(async () => {
     try {
       setLoading(true);
       setError("");
@@ -89,7 +85,11 @@ export function PreparationWorkflow({
     } finally {
       setLoading(false);
     }
-  };
+  }, [interviewId, candidateId]);
+
+  useEffect(() => {
+    loadInterviewStatus();
+  }, [interviewId, candidateId, loadInterviewStatus]);
 
   const handleStartPreparation = async () => {
     try {
@@ -251,7 +251,7 @@ export function PreparationWorkflow({
             
             <h3 className="mt-4 text-lg font-semibold text-slate-900">Ready to start preparation?</h3>
             <p className="mt-2 text-sm text-slate-600">
-              Begin your interview preparation to ensure you're fully ready. This includes profile completion, 
+              Begin your interview preparation to ensure you&apos;re fully ready. This includes profile completion, 
               document upload, and a preparation test.
             </p>
             
@@ -286,12 +286,12 @@ export function PreparationWorkflow({
               <p className="text-sm font-medium text-slate-900">Preparation Progress</p>
               <p className="text-sm text-slate-500">{completionPercentage}% complete</p>
             </div>
-            <Badge variant={completionPercentage === 100 ? "success" : "default"}>
+            <Badge variant={completionPercentage === 100 ? "success" : "neutral"}>
               {completionPercentage === 100 ? "Ready to confirm" : "In progress"}
             </Badge>
           </div>
           
-          <Progress value={completionPercentage} className="mt-3" />
+          <ProgressBar value={completionPercentage} />
         </div>
 
         {/* Readiness score */}

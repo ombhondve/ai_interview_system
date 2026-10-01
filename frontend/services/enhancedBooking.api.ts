@@ -92,6 +92,7 @@ export interface InterviewBooking {
   metadata?: {
     source: string;
     tags: string[];
+    feedbackSubmitted?: boolean;
     calendarIntegration?: {
       integrated: boolean;
       eventId: string;
