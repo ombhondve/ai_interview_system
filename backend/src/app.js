@@ -4,6 +4,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import session from "express-session";
 import passport from "passport";
+import mongoose from "mongoose";
 
 import candidateRoutes from "./modules/candidate/candidate.routes.js";
 import projectRoutes from "./modules/projects/project.route.js";
@@ -186,18 +187,26 @@ app.get(
     
     // Try to check database connection but don't fail if it's down
     let dbStatus = 'unknown';
+    let dbName = 'unknown';
     try {
-      const mongoose = await import('mongoose');
+      // Use the already imported mongoose instance from the app context
+      // Don't dynamically import - use the shared mongoose instance
       dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+      dbName = mongoose.connection.db?.databaseName || 'unknown';
     } catch (error) {
       dbStatus = 'error';
+      console.error('Health check mongoose error:', error.message);
     }
     
     res.status(200).json({
       success: true,
       message: "RecruitAI backend is running",
       timestamp: new Date().toISOString(),
-      database: dbStatus,
+      database: {
+        status: dbStatus,
+        name: dbName,
+        readyState: mongoose.connection.readyState
+      },
       environment: process.env.NODE_ENV || 'development'
     });
   }

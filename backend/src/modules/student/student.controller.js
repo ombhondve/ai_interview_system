@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import {
   getCandidateByPortalToken,
   getCandidateBySessionToken,
@@ -40,15 +41,13 @@ export async function verifyCandidatePortalTokenController(
       });
     }
 
-    // Ensure database is connected
-    try {
-      const connectDatabase = (await import("../../config/database.js")).default;
-      await connectDatabase();
-    } catch (dbError) {
-      console.error("Database connection error:", dbError);
+    // Database connection is handled by middleware in app.js
+    // No need to connect here - just check if mongoose is connected
+    if (mongoose.connection.readyState !== 1) {
+      console.error("Database not connected when processing student invite");
       return res.status(500).json({
         success: false,
-        message: "Database connection error. Please try again.",
+        message: "Database not ready. Please try again.",
       });
     }
 
