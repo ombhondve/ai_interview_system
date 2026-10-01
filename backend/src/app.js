@@ -43,54 +43,33 @@ const allowedOrigins = [
 
 console.log("Allowed CORS origins:", allowedOrigins);
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow requests without an Origin header.
-      // Examples: Postman, server-to-server requests.
-      if (!origin) {
-        return callback(null, true);
-      }
-
-      // Allow configured frontend origins.
-      const exactMatch = allowedOrigins.find(o => typeof o === 'string' && o === origin);
-      if (exactMatch) {
-        return callback(null, true);
-      }
-
-      // Allow regex pattern matches (for Vercel domains)
-      const regexMatch = allowedOrigins.find(o => o instanceof RegExp && o.test(origin));
-      if (regexMatch) {
-        return callback(null, true);
-      }
-
-      console.log("CORS blocked origin:", origin);
-
-      return callback(
-        new Error("Not allowed by CORS")
-      );
-    },
-
-    credentials: true,
-
-    methods: [
-      "GET",
-      "POST",
-      "PUT",
-      "PATCH",
-      "DELETE",
-      "OPTIONS",
-    ],
-
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "X-Requested-With",
-      "Accept",
-      "Origin",
-    ],
-  })
-);
+// Use cors package with proper configuration
+app.use(cors({
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'https://ai-interview-system-dqc9.vercel.app',
+      'https://ai-interview-system-eewl.vercel.app',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000'
+    ];
+    
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      return callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'Cookie', 'Set-Cookie'],
+  exposedHeaders: ['Set-Cookie', 'Authorization'],
+  maxAge: 86400,
+  optionsSuccessStatus: 204
+}));
 
 // =====================================================
 // REQUEST LOGGER
@@ -300,6 +279,20 @@ app.use(
 
 app.use(
   (req, res) => {
+    // Add CORS headers to 404 responses
+    const allowedOrigins = [
+      'https://ai-interview-system-dqc9.vercel.app',
+      'https://ai-interview-system-eewl.vercel.app',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000'
+    ];
+    
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+
     res.status(404).json({
       success: false,
       message:
@@ -328,6 +321,20 @@ app.use(
       err.message ===
       "Not allowed by CORS"
     ) {
+      // Add CORS headers to CORS error responses too
+      const allowedOrigins = [
+        'https://ai-interview-system-dqc9.vercel.app',
+        'https://ai-interview-system-eewl.vercel.app',
+        'http://localhost:3000',
+        'http://127.0.0.1:3000'
+      ];
+      
+      const origin = req.headers.origin;
+      if (origin && allowedOrigins.includes(origin)) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
+
       return res.status(403).json({
         success: false,
         message:
@@ -338,6 +345,20 @@ app.use(
     // -------------------------------------------------
     // GENERAL ERROR
     // -------------------------------------------------
+
+    // Add CORS headers to error responses
+    const allowedOrigins = [
+      'https://ai-interview-system-dqc9.vercel.app',
+      'https://ai-interview-system-eewl.vercel.app',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000'
+    ];
+    
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
 
     return res.status(500).json({
       success: false,
