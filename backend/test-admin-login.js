@@ -6,7 +6,7 @@
 
 import http from 'http';
 
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = 'https://ai-interview-system-eewl.vercel.app';
 const TEST_CREDENTIALS = {
   email: 'admin@gmail.com',
   password: 'admin@123'
@@ -22,8 +22,8 @@ async function testAdminLogin() {
     const postData = JSON.stringify(TEST_CREDENTIALS);
     
     const options = {
-      hostname: 'localhost',
-      port: 5000,
+      hostname: 'ai-interview-system-eewl.vercel.app',
+      port: 443,
       path: '/api/auth/login',
       method: 'POST',
       headers: {
@@ -89,8 +89,8 @@ async function testHealthEndpoint() {
   
   return new Promise((resolve) => {
     const options = {
-      hostname: 'localhost',
-      port: 5000,
+      hostname: 'ai-interview-system-eewl.vercel.app',
+      port: 443,
       path: '/api/health',
       method: 'GET'
     };

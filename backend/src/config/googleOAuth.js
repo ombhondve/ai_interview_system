@@ -14,7 +14,7 @@ import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 export function initializeGoogleOAuth() {
   const clientID = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-  const callbackURL = process.env.GOOGLE_CALLBACK_URL || "http://localhost:5000/api/auth/google/callback";
+  const callbackURL = process.env.GOOGLE_CALLBACK_URL || "https://ai-interview-system-eewl.vercel.app/api/auth/google/callback";
 
   if (!clientID || !clientSecret) {
     console.warn("⚠️  Google OAuth credentials not configured. Google authentication will be disabled.");
@@ -83,7 +83,7 @@ export function getGoogleOAuthConfig() {
   return {
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.GOOGLE_CALLBACK_URL || "http://localhost:5000/api/auth/google/callback",
+    callbackURL: process.env.GOOGLE_CALLBACK_URL || "https://ai-interview-system-eewl.vercel.app/api/auth/google/callback",
     enabled: !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
   };
 }

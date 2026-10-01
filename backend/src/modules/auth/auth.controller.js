@@ -139,8 +139,8 @@ export async function googleAuthCallback(req, res) {
       });
     }
 
-    // For web clients, redirect to frontend
-    return res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
+    // For web clients, redirect to frontend dashboard
+    return res.redirect(`${frontendUrl}/admin`);
 
   } catch (error) {
     console.error("Google auth callback error:", error);

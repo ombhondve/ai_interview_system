@@ -34,7 +34,7 @@ class GoogleCalendarService {
       const oauth2Client = new google.auth.OAuth2(
         clientId,
         clientSecret,
-        'http://localhost:5000/api/calendar/callback' // Optional callback URL
+        'https://ai-interview-system-eewl.vercel.app/api/calendar/callback' // Optional callback URL
       );
 
       // Set credentials with refresh token

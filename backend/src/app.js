@@ -33,6 +33,8 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
   process.env.FRONTEND_URL,
+  "https://ai-interview-system-eewl.vercel.app", // Backend URL itself
+  "https://ai-interview-system-dqc9.vercel.app", // Your frontend deployment
   // Vercel preview and production domains
   /\.vercel\.app$/,
   /\.vercel\.dev$/,
