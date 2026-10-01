@@ -15,6 +15,8 @@ import authRoutes from "./modules/auth/auth.routes.js";
 import calendarRoutes from "./modules/calendar/calendar.routes.js";
 import cookieParser from "./middleware/cookieParser.middleware.js";
 import { initializeGoogleOAuth } from "./config/googleOAuth.js";
+import connectDatabase from "./config/database.js";
+
 const app = express();
 
 // =====================================================
@@ -167,16 +169,78 @@ app.get("/", (req, res) => {
 
 app.get(
   "/api/health",
-  (req, res) => {
+  async (req, res) => {
+    // Add CORS headers for health check
+    const allowedOrigins = [
+      'https://ai-interview-system-dqc9.vercel.app',
+      'https://ai-interview-system-eewl.vercel.app',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000'
+    ];
+    
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+    
+    // Try to check database connection but don't fail if it's down
+    let dbStatus = 'unknown';
+    try {
+      const mongoose = await import('mongoose');
+      dbStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
+    } catch (error) {
+      dbStatus = 'error';
+    }
+    
     res.status(200).json({
       success: true,
-      message:
-        "RecruitAI backend is running",
-      timestamp:
-        new Date().toISOString(),
+      message: "RecruitAI backend is running",
+      timestamp: new Date().toISOString(),
+      database: dbStatus,
+      environment: process.env.NODE_ENV || 'development'
     });
   }
 );
+
+// =====================================================
+// DATABASE CONNECTION MIDDLEWARE
+// =====================================================
+
+app.use(async (req, res, next) => {
+  try {
+    // Ensure database is connected before handling API routes
+    // Skip for health check and static files
+    if (req.path === '/api/health' || req.path === '/' || req.path.startsWith('/uploads/')) {
+      return next();
+    }
+    
+    await connectDatabase();
+    next();
+  } catch (error) {
+    console.error('Database connection error in middleware:', error.message);
+    
+    // Add CORS headers even for database errors
+    const allowedOrigins = [
+      'https://ai-interview-system-dqc9.vercel.app',
+      'https://ai-interview-system-eewl.vercel.app',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000'
+    ];
+    
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Database connection failed',
+      ...(process.env.NODE_ENV === 'development' && { error: error.message })
+    });
+  }
+});
 
 // =====================================================
 // WHATSAPP

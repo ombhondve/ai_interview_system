@@ -1,16 +1,24 @@
 import Groq from "groq-sdk";
 
-const apiKey = process.env.GROQ_API_KEY;
+// Initialize Groq client lazily when needed
+let groqClient = null;
+let model = null;
 
-if (!apiKey) {
-  console.warn("GROQ_API_KEY is not configured. AI requests will fail until it is set.");
+function getGroqClient() {
+  if (!groqClient) {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey && process.env.NODE_ENV !== 'test') {
+      console.warn("GROQ_API_KEY is not configured. AI requests will fail until it is set.");
+    }
+    
+    groqClient = new Groq({
+      apiKey: apiKey || "dummy-key-for-initialization",
+    });
+    
+    model = process.env.GROQ_MODEL || "llama3-70b-8192";
+  }
+  return { client: groqClient, model };
 }
-
-const groq = new Groq({
-  apiKey: apiKey || "missing-groq-api-key",
-});
-
-const MODEL = process.env.GROQ_MODEL || "llama3-70b-8192";
 
 function extractJson(content) {
   // ---------------------------------------------------------
@@ -130,8 +138,10 @@ export const generateWhatsAppChatResponse = async (messages) => {
     throw new Error("GROQ_API_KEY is not configured.");
   }
 
-  const response = await groq.chat.completions.create({
-    model: MODEL,
+  const { client, model } = getGroqClient();
+  
+  const response = await client.chat.completions.create({
+    model,
     messages,
     max_completion_tokens: 1000,
     temperature: 0.4,
@@ -158,8 +168,10 @@ export const generateAIResponse = async (messages) => {
     throw new Error("GROQ_API_KEY is not configured.");
   }
 
-  const response = await groq.chat.completions.create({
-    model: MODEL,
+  const { client, model } = getGroqClient();
+  
+  const response = await client.chat.completions.create({
+    model,
     messages,
     max_completion_tokens: 2500,
     temperature: 0.2,
@@ -176,7 +188,7 @@ export const generateAIResponse = async (messages) => {
     throw new Error("Groq returned an empty response.");
   }
 
-  console.log("AI generation completed using model:", MODEL);
+  console.log("AI generation completed using model:", model);
   return content;
 };
 
