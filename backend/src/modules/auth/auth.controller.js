@@ -86,3 +86,66 @@ export async function logout(req, res) {
   });
   return res.status(200).json({ message: "Logged out successfully" });
 }
+
+/**
+ * Google OAuth callback handler
+ */
+export async function googleAuthCallback(req, res) {
+  try {
+    const user = req.user; // User object from passport
+    
+    if (!user) {
+      return res.status(401).json({ message: "Google authentication failed" });
+    }
+
+    // Create JWT token for the user
+    const token = jwt.sign(
+      {
+        userId: user.googleId || user.id,
+        email: user.email,
+        name: user.name,
+        provider: "google",
+      },
+      getSecret(),
+      { expiresIn: "8h" }
+    );
+
+    // Set cookie (adjust cookie name as needed)
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 8 * 60 * 60 * 1000, // 8 hours
+    };
+
+    res.cookie("recruitai_user", token, cookieOptions);
+
+    // Redirect to frontend or return JSON
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    
+    // For API clients, return JSON
+    if (req.headers["content-type"] === "application/json" || 
+        req.headers["accept"]?.includes("application/json")) {
+      return res.status(200).json({
+        success: true,
+        user: {
+          id: user.googleId || user.id,
+          email: user.email,
+          name: user.name,
+          picture: user.picture,
+        },
+        token,
+      });
+    }
+
+    // For web clients, redirect to frontend
+    return res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
+
+  } catch (error) {
+    console.error("Google auth callback error:", error);
+    
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    return res.redirect(`${frontendUrl}/login?error=auth_failed`);
+  }
+}

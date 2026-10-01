@@ -235,7 +235,7 @@
   - Mark task complete when test is written, run, and failure is documented
   - _Requirements: 6.1, 6.2_
 
-- [~] 18. Write preservation property tests — retry still modifies user messages and first-attempt path (Bug 6)
+- [ ] 18. Write preservation property tests — retry still modifies user messages and first-attempt path (Bug 6)
   - **Property 2: Preservation** - User Messages Still Get Retry Instruction; First-Attempt Path Untouched
   - **IMPORTANT**: Follow observation-first methodology
   - Observe: on unfixed code, user messages DO get the retry instruction appended (the broken guard still reaches them)
@@ -248,7 +248,7 @@
 
 - [ ] 19. Fix Bug 6 — Fix retry guard to skip system messages only
 
-  - [~] 19.1 Implement the fix
+  - [ ] 19.1 Implement the fix
     - Open `backend/src/modules/ai/ai.service.js`, inside `generateStructuredAI`
     - In the `retryMessages` `.map()` callback, change the guard:
       ```js
@@ -263,7 +263,7 @@
     - _Preservation: First-attempt path unaffected; retry still appends to user messages; both-fail error propagation unchanged_
     - _Requirements: 6.1, 6.2, 6.3_
 
-  - [~] 19.2 Verify bug condition exploration test now passes
+  - [ ] 19.2 Verify bug condition exploration test now passes
     - **Property 1: Expected Behavior** - System Messages Unchanged During Retry
     - **IMPORTANT**: Re-run the SAME test from task 17 — do NOT write a new test
     - Assert `retryMessages[0].content === "SYSTEM_PROMPT"` (system message intact)
@@ -271,20 +271,20 @@
     - **EXPECTED OUTCOME**: Test PASSES (confirms system messages are no longer corrupted)
     - _Requirements: 6.1, 6.2_
 
-  - [~] 19.3 Verify preservation tests still pass
+  - [ ] 19.3 Verify preservation tests still pass
     - **Property 2: Preservation** - User Message Retry and First-Attempt Path Unchanged
     - **IMPORTANT**: Re-run the SAME tests from task 18 — do NOT write new tests
     - Run property tests with arrays of mixed non-system roles
     - **EXPECTED OUTCOME**: Tests PASS (no regressions in retry behavior)
 
-- [~] 20. Checkpoint — Bug 6 complete
+- [ ] 20. Checkpoint — Bug 6 complete
   - Confirm all retry logic tests pass, ask the user if questions arise
 
 ---
 
 ## Bug 2 — Interview Module Routes Never Registered
 
-- [~] 21. Write bug condition exploration test (Bug 2)
+- [ ] 21. Write bug condition exploration test (Bug 2)
   - **Property 1: Bug Condition** - Interview Endpoints Return 404
   - **CRITICAL**: This test MUST FAIL on unfixed code — 404 confirms routes are not mounted
   - **DO NOT attempt to fix the test or the code when it fails**
@@ -297,7 +297,7 @@
   - Mark task complete when test is written, run, and failures are documented
   - _Requirements: 2.1, 2.3_
 
-- [~] 22. Write preservation property tests — existing routes still respond after app.js changes (Bug 2)
+- [ ] 22. Write preservation property tests — existing routes still respond after app.js changes (Bug 2)
   - **Property 2: Preservation** - All Existing Routes Remain Reachable After Route Mount Addition
   - **IMPORTANT**: Follow observation-first methodology
   - Observe: `GET /api/candidates`, `GET /api/projects`, `GET /api/student/me`, `POST /api/auth/login` all return non-404 on unfixed code
@@ -308,7 +308,7 @@
 
 - [ ] 23. Fix Bug 2 — Implement interview controller, routes, and mount in app.js
 
-  - [~] 23.1 Implement interview.controller.js
+  - [ ] 23.1 Implement interview.controller.js
     - Open `backend/src/modules/interview/interview.controller.js`
     - Import the `Interview` Mongoose model from `./interview.model.js`
     - Implement `getInterviews`: call `Interview.find()`, return 200 with the array
@@ -321,7 +321,7 @@
     - _Preservation: No changes to existing controller files or middleware_
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.6_
 
-  - [~] 23.2 Create interview.routes.js
+  - [ ] 23.2 Create interview.routes.js
     - Create new file `backend/src/modules/interview/interview.routes.js`
     - Create an Express router
     - Register `GET /` → `getInterviews`
@@ -331,34 +331,34 @@
     - Export router as default
     - _Requirements: 2.5_
 
-  - [~] 23.3 Mount interview routes in app.js
+  - [ ] 23.3 Mount interview routes in app.js
     - Open `backend/src/app.js`
     - Add import: `import interviewRoutes from "./modules/interview/interview.routes.js";`
     - Add mount after the `/api/candidates` block: `app.use("/api/interviews", interviewRoutes);`
     - Preserve the existing middleware order: CORS → logger → body parser → cookie parser → static → routes → 404 → error handler
     - _Requirements: 2.5_
 
-  - [~] 23.4 Verify bug condition exploration test now passes
+  - [ ] 23.4 Verify bug condition exploration test now passes
     - **Property 1: Expected Behavior** - Interview Endpoints Are Reachable
     - **IMPORTANT**: Re-run the SAME test from task 21 — do NOT write a new test
     - Assert `GET /api/interviews` → 200, `POST /api/interviews` with valid body → 201
     - **EXPECTED OUTCOME**: Test PASSES (confirms routes are now mounted and controllers respond)
     - _Requirements: 2.1, 2.3_
 
-  - [~] 23.5 Verify preservation tests still pass
+  - [ ] 23.5 Verify preservation tests still pass
     - **Property 2: Preservation** - Existing Routes Unaffected by New Mount
     - **IMPORTANT**: Re-run the SAME tests from task 22 — do NOT write new tests
     - Verify all pre-existing routes still respond correctly
     - **EXPECTED OUTCOME**: Tests PASS (no regressions in routing)
 
-- [~] 24. Checkpoint — Bug 2 complete
+- [ ] 24. Checkpoint — Bug 2 complete
   - Confirm all interview endpoint tests pass, ask the user if questions arise
 
 ---
 
 ## Bug 3 + Bug 8 — Slot/Scheduling Module Empty Files
 
-- [~] 25. Write bug condition exploration test (Bug 3 + Bug 8)
+- [ ] 25. Write bug condition exploration test (Bug 3 + Bug 8)
   - **Property 1: Bug Condition** - Slot Endpoints Return 404 and Service Functions Are Not Callable
   - **CRITICAL**: This test MUST FAIL on unfixed code — confirms routes are missing and files are empty
   - **DO NOT attempt to fix the test or the code when it fails**
@@ -377,7 +377,7 @@
   - Mark task complete when test is written, run, and failures are documented
   - _Requirements: 3.1, 3.2, 3.3, 3.5, 3.6, 8.1, 8.2_
 
-- [~] 26. Write preservation property tests — student invite/me routes and Slot schema unchanged (Bug 3 + 8)
+- [ ] 26. Write preservation property tests — student invite/me routes and Slot schema unchanged (Bug 3 + 8)
   - **Property 2: Preservation** - Existing Student Routes and Slot Schema Validation Unaffected
   - **IMPORTANT**: Follow observation-first methodology
   - Observe: `GET /api/student/invite` and `GET /api/student/me` respond correctly on unfixed code
@@ -390,7 +390,7 @@
 
 - [ ] 27. Fix Bug 3 + Bug 8 — Implement scheduling module and mount all slot routes
 
-  - [~] 27.1 Implement slot.service.js
+  - [ ] 27.1 Implement slot.service.js
     - Open `backend/src/modules/scheduling/slot.service.js`
     - Import the `Slot` Mongoose model from `./slot.model.js` (use `import` or `require` matching the existing module syntax in this file)
     - Implement `getSlots(filter)`: `Slot.find(filter || {})`
@@ -406,7 +406,7 @@
     - _Preservation: Slot schema validation rules (enum, required fields) are enforced by Mongoose and remain unchanged_
     - _Requirements: 8.1, 8.5, 3.3.2_
 
-  - [~] 27.2 Implement slot.controller.js
+  - [ ] 27.2 Implement slot.controller.js
     - Open `backend/src/modules/scheduling/slot.controller.js`
     - Import slot service functions
     - Implement `getSlotsController`: calls `getSlots()`, returns 200 with result
@@ -418,7 +418,7 @@
     - Export all 6 handlers as named exports
     - _Requirements: 8.2_
 
-  - [~] 27.3 Create slot.routes.js
+  - [ ] 27.3 Create slot.routes.js
     - Create new file `backend/src/modules/scheduling/slot.routes.js`
     - Create an Express router
     - Register `GET /` → `getSlotsController`
@@ -429,7 +429,7 @@
     - Export router as default
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.7_
 
-  - [~] 27.4 Implement reschedule.service.js
+  - [ ] 27.4 Implement reschedule.service.js
     - Open `backend/src/modules/scheduling/reschedule.service.js`
     - Import `updateSlot` and `bookSlot` from `./slot.service.js`
     - Implement `rescheduleSlot(oldSlotId, newSlotId, candidateId)`:
@@ -439,14 +439,14 @@
     - Export `rescheduleSlot` as a named export
     - _Requirements: 8.3_
 
-  - [~] 27.5 Implement calendar.service.js
+  - [ ] 27.5 Implement calendar.service.js
     - Open `backend/src/modules/scheduling/calendar.service.js`
     - Implement `createCalendarEvent(slotData)`: `console.log("createCalendarEvent:", slotData); return null;`
     - Implement `deleteCalendarEvent(eventId)`: `console.log("deleteCalendarEvent:", eventId); return null;`
     - Export both as named exports
     - _Requirements: 8.4_
 
-  - [~] 27.6 Add student slot routes to student.routes.js
+  - [ ] 27.6 Add student slot routes to student.routes.js
     - Open `backend/src/modules/student/student.routes.js`
     - Import `getSlotsController` and `bookSlotController` from `../scheduling/slot.controller.js`
     - In `getSlotsController` route, use `getOpenSlots` semantics — forward to `getSlotsController` which calls `getSlots({ status: "open" })` (or add an `getOpenSlotsController` alias if needed)
@@ -458,14 +458,14 @@
     - _Preservation: /api/student/invite and /api/student/me are unaffected_
     - _Requirements: 3.2, 3.3, 3.5, 3.6_
 
-  - [~] 27.7 Mount slot routes in app.js
+  - [ ] 27.7 Mount slot routes in app.js
     - Open `backend/src/app.js`
     - Add import: `import slotRoutes from "./modules/scheduling/slot.routes.js";`
     - Add mount after the `/api/interviews` block: `app.use("/api/slots", slotRoutes);`
     - Preserve the existing middleware order
     - _Requirements: 3.7_
 
-  - [~] 27.8 Verify bug condition exploration test now passes
+  - [ ] 27.8 Verify bug condition exploration test now passes
     - **Property 1: Expected Behavior** - Slot Endpoints Are Reachable and Service Functions Are Callable
     - **IMPORTANT**: Re-run the SAME test from task 25 — do NOT write a new test
     - Assert all four cases now pass:
@@ -476,12 +476,12 @@
     - **EXPECTED OUTCOME**: Test PASSES (confirms all slot/scheduling functionality is wired up)
     - _Requirements: 3.1, 3.2, 3.3, 3.5, 3.6, 8.1, 8.2_
 
-  - [~] 27.9 Verify preservation tests still pass
+  - [ ] 27.9 Verify preservation tests still pass
     - **Property 2: Preservation** - Student Routes and Slot Schema Validation Unchanged
     - **IMPORTANT**: Re-run the SAME tests from task 26 — do NOT write new tests
     - Verify `GET /api/student/invite` and `GET /api/student/me` still respond correctly
     - Verify Slot schema still rejects invalid `status` values and missing required fields
     - **EXPECTED OUTCOME**: Tests PASS (no regressions)
 
-- [~] 28. Checkpoint — Bug 3 + Bug 8 complete
+- [ ] 28. Checkpoint — Bug 3 + Bug 8 complete
   - Ensure all tests pass across all 8 bugs, ask the user if questions arise

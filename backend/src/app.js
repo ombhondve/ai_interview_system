@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import path from "path";
 import { fileURLToPath } from "url";
+import session from "express-session";
+import passport from "passport";
 
 import candidateRoutes from "./modules/candidate/candidate.routes.js";
 import projectRoutes from "./modules/projects/project.route.js";
@@ -10,7 +12,9 @@ import aiRoutes from "./modules/ai/ai.routes.js";
 import studentRoutes from "./modules/student/student.routes.js";
 import verificationRoutes from "./modules/verification/verification.routes.js";
 import authRoutes from "./modules/auth/auth.routes.js";
+import calendarRoutes from "./modules/calendar/calendar.routes.js";
 import cookieParser from "./middleware/cookieParser.middleware.js";
+import { initializeGoogleOAuth } from "./config/googleOAuth.js";
 const app = express();
 
 // =====================================================
@@ -115,6 +119,31 @@ app.use(
   })
 );
 app.use(cookieParser);
+
+// =====================================================
+// PASSPORT / SESSION INITIALIZATION
+// =====================================================
+
+// Session configuration
+app.use(
+  session({
+    secret: process.env.JWT_SECRET || "your-session-secret",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: true,
+      maxAge: 8 * 60 * 60 * 1000, // 8 hours
+    },
+  })
+);
+
+// Initialize passport
+app.use(passport.initialize());
+app.use(passport.session());
+
+// Initialize Google OAuth
+initializeGoogleOAuth();
 // =====================================================
 // STATIC UPLOADS
 // =====================================================
@@ -252,6 +281,15 @@ app.use(
 app.use(
   "/api/auth",
   authRoutes
+);
+
+// =====================================================
+// CALENDAR INTEGRATION
+// =====================================================
+
+app.use(
+  "/api/calendar",
+  calendarRoutes
 );
 
 // =====================================================

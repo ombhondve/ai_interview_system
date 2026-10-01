@@ -5,10 +5,7 @@
   "framework": "nextjs",
   "outputDirectory": ".next",
   "env": {
-    "BACKEND_URL": {
-      "description": "URL of the backend API server",
-      "value": "https://your-backend-api.vercel.app"
-    }
+    "NEXT_PUBLIC_BACKEND_URL": "https://your-backend-api.vercel.app"
   },
   "headers": [
     {

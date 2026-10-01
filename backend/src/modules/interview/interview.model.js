@@ -330,6 +330,10 @@ const interviewSchema = new mongoose.Schema(
                 type: String,
                 trim: true
             },
+            calendarEventLink: {
+                type: String,
+                trim: true
+            },
             source: {
                 type: String,
                 enum: ["portal", "api", "import", "migration"],
