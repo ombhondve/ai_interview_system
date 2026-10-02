@@ -106,8 +106,9 @@ export function StudentShell({
 
     async function loadStudent() {
       try {
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://ai-interview-system-eewl.vercel.app";
         const response = await fetch(
-          "/api/student/me",
+          `${backendUrl}/api/student/me`,
           {
             method: "GET",
             credentials: "include",
@@ -186,8 +187,9 @@ export function StudentShell({
 
   async function handleLogout() {
     try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://ai-interview-system-eewl.vercel.app";
       await fetch(
-        "/api/student/logout",
+        `${backendUrl}/api/student/logout`,
         {
           method: "POST",
           credentials: "include",

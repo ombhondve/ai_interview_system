@@ -184,8 +184,9 @@ export default function Status() {
         setLoading(true);
         setError("");
 
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://ai-interview-system-eewl.vercel.app";
         const response = await fetch(
-          "/api/student/me",
+          `${backendUrl}/api/student/me`,
           {
             method: "GET",
             cache: "no-store",

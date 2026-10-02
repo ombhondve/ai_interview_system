@@ -73,17 +73,11 @@ export async function verifyCandidatePortalTokenController(
     }
 
     /**
-     * NEW: Mark portal token as used after successful verification
-     * This enforces one-time use of portal links
+     * NOTE: Portal token is NOT marked as used here.
+     * It will be marked as used after successful OTP verification
+     * in the /api/verification/verify endpoint.
+     * This allows the candidate to retry OTP if needed.
      */
-    try {
-      const { markPortalTokenAsUsed } = await import("./student.service.js");
-      await markPortalTokenAsUsed(token);
-    } catch (markTokenError) {
-      // Log error but don't fail the request
-      console.error("Error marking portal token as used:", markTokenError);
-      // Token will remain usable, but this is okay for now
-    }
 
     /**
      * Return only the candidate information
