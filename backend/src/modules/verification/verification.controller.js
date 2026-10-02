@@ -12,10 +12,7 @@ import {
 export async function sendOtpController(req, res) {
   try {
     const { candidateId, identifier } = req.body;
-    console.log("Send OTP request:", {
-      candidateId,
-      identifier,
-    });
+    console.log("Send OTP request received for candidate:", candidateId);
     if (!candidateId) {
       return res.status(400).json({
         message: "Candidate ID is required.",

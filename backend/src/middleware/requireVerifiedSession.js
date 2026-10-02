@@ -103,7 +103,7 @@ export async function requireVerifiedSession(req, res, next) {
     
     // 6. Attach to request for use in controllers
     req.candidate = candidate;
-    req.session = session;
+    req.verificationSession = session;
     
     next();
   } catch (error) {

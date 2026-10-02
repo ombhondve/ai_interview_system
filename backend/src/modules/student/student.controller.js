@@ -23,8 +23,8 @@ export async function verifyCandidatePortalTokenController(
     const { token } = req.query;
 
     console.log(
-      "Received invitation token:",
-      token
+      "Invitation token received:",
+      Boolean(token)
     );
 
     /**
