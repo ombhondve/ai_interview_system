@@ -1340,42 +1340,17 @@ export async function assignProjectToCandidate(
         // ASSIGN PROJECT
         // =================================================
 
-        candidate.assignedProjectId =
-            projectId;
+        candidate.assignedProjectId = projectId;
         
-        // NEW: Set project assignment timestamp
+        // Set project assignment timestamp
         candidate.projectAssignedAt = new Date();
         
-        // NEW: Set project submission status
+        // Set project submission status
         candidate.projectSubmissionStatus = "not_started";
 
-
-        /*
-         * Update status to "Project Assigned" if it exists in the enum.
-         * Otherwise keep as "approved".
-         *
-         * Check if "Project Assigned" exists in the Candidate model enum.
-         */
-        const candidateStatusEnum = [
-            "received",
-            "under_review", 
-            "approved",
-            "rejected",
-            "Project Assigned",
-            "Project Completed",
-            "scheduled",
-            "completed",
-            "decided"
-        ];
-        
-        if (candidateStatusEnum.includes("Project Assigned")) {
-            candidate.status = "Project Assigned";
-        } else {
-            // Fallback to "approved" if "Project Assigned" is not in enum
-            if (candidate.status !== "completed") {
-                candidate.status = "approved";
-            }
-        }
+        // DO NOT change candidate.status - keep it as "approved"
+        // Status remains "approved" for authentication purposes
+        // The activity array will track "Project Assigned" activity separately
 
 
         // =================================================

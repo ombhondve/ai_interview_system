@@ -17,10 +17,19 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 
 type AssignedProject = {
+  id?: string;
   title: string;
   difficulty?: string;
   description?: string;
+  technologies?: string[];
+  requirements?: string;
+  pdfUrl?: string;
+  detailedPdfUrl?: string;
+  duration?: number;
   deadline?: string;
+  bufferDeadline?: string;
+  remainingTime?: string;
+  isExpired?: boolean;
 };
 
 type Candidate = {
@@ -28,7 +37,7 @@ type Candidate = {
   name?: string;
   role?: string;
   status?: string;
-  assignedProject?: AssignedProject | null;
+  projectSubmissionStatus?: string;
   projectSubmission?: {
     url?: string;
     submittedAt?: string;
@@ -36,8 +45,15 @@ type Candidate = {
   } | null;
 };
 
-type ApiResponse = {
+type ProjectApiResponse = {
   candidate?: Candidate;
+  project?: AssignedProject | null;
+  submission?: {
+    allowed: boolean;
+    period: string;
+    reason: string;
+    message: string;
+  };
   message?: string;
 };
 
@@ -46,6 +62,9 @@ export default function Project() {
 
   const [candidate, setCandidate] =
     useState<Candidate | null>(null);
+
+  const [project, setProject] =
+    useState<AssignedProject | null>(null);
 
   const [url, setUrl] = useState("");
 
@@ -78,7 +97,7 @@ export default function Project() {
 
         const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://ai-interview-system-eewl.vercel.app";
         const response = await fetch(
-          `${backendUrl}/api/student/me`,
+          `${backendUrl}/api/student/project`,
           {
             method: "GET",
             credentials: "include",
@@ -86,7 +105,7 @@ export default function Project() {
           }
         );
 
-        const data: ApiResponse =
+        const data: ProjectApiResponse =
           await response.json();
 
         /**
@@ -113,6 +132,7 @@ export default function Project() {
         }
 
         setCandidate(data.candidate);
+        setProject(data.project || null);
 
         /**
          * If the candidate already has a
@@ -307,9 +327,6 @@ export default function Project() {
       </StudentShell>
     );
   }
-
-  const project =
-    candidate?.assignedProject;
 
   const existingSubmission =
     candidate?.projectSubmission;

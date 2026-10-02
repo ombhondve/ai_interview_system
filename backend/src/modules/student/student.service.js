@@ -98,12 +98,11 @@ export async function getCandidateByPortalToken(
     }
 
     /**
-     * Only approved or Project Assigned candidates can
+     * Only approved candidates can
      * access the candidate portal.
      */
     if (
-      candidate.status !== "approved" &&
-      candidate.status !== "Project Assigned"
+      candidate.status !== "approved"
     ) {
       return null;
     }
@@ -224,11 +223,10 @@ export async function getCandidateBySessionToken(
     }
 
     /**
-     * Candidate must still be approved or Project Assigned.
+     * Candidate must still be approved.
      */
     if (
-      candidate.status !== "approved" &&
-      candidate.status !== "Project Assigned"
+      candidate.status !== "approved"
     ) {
       return null;
     }
@@ -603,8 +601,8 @@ export async function updateCandidateProjectAssignment(candidateId, projectId) {
       {
         assignedProjectId: projectId,
         projectAssignedAt: new Date(),
-        status: "Project Assigned",
         projectSubmissionStatus: "not_started"
+        // DO NOT change status: keep as "approved"
       },
       { new: true }
     );
