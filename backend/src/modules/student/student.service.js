@@ -247,6 +247,28 @@ export async function getCandidateBySessionToken(
 
 
 /**
+ * Helper function to ensure URLs are accessible
+ */
+function ensureAccessibleUrl(url) {
+  if (!url) return null;
+  
+  // If it's already an absolute URL, return as-is
+  if (url.startsWith('https://') || url.startsWith('http://')) {
+    return url;
+  }
+  
+  // If it's a relative path starting with /uploads/
+  // Convert it to an absolute backend URL
+  if (url.startsWith('/uploads/')) {
+    const backendUrl = process.env.BACKEND_URL || 'https://ai-interview-system-eewl.vercel.app';
+    return `${backendUrl}${url}`;
+  }
+  
+  // Return as-is for other cases
+  return url;
+}
+
+/**
  * ============================================
  * GET CANDIDATE WITH ASSIGNED PROJECT DETAILS
  * ============================================
@@ -287,6 +309,22 @@ export async function getCandidateWithProject(candidateId) {
       }
     }
     
+    // Convert PDF URLs if project exists
+    let processedProject = null;
+    if (project) {
+      processedProject = {
+        id: project._id,
+        title: project.title,
+        description: project.description,
+        difficulty: project.difficulty,
+        technologies: project.technologies,
+        requirements: project.requirements,
+        pdfUrl: ensureAccessibleUrl(project.pdfUrl),
+        detailedPdfUrl: ensureAccessibleUrl(project.detailedPdfUrl),
+        duration: project.duration
+      };
+    }
+    
     return {
       candidate: {
         id: candidate._id,
@@ -298,17 +336,7 @@ export async function getCandidateWithProject(candidateId) {
         projectSubmissionStatus: candidate.projectSubmissionStatus,
         projectSubmission: candidate.projectSubmission
       },
-      project: project ? {
-        id: project._id,
-        title: project.title,
-        description: project.description,
-        difficulty: project.difficulty,
-        technologies: project.technologies,
-        requirements: project.requirements,
-        pdfUrl: project.pdfUrl,
-        detailedPdfUrl: project.detailedPdfUrl,
-        duration: project.duration
-      } : null,
+      project: processedProject,
       deadline: deadlineInfo
     };
   } catch (error) {
@@ -390,7 +418,7 @@ export async function recordProjectDownload(candidateId) {
     return {
       candidate: updatedCandidate,
       project: project,
-      pdfUrl: project.pdfUrl || project.detailedPdfUrl
+      pdfUrl: ensureAccessibleUrl(project.pdfUrl || project.detailedPdfUrl)
     };
   } catch (error) {
     console.error("Error recording project download:", error);
