@@ -52,19 +52,18 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
-    const allowedOrigins = [
-      'https://ai-interview-system-dqc9.vercel.app',
-      'https://ai-interview-system-eewl.vercel.app',
-      'http://localhost:3000',
-      'http://127.0.0.1:3000'
-    ];
-    
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    } else {
-      console.log('CORS blocked origin:', origin);
-      return callback(new Error('Not allowed by CORS'));
+    // Use the dynamic allowedOrigins array that includes regex patterns
+    for (const allowedOrigin of allowedOrigins) {
+      if (typeof allowedOrigin === 'string' && allowedOrigin === origin) {
+        return callback(null, true);
+      }
+      if (allowedOrigin instanceof RegExp && allowedOrigin.test(origin)) {
+        return callback(null, true);
+      }
     }
+    
+    console.log('CORS blocked origin:', origin);
+    return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH', 'HEAD'],
