@@ -342,6 +342,19 @@ export async function recordProjectDownload(candidateId) {
       throw new Error("No project assigned to candidate");
     }
     
+    // Get the project to check PDF availability
+    const Project = (await import("../projects/project.model.js")).default;
+    const project = await Project.findById(candidate.assignedProjectId);
+    
+    if (!project) {
+      throw new Error("Assigned project not found");
+    }
+    
+    // Check PDF availability
+    if (!project.pdfUrl && !project.detailedPdfUrl) {
+      throw new Error("Project PDF is not available");
+    }
+    
     const now = new Date();
     const updates = {
       projectDownloadedAt: now
@@ -349,14 +362,6 @@ export async function recordProjectDownload(candidateId) {
     
     // If this is the first download, start the deadline timer
     if (!candidate.projectStartAt) {
-      // Get project to calculate deadlines
-      const Project = (await import("../projects/project.model.js")).default;
-      const project = await Project.findById(candidate.assignedProjectId);
-      
-      if (!project) {
-        throw new Error("Assigned project not found");
-      }
-      
       // Import deadline service
       const { calculateDeadlines } = await import("../projects/deadline.service.js");
       
@@ -382,7 +387,11 @@ export async function recordProjectDownload(candidateId) {
       { new: true }
     );
     
-    return updatedCandidate;
+    return {
+      candidate: updatedCandidate,
+      project: project,
+      pdfUrl: project.pdfUrl || project.detailedPdfUrl
+    };
   } catch (error) {
     console.error("Error recording project download:", error);
     throw error;

@@ -296,21 +296,22 @@ export async function recordProjectDownloadController(req, res) {
     const { recordProjectDownload } = await import("./student.service.js");
     const { formatDeadline } = await import("../projects/deadline.service.js");
     
-    const updatedCandidate = await recordProjectDownload(candidate._id);
+    const result = await recordProjectDownload(candidate._id);
     
     // Format response
     const response = {
       candidate: {
-        id: updatedCandidate._id,
-        name: updatedCandidate.name
+        id: result.candidate._id,
+        name: result.candidate.name
       },
       project: {
-        downloadedAt: updatedCandidate.projectDownloadedAt
+        downloadedAt: result.candidate.projectDownloadedAt,
+        pdfUrl: result.pdfUrl
       },
       deadline: {
-        projectStartAt: formatDeadline(updatedCandidate.projectStartAt),
-        submissionDeadline: formatDeadline(updatedCandidate.submissionDeadline),
-        bufferDeadline: formatDeadline(updatedCandidate.bufferDeadline)
+        projectStartAt: formatDeadline(result.candidate.projectStartAt),
+        submissionDeadline: formatDeadline(result.candidate.submissionDeadline),
+        bufferDeadline: formatDeadline(result.candidate.bufferDeadline)
       },
       message: "Project download recorded successfully."
     };
@@ -329,6 +330,18 @@ export async function recordProjectDownloadController(req, res) {
     if (error.message === "No project assigned to candidate") {
       return res.status(404).json({
         message: "No project assigned."
+      });
+    }
+    
+    if (error.message === "Assigned project not found") {
+      return res.status(404).json({
+        message: "Project not found."
+      });
+    }
+    
+    if (error.message === "Project PDF is not available") {
+      return res.status(404).json({
+        message: "Project PDF is not available."
       });
     }
     

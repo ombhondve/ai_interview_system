@@ -38,6 +38,7 @@ type Candidate = {
   role?: string;
   status?: string;
   projectSubmissionStatus?: string;
+  projectDownloadedAt?: string;
   projectSubmission?: {
     url?: string;
     submittedAt?: string;
@@ -72,6 +73,9 @@ export default function Project() {
     useState(true);
 
   const [submitting, setSubmitting] =
+    useState(false);
+
+  const [downloading, setDownloading] =
     useState(false);
 
   const [error, setError] =
@@ -167,6 +171,72 @@ export default function Project() {
   useEffect(() => {
     loadCandidate();
   }, [loadCandidate]);
+
+  /**
+   * ============================================
+   * DOWNLOAD PROJECT
+   * ============================================
+   */
+
+  async function downloadProject() {
+    setError("");
+    setSuccess("");
+    setDownloading(true);
+
+    try {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "https://ai-interview-system-eewl.vercel.app";
+      const response = await fetch(
+        `${backendUrl}/api/student/project/download`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
+
+      const data = await response.json();
+
+      /**
+       * Session expired.
+       */
+      if (response.status === 401) {
+        router.replace("/student/verify");
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          data.message || "Unable to download project."
+        );
+      }
+
+      // Get PDF URL from response
+      const pdfUrl = data.project?.pdfUrl;
+
+      if (!pdfUrl) {
+        throw new Error("Project PDF URL not found");
+      }
+
+      // Open/download the PDF
+      window.open(pdfUrl, "_blank");
+
+      // Refresh project data to show deadline
+      await loadCandidate();
+
+      // Show success message
+      setSuccess("Project downloaded successfully. Your deadline has started.");
+      
+    } catch (err) {
+      console.error("Download project error:", err);
+
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to download the project. Please try again."
+      );
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   /**
    * ============================================
@@ -511,17 +581,69 @@ export default function Project() {
                     </div>
                   )}
 
-                  {project.deadline && (
+                  {project.deadline ? (
                     <div className="mt-5 flex items-center gap-2 text-sm">
                       <span className="font-medium text-slate-800">
                         Deadline:
                       </span>
-
                       <span className="text-slate-600">
                         {project.deadline}
                       </span>
                     </div>
+                  ) : (
+                    <div className="mt-5 flex items-center gap-2 text-sm">
+                      <span className="font-medium text-slate-800">
+                        Deadline will start after you download the project.
+                      </span>
+                    </div>
                   )}
+
+                  {/* Download Project Button */}
+                  <div className="mt-5 pt-5 border-t border-slate-200">
+                    {(project.pdfUrl || project.detailedPdfUrl) ? (
+                      <Button
+                        loading={downloading}
+                        disabled={downloading}
+                        onClick={downloadProject}
+                        className="w-full sm:w-auto"
+                      >
+                        {downloading ? (
+                          <>
+                            <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            Preparing download...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            Download Project
+                          </>
+                        )}
+                      </Button>
+                    ) : (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                        <p className="text-sm font-medium text-amber-900">
+                          Project PDF is not available yet.
+                        </p>
+                        <p className="mt-1 text-sm text-amber-700">
+                          Please contact the administrator to make the project PDF available.
+                        </p>
+                      </div>
+                    )}
+
+                    {candidate?.projectSubmissionStatus === "downloaded" && candidate.projectDownloadedAt && (
+                      <div className="mt-3 flex items-center gap-2 text-sm text-slate-600">
+                        <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        <span>Project downloaded on {new Date(candidate.projectDownloadedAt).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
