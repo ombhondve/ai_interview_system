@@ -1,0 +1,27 @@
+{
+  "id": "FEAT-004",
+  "type": "test",
+  "description": "Test complete student authentication flow and cross-domain cookie behavior",
+  "status": "pending",
+  "steps": [
+    "Test end-to-end student flow: invitation → OTP verification → authentication → project assignment → logout",
+    "Verify candidate remains authenticated after project assignment (status stays 'approved')",
+    "Test cross-domain cookie behavior matches production requirements",
+    "Verify CORS configuration allows credentials from frontend origin",
+    "Create or update test cases for critical authentication paths"
+  ],
+  "acceptance_criteria": [
+    "Complete student authentication flow works without errors",
+    "Cross-domain cookies work correctly in simulated production environment",
+    "All critical authentication endpoints have test coverage",
+    "No regressions in existing student functionality"
+  ],
+  "verification": [
+    "Run complete integration test sequence with mock data",
+    "Verify all endpoints return expected status codes",
+    "Test cookie behavior with sameSite='none' and secure=true settings",
+    "Run full test suite: cd backend && npm test"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

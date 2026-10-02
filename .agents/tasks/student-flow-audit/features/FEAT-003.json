@@ -1,0 +1,24 @@
+{
+  "id": "FEAT-003",
+  "type": "refactor",
+  "description": "Clean up redundant authentication logic in getCurrentStudentController - remove manual cookie parsing since requireVerifiedSession middleware already validates and attaches req.candidate",
+  "status": "pending",
+  "steps": [
+    "Rewrite getCurrentStudentController in backend/src/modules/student/student.controller.js to use req.candidate instead of manually parsing cookies",
+    "Remove duplicate extractSessionToken function from student.controller.js (lines 312-334)",
+    "Add project-related fields to response: assignedProjectId, projectSubmissionStatus, projectAssignedAt for frontend use"
+  ],
+  "acceptance_criteria": [
+    "/api/student/me endpoint returns correct candidate data using req.candidate from middleware",
+    "No manual cookie parsing in getCurrentStudentController",
+    "Response includes project-related fields needed by frontend",
+    "Existing functionality unchanged - endpoint still requires authentication"
+  ],
+  "verification": [
+    "Test /api/student/me endpoint with valid session returns correct data",
+    "Test /api/student/me without session returns 401",
+    "Verify response includes project-related fields when candidate has assigned project"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

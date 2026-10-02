@@ -143,102 +143,22 @@ export async function getCurrentStudentController(
   try {
     /**
      * ==========================================
-     * READ candidate_session COOKIE
+     * GET CANDIDATE FROM MIDDLEWARE
      * ==========================================
      *
-     * We read the cookie manually.
-     *
-     * This means cookie-parser is NOT required.
+     * The requireVerifiedSession middleware
+     * already validated the session and
+     * attached the candidate to req.candidate.
      */
 
-    const cookieHeader =
-      req.headers.cookie || "";
-
-    const cookies = {};
+    const candidate = req.candidate;
 
     /**
-     * Convert:
-     *
-     * candidate_session=abc123; other=value
-     *
-     * into:
-     *
-     * {
-     *   candidate_session: "abc123",
-     *   other: "value"
-     * }
-     */
-    cookieHeader
-      .split(";")
-      .forEach((cookie) => {
-        const trimmedCookie =
-          cookie.trim();
-
-        if (!trimmedCookie) {
-          return;
-        }
-
-        const [
-          name,
-          ...valueParts
-        ] =
-          trimmedCookie.split("=");
-
-        if (!name) {
-          return;
-        }
-
-        cookies[name] =
-          valueParts.join("=");
-      });
-
-    /**
-     * Get the candidate session token.
-     */
-    const sessionToken =
-      cookies.candidate_session;
-
-    /**
-     * No session cookie.
-     */
-    if (!sessionToken) {
-      return res.status(401).json({
-        message:
-          "Student session expired.",
-      });
-    }
-
-    console.log(
-      "Candidate session received."
-    );
-
-    /**
-     * ==========================================
-     * VALIDATE SESSION
-     * ==========================================
-     *
-     * The service will:
-     *
-     * 1. Hash the session token.
-     * 2. Find the VerificationSession.
-     * 3. Check OTP verification.
-     * 4. Check session expiry.
-     * 5. Find the candidate.
-     * 6. Check candidate status.
-     */
-
-    const candidate =
-      await getCandidateBySessionToken(
-        sessionToken
-      );
-
-    /**
-     * Session is invalid or expired.
+     * No authenticated candidate.
      */
     if (!candidate) {
       return res.status(401).json({
-        message:
-          "Student session expired or invalid.",
+        message: "Student session expired.",
       });
     }
 
@@ -261,11 +181,9 @@ export async function getCurrentStudentController(
          * These fields are returned if they
          * exist on the Candidate model.
          */
-        jdMatchScore:
-          candidate.jdMatchScore,
+        jdMatchScore: candidate.jdMatchScore,
 
-        interview:
-          candidate.interview || null,
+        interview: candidate.interview || null,
       },
     });
   } catch (error) {
@@ -275,8 +193,7 @@ export async function getCurrentStudentController(
     );
 
     return res.status(500).json({
-      message:
-        "Unable to verify student session.",
+      message: "Unable to verify student session.",
     });
   }
 }
@@ -516,15 +433,9 @@ export async function logoutController(req, res) {
       );
     }
     
-    // Clear cookie
-    res.setHeader('Set-Cookie', [
-      'candidate_session=',
-      'HttpOnly',
-      'Secure',
-      'SameSite=Lax',
-      'Max-Age=0',
-      'Path=/'
-    ].join('; '));
+    // Clear cookie with environment-aware settings
+    const sameSiteValue = process.env.NODE_ENV === "production" ? "none" : "lax";
+    res.setHeader('Set-Cookie', `candidate_session=; HttpOnly; Secure; SameSite=${sameSiteValue}; Max-Age=0; Path=/`);
     
     return res.status(200).json({ 
       message: "Logged out successfully" 

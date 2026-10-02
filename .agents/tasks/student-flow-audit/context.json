@@ -1,0 +1,25 @@
+{
+  "project_type": "Express.js backend with MongoDB/Mongoose, deployed on Vercel separately from Next.js frontend",
+  "language": "JavaScript (ES Modules)",
+  "build_system": "npm with nodemon for development, no compilation step",
+  "test_framework": "Jest with supertest for API tests",
+  "build_command": "npm run dev (development) or npm start (production)",
+  "test_command": "npm test (runs Jest tests in backend directory)",
+  "verification_instructions": "1. Run npm test in backend directory to execute Jest tests\n2. For manual testing, use curl or Postman to test API endpoints\n3. Check for any console errors during server startup\n4. Verify database connections work",
+  "snapshot_or_generated_files": null,
+  "environment_constraints": "Production deployment uses separate Vercel domains: frontend (ai-interview-system-dqc9.vercel.app) and backend (ai-interview-system-eewl.vercel.app). Cookies must use sameSite: 'none' and secure: true in production.",
+  "contribution_requirements": "Files must maintain ES module syntax (import/export). Follow existing code patterns. Use async/await for database operations. Include proper error handling.",
+  "key_patterns": "1. Controllers use try/catch blocks with consistent error responses\n2. Services return formatted data or throw errors\n3. Middleware attaches data to req object (e.g., req.candidate)\n4. Cookies set with environment-aware configuration\n5. Status codes follow REST conventions",
+  "relevant_files": [
+    "backend/src/modules/candidate/candidate.service.js",
+    "backend/src/modules/student/student.service.js",
+    "backend/src/modules/student/student.controller.js",
+    "backend/src/modules/verification/verification.controller.js",
+    "backend/src/middleware/requireVerifiedSession.js",
+    "backend/src/modules/student/student.routes.js",
+    "backend/src/app.js",
+    "frontend/next.config.js",
+    "frontend/.env.production"
+  ],
+  "directory_structure": "backend/src/\n  modules/\n    candidate/ - Candidate models and services\n    student/ - Student authentication and portal APIs\n    verification/ - OTP verification system\n  middleware/ - Authentication middleware\n  app.js - Main Express app with CORS configuration\nfrontend/\n  app/student/ - Student portal pages\n  components/student/ - Student UI components"
+}

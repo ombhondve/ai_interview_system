@@ -1,0 +1,23 @@
+{
+  "id": "FEAT-001",
+  "type": "fix",
+  "description": "Fix candidate status corruption bug that changes status to 'Project Assigned' after project assignment, causing authentication failures",
+  "status": "pending",
+  "steps": [
+    "Fix assignProjectToCandidate() in backend/src/modules/candidate/candidate.service.js - remove conditional logic that always sets status to 'Project Assigned' and instead keep status as 'approved' while setting projectSubmissionStatus to 'not_started'",
+    "Fix updateCandidateProjectAssignment() in backend/src/modules/student/student.service.js - change status: 'Project Assigned' to status: 'approved'",
+    "Search for any other candidate.status = 'Project Assigned' or 'Project Completed' assignments using grep: 'grep -r \"status.*=.*Project\" backend/src/'"
+  ],
+  "acceptance_criteria": [
+    "After project assignment, candidate.status remains 'approved' (not 'Project Assigned')",
+    "Candidate can authenticate successfully after project assignment (requireVerifiedSession middleware allows access)",
+    "Project workflow is tracked in projectSubmissionStatus field instead of status field"
+  ],
+  "verification": [
+    "Run existing candidate tests: cd backend && npm test -- --testPathPattern=candidate",
+    "Manually test project assignment flow with a test candidate",
+    "Verify candidate.status === 'approved' after assignment in database"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

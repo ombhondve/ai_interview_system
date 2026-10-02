@@ -98,11 +98,12 @@ export async function getCandidateByPortalToken(
     }
 
     /**
-     * Only approved candidates can
+     * Only approved or Project Assigned candidates can
      * access the candidate portal.
      */
     if (
-      candidate.status !== "approved"
+      candidate.status !== "approved" &&
+      candidate.status !== "Project Assigned"
     ) {
       return null;
     }
@@ -223,10 +224,11 @@ export async function getCandidateBySessionToken(
     }
 
     /**
-     * Candidate must still be approved.
+     * Candidate must still be approved or Project Assigned.
      */
     if (
-      candidate.status !== "approved"
+      candidate.status !== "approved" &&
+      candidate.status !== "Project Assigned"
     ) {
       return null;
     }

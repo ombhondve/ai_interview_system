@@ -1,0 +1,7 @@
+{
+  "task_id": "student-flow-audit",
+  "task_description": "Complete audit and fix of all student-related functionality in AI Interview System backend",
+  "status": "pending",
+  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003", "FEAT-004"],
+  "blocked_reason": null
+}

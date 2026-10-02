@@ -87,8 +87,8 @@ export async function requireVerifiedSession(req, res, next) {
       });
     }
     
-    // 4. Check candidate status
-    if (candidate.status !== "approved") {
+    // 4. Check candidate status - allow both "approved" and "Project Assigned"
+    if (candidate.status !== "approved" && candidate.status !== "Project Assigned") {
       return res.status(403).json({
         message: "Candidate account is not active."
       });

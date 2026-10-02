@@ -1,0 +1,22 @@
+{
+  "id": "FEAT-002",
+  "type": "fix",
+  "description": "Fix cookie configuration issues for cross-domain deployment - logout uses hardcoded SameSite=Lax that doesn't match login cookie settings",
+  "status": "pending",
+  "steps": [
+    "Fix logoutController in backend/src/modules/student/student.controller.js - replace res.setHeader('Set-Cookie', ...) with res.clearCookie() using same settings as verification controller",
+    "Ensure cookie settings match between login (/api/verification/verify) and logout (/api/student/logout): sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', secure: process.env.NODE_ENV === 'production'"
+  ],
+  "acceptance_criteria": [
+    "Login and logout use identical cookie configuration",
+    "Cookies work correctly in production cross-domain environment (frontend and backend on different Vercel domains)",
+    "Logout successfully clears candidate_session cookie"
+  ],
+  "verification": [
+    "Test logout endpoint clears cookie with correct headers",
+    "Verify production cookie settings: sameSite='none', secure=true when NODE_ENV=production",
+    "Test cross-domain cookie behavior in development (sameSite='lax')"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}
