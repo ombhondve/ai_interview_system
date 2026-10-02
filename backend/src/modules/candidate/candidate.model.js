@@ -207,7 +207,7 @@ const candidateSchema = new mongoose.Schema(
 
         assignedProjectId: {
             type: mongoose.Schema.Types.ObjectId,
-            ref: "DemoProject"
+            ref: "Project"
         },
 
         submissionUrl: {

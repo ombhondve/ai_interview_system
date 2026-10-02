@@ -261,7 +261,11 @@ export async function getAssignedProjectController(req, res) {
     
     return res.status(200).json(response);
   } catch (error) {
-    console.error("Error getting assigned project:", error);
+    console.error("Error getting assigned project:", {
+      message: error?.message,
+      name: error?.name,
+      stack: error?.stack
+    });
     return res.status(500).json({
       message: "Unable to load project details."
     });
