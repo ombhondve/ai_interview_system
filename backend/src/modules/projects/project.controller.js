@@ -723,13 +723,13 @@ export const uploadAdminPdf = async (req, res) => {
     const projectId = String(req.params.id || "").trim();
     const { filename, data } = req.body || {};
 
-    console.log("DEBUG - Admin PDF upload started:", {
+    console.log("ADMIN PDF UPLOAD START:", {
       projectId,
       hasFilename: !!filename,
       filenameLength: filename?.length,
       hasData: !!data,
       dataLength: data?.length,
-      dataPrefix: data?.substring(0, 50) + '...'
+      dataPrefix: data?.substring(0, 30) + '...'
     });
 
     if (!projectId) {
@@ -747,7 +747,7 @@ export const uploadAdminPdf = async (req, res) => {
     const base64 = data.replace(/^data:application\/pdf;base64,/i, "").trim();
     const pdfBuffer = Buffer.from(base64, "base64");
 
-    console.log("DEBUG - PDF buffer created:", {
+    console.log("PDF BUFFER CREATED:", {
       bufferSize: pdfBuffer.length,
       filename: typeof filename === "string" ? filename : "admin-project.pdf"
     });
@@ -757,8 +757,9 @@ export const uploadAdminPdf = async (req, res) => {
       typeof filename === "string" ? filename : "admin-project.pdf"
     );
 
-    console.log("DEBUG - Cloudinary upload successful:", {
-      cloudinaryUrl: result.secure_url,
+    console.log("CLOUDINARY UPLOAD SUCCESS:", {
+      projectId,
+      hasCloudinaryUrl: !!result.secure_url,
       urlLength: result.secure_url?.length,
       isCloudinary: result.secure_url?.includes('cloudinary.com')
     });
@@ -770,11 +771,11 @@ export const uploadAdminPdf = async (req, res) => {
     });
 
     if (!project) {
-      console.error("DEBUG - Project not found after update:", { projectId });
+      console.error("PROJECT NOT FOUND AFTER UPDATE:", { projectId });
       return res.status(404).json({ success: false, message: "Project not found." });
     }
 
-    console.log("DEBUG - MongoDB update successful:", {
+    console.log("MONGODB PROJECT UPDATED:", {
       projectId: project._id,
       pdfUrl: project.pdfUrl,
       detailedPdfUrl: project.detailedPdfUrl,
@@ -789,7 +790,7 @@ export const uploadAdminPdf = async (req, res) => {
       project,
     });
   } catch (error) {
-    console.error("Admin PDF upload error:", error);
+    console.error("ADMIN PDF UPLOAD ERROR:", error);
     return res.status(400).json({
       success: false,
       message: error?.message || "Failed to upload admin PDF.",

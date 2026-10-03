@@ -82,6 +82,25 @@ export default function ProjectDetailsPage() {
     useState(false);
 
   /* =======================================================
+     PDF UPLOAD STATE
+  ======================================================= */
+
+  const [selectedPdf, setSelectedPdf] =
+    useState<File | null>(null);
+
+  const [pdfData, setPdfData] =
+    useState<string>("");
+
+  const [pdfUploading, setPdfUploading] =
+    useState(false);
+
+  const [pdfError, setPdfError] =
+    useState("");
+
+  const [pdfSuccess, setPdfSuccess] =
+    useState("");
+
+  /* =======================================================
      LOAD PROJECT
   ======================================================= */
 
@@ -210,6 +229,74 @@ export default function ProjectDetailsPage() {
     };
 
   /* =======================================================
+     PDF UPLOAD HANDLER
+  ======================================================= */
+
+  const handleUploadPdf = async () => {
+    if (!project || !selectedPdf || !pdfData) {
+      setPdfError("Please select a PDF file first.");
+      return;
+    }
+
+    try {
+      setPdfUploading(true);
+      setPdfError("");
+      setPdfSuccess("");
+
+      console.log("DEBUG - Starting PDF upload for project:", {
+        projectId: project.id,
+        filename: selectedPdf.name,
+        fileSize: selectedPdf.size,
+        hasPdfData: !!pdfData
+      });
+
+      // Call the uploadAdminProjectPdf service method
+      const uploadResult = await projectService.uploadAdminProjectPdf(
+        project.id,
+        pdfData,
+        selectedPdf.name
+      );
+
+      console.log("DEBUG - PDF upload response:", {
+        success: !!uploadResult.url,
+        urlLength: uploadResult.url?.length,
+        hasProject: !!uploadResult.project,
+        projectPdfUrl: uploadResult.project?.pdfUrl
+      });
+
+      if (!uploadResult?.url) {
+        throw new Error("PDF upload did not return a Cloudinary URL.");
+      }
+
+      if (!uploadResult.project?.pdfUrl) {
+        throw new Error("Project update did not return a PDF URL.");
+      }
+
+      // Clear the selected PDF
+      setSelectedPdf(null);
+      setPdfData("");
+
+      // Show success message
+      setPdfSuccess("Project PDF uploaded successfully to Cloudinary.");
+
+      // Reload the project to show updated PDF URL
+      await loadProject();
+
+      console.log("DEBUG - Project reloaded after PDF upload");
+      
+    } catch (err) {
+      console.error("PDF upload error:", err);
+      setPdfError(
+        err instanceof Error
+          ? err.message
+          : "Failed to upload PDF. Please try again."
+      );
+    } finally {
+      setPdfUploading(false);
+    }
+  };
+
+  /* =======================================================
      LOADING
   ======================================================= */
 
@@ -259,25 +346,24 @@ export default function ProjectDetailsPage() {
   }
 
   /* =======================================================
+     ASSIGNED CANDIDATES HELPER
+  ======================================================= */
+
+  function getAssignedCandidates(project: ProjectDetails): AssignedCandidate[] {
+    // If assignedCandidates exists and is an array, return it
+    if (Array.isArray(project.assignedCandidates)) {
+      return project.assignedCandidates;
+    }
+    
+    // Otherwise return empty array
+    return [];
+  }
+
+  /* =======================================================
      ASSIGNED CANDIDATES
   ======================================================= */
 
-  /*
-   * The old code was:
-   *
-   * const assignedCandidates =
-   *   project.assignedCandidates ?? [];
-   *
-   * That assumes that assignedCandidates is ALWAYS
-   * the field returned by the backend.
-   *
-   * We normalize the data here instead.
-   */
-
-  const assignedCandidates =
-    getAssignedCandidates(
-      project
-    );
+  const assignedCandidates = getAssignedCandidates(project);
 
   /*
    * Some APIs return a count separately.
@@ -561,6 +647,148 @@ export default function ProjectDetailsPage() {
 
         </section>
       )}
+
+      {/* =================================================
+          PROJECT PDF UPLOAD
+      ================================================= */}
+
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-slate-900">
+          Project PDF
+        </h2>
+
+        <div className="mt-4">
+          {project.pdfUrl ? (
+            <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+              <p className="text-sm font-medium text-green-900">
+                PDF already uploaded
+              </p>
+              <a
+                href={project.pdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-flex items-center gap-2 text-sm text-green-700 hover:text-green-800"
+              >
+                View current PDF
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-medium text-amber-900">
+                No PDF uploaded yet
+              </p>
+              <p className="mt-1 text-sm text-amber-700">
+                Students will see "Project PDF is not available yet" until a PDF is uploaded.
+              </p>
+            </div>
+          )}
+
+          <div className="mt-6">
+            <label className="block text-sm font-medium text-slate-700">
+              Upload Project PDF
+            </label>
+            
+            <div className="mt-2">
+              <input
+                type="file"
+                accept=".pdf,application/pdf"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) {
+                    setSelectedPdf(null);
+                    setPdfData("");
+                    setPdfError("");
+                    return;
+                  }
+
+                  // Validate file
+                  if (file.type !== "application/pdf") {
+                    setPdfError("Please select a PDF file.");
+                    setSelectedPdf(null);
+                    setPdfData("");
+                    return;
+                  }
+
+                  if (file.size > 10 * 1024 * 1024) { // 10 MB
+                    setPdfError("PDF file must be less than 10 MB.");
+                    setSelectedPdf(null);
+                    setPdfData("");
+                    return;
+                  }
+
+                  setPdfError("");
+                  setSelectedPdf(file);
+
+                  // Convert to base64
+                  const reader = new FileReader();
+                  reader.onload = (event) => {
+                    const result = event.target?.result;
+                    if (typeof result === "string") {
+                      setPdfData(result);
+                    }
+                  };
+                  reader.readAsDataURL(file);
+                }}
+                className="block w-full text-sm text-slate-500 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-800"
+                disabled={pdfUploading}
+              />
+              
+              <p className="mt-2 text-xs text-slate-500">
+                Select a PDF file (max 10 MB). The PDF will be uploaded to Cloudinary when you click "Save PDF".
+              </p>
+            </div>
+
+            {selectedPdf && (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <p className="text-sm font-medium text-slate-900">
+                  PDF selected
+                </p>
+                <p className="mt-1 text-sm text-slate-700">
+                  {selectedPdf.name} ({(selectedPdf.size / 1024 / 1024).toFixed(2)} MB)
+                </p>
+                
+                <button
+                  type="button"
+                  onClick={handleUploadPdf}
+                  disabled={pdfUploading || !pdfData}
+                  className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {pdfUploading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Uploading PDF...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10" />
+                      </svg>
+                      Save PDF to Project
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {pdfError && (
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4">
+                <p className="text-sm font-medium text-red-900">
+                  {pdfError}
+                </p>
+              </div>
+            )}
+
+            {pdfSuccess && (
+              <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4">
+                <p className="text-sm font-medium text-green-900">
+                  {pdfSuccess}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </section>
 
       {/* =================================================
           ASSIGNED CANDIDATES
