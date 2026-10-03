@@ -20,47 +20,193 @@ const VERIFICATION_STATUS = {
 
 /**
  * Structure repository content for AI analysis
+ * 
+ * IMPORTANT: Now includes ACTUAL FILE CONTENT for evidence-based verification
  */
 function structureRepositoryContent(repoData) {
-  const { structure, keyFiles, metadata, statistics } = repoData;
+  const { structure, keyFiles, metadata, statistics, readme, security } = repoData;
+  
+  // Format file structure with actual content
+  const formattedKeyFiles = {};
+  if (keyFiles && typeof keyFiles === 'object') {
+    Object.entries(keyFiles).forEach(([path, fileData]) => {
+      formattedKeyFiles[path] = {
+        content: fileData.content || null,
+        size: fileData.size || 0,
+        truncated: fileData.truncated || false,
+        type: fileData.type || 'unknown'
+      };
+    });
+  }
+  
+  // Extract README content separately
+  const readmeContent = readme?.content || 
+                       (keyFiles && keyFiles['README.md']?.content) ||
+                       (keyFiles && keyFiles['README.txt']?.content) ||
+                       (keyFiles && keyFiles['readme.md']?.content);
   
   return {
     structure: {
       files: structure?.files || [],
       directories: structure?.directories || [],
       size: structure?.size || "unknown",
-      languageBreakdown: statistics?.languages || {}
+      languageBreakdown: statistics?.languages || {},
+      totalFilesAnalyzed: metadata?.filesAnalyzed || 0,
+      filesWithContent: Object.keys(formattedKeyFiles).length
     },
-    keyFiles: keyFiles || {},
+    keyFiles: formattedKeyFiles,
     metadata: {
       totalCommits: statistics?.totalCommits || 0,
       recentActivity: statistics?.lastCommit || "unknown",
       dependencies: metadata?.dependencies || [],
-      buildFiles: metadata?.buildFiles || []
-    }
+      buildFiles: metadata?.buildFiles || [],
+      platform: metadata?.platform || "unknown",
+      repositorySize: metadata?.totalSize || 0,
+      readmeAvailable: !!readmeContent,
+      security: security || {
+        codeExecution: false,
+        fileDownload: false,
+        onlyMetadata: false
+      }
+    },
+    readme: readmeContent ? {
+      content: readmeContent.substring(0, 5000), // Limit to 5000 chars for AI
+      truncated: readmeContent.length > 5000
+    } : null
   };
 }
 
 /**
- * Prepare project requirements for verification
+ * Prepare ACTUAL project requirements for verification
+ * 
+ * Converts MongoDB Project model to AI verification format
  */
 function prepareProjectRequirements(project) {
+  // Extract requirements from various project fields
+  const allRequirements = [];
+  
+  // Core requirements from requirements array
+  if (project.requirements && Array.isArray(project.requirements)) {
+    project.requirements.forEach((req, index) => {
+      if (req && typeof req === 'string') {
+        allRequirements.push({
+          id: `core-req-${index + 1}`,
+          description: req,
+          type: "feature",
+          critical: true
+        });
+      }
+    });
+  }
+  
+  // Functional requirements
+  if (project.functionalRequirements && Array.isArray(project.functionalRequirements)) {
+    project.functionalRequirements.forEach((req, index) => {
+      if (req && typeof req === 'string') {
+        allRequirements.push({
+          id: `func-req-${index + 1}`,
+          description: req,
+          type: "feature",
+          critical: true
+        });
+      }
+    });
+  }
+  
+  // Non-functional requirements
+  if (project.nonFunctionalRequirements && Array.isArray(project.nonFunctionalRequirements)) {
+    project.nonFunctionalRequirements.forEach((req, index) => {
+      if (req && typeof req === 'string') {
+        allRequirements.push({
+          id: `nonfunc-req-${index + 1}`,
+          description: req,
+          type: "quality",
+          critical: false
+        });
+      }
+    });
+  }
+  
+  // Extract deliverables as requirements
+  if (project.deliverables && Array.isArray(project.deliverables)) {
+    project.deliverables.forEach((deliverable, index) => {
+      if (deliverable && typeof deliverable === 'string') {
+        allRequirements.push({
+          id: `deliverable-${index + 1}`,
+          description: deliverable,
+          type: "deliverable",
+          critical: true
+        });
+      }
+    });
+  }
+  
+  // Extract expected files from suggested folder structure
+  const expectedFiles = [];
+  if (project.suggestedFolderStructure && Array.isArray(project.suggestedFolderStructure)) {
+    project.suggestedFolderStructure.forEach(item => {
+      if (item && typeof item === 'string') {
+        // Look for file references in the structure
+        if (item.includes('.') && !item.includes('node_modules') && !item.includes('dist')) {
+          const parts = item.split('/');
+          const lastPart = parts[parts.length - 1];
+          if (lastPart.includes('.')) {
+            expectedFiles.push(lastPart);
+          }
+        }
+      }
+    });
+  }
+  
+  // Add standard expected files
+  expectedFiles.push('package.json', 'README.md');
+  
+  // Extract evaluation criteria from project
+  const evaluationCriteria = {};
+  if (project.evaluationCriteria && Array.isArray(project.evaluationCriteria)) {
+    // Convert array to weighted object if needed
+    project.evaluationCriteria.forEach(criterion => {
+      if (criterion && criterion.criterion) {
+        const key = criterion.criterion.toLowerCase().replace(/\s+/g, '_');
+        evaluationCriteria[key] = criterion.weight / 100 || 0.25; // Default weight if not specified
+      }
+    });
+  }
+  
+  // Fallback to default weights if no evaluation criteria
+  if (Object.keys(evaluationCriteria).length === 0) {
+    evaluationCriteria.functionality = 0.4;
+    evaluationCriteria.code_quality = 0.3;
+    evaluationCriteria.documentation = 0.2;
+    evaluationCriteria.completeness = 0.1;
+  }
+  
+  // Extract minimal features from modules
+  const minimalFeatures = [];
+  if (project.modules && Array.isArray(project.modules)) {
+    project.modules.forEach(module => {
+      if (module && module.name) {
+        minimalFeatures.push(module.name);
+      }
+    });
+  }
+  
   return {
     title: project.title || "Untitled Project",
     description: project.description || "",
     difficulty: project.difficulty || "intermediate",
-    requirements: project.requirements || [],
-    technologyStack: project.technologyStack || [],
-    expectedFiles: project.expectedFiles || [],
-    minimalFeatures: project.minimalFeatures || [],
-    evaluationCriteria: project.evaluationCriteria || {
-      functionality: 0.4,
-      codeQuality: 0.3,
-      documentation: 0.2,
-      creativity: 0.1
-    },
-    deadline: project.deadline,
-    maxSizeMB: project.maxSizeMB || 50
+    requirements: allRequirements,
+    technologyStack: project.technologies || [],
+    expectedFiles: [...new Set(expectedFiles)], // Remove duplicates
+    minimalFeatures: minimalFeatures,
+    evaluationCriteria: evaluationCriteria,
+    // Additional context from actual project
+    projectType: project.projectType || "fullstack",
+    modules: project.modules || [],
+    implementationPlan: project.implementationPlan || [],
+    apiEndpoints: project.apiEndpoints || [],
+    databaseDesign: project.databaseDesign || [],
+    testingPlan: project.testingPlan || []
   };
 }
 
@@ -174,39 +320,98 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       };
     }
     
-    // Step 2: Fetch project data (in real implementation, this would come from database)
-    // For now, using mock project data structure
-    const mockProject = {
-      id: projectId,
-      title: "Sample Project",
-      description: "A sample project for verification",
-      difficulty: "intermediate",
-      requirements: [
-        {
-          id: "req-1",
-          description: "Implement core functionality",
-          type: "feature",
-          critical: true
-        },
-        {
-          id: "req-2",
-          description: "Include README documentation",
-          type: "documentation",
-          critical: false
-        }
-      ],
-      technologyStack: ["JavaScript", "Node.js"],
-      expectedFiles: ["package.json", "README.md"],
-      minimalFeatures: ["API endpoints", "Database integration"],
-      evaluationCriteria: {
-        functionality: 0.4,
-        codeQuality: 0.3,
-        documentation: 0.2,
-        creativity: 0.1
-      }
-    };
+    // Step 2: Fetch ACTUAL project data from MongoDB
+    logger.debug(`Fetching actual project ${projectId} from database`);
+    let actualProject = null;
     
-    const projectRequirements = prepareProjectRequirements(mockProject);
+    try {
+      // Import Project model dynamically to avoid circular dependencies
+      const Project = (await import("./project.model.js")).default;
+      
+      // Fetch project with selected fields for verification
+      actualProject = await Project.findById(projectId)
+        .select("title description difficulty technologies requirements functionalRequirements nonFunctionalRequirements modules implementationPlan evaluationCriteria deliverables suggestedFolderStructure apiEndpoints databaseDesign testingPlan")
+        .lean();
+      
+      if (!actualProject) {
+        logger.warn(`Project ${projectId} not found in database`);
+        return {
+          status: VERIFICATION_STATUS.REJECTED,
+          confidence: 0.1,
+          summary: `Project not found: Invalid project ID`,
+          detailedAnalysis: {
+            repositoryValidity: {
+              isValid: false,
+              issues: [`Assigned project not found in database`],
+              strengths: []
+            },
+            requirementsAssessment: [],
+            technicalEvaluation: {
+              codeQuality: "POOR",
+              projectOrganization: "POOR",
+              documentation: "POOR",
+              issuesFound: ["Invalid project assignment"]
+            },
+            overallAssessment: "Cannot verify project: Assigned project does not exist in system."
+          },
+          recommendations: {
+            forStudent: ["Please contact support: Your assigned project is invalid"],
+            forReviewer: ["Project ID not found in database, candidate assignment issue"]
+          },
+          verificationMetadata: {
+            filesAnalyzed: 0,
+            requirementsTotal: 0,
+            requirementsMet: 0,
+            requirementsPartial: 0,
+            requirementsMissing: 0,
+            analysisTimestamp: new Date().toISOString(),
+            error: `Project ${projectId} not found`
+          },
+          rawData: null
+        };
+      }
+      
+      logger.info(`Loaded actual project: ${actualProject.title} (${actualProject.difficulty})`);
+      
+    } catch (projectError) {
+      logger.error(`Failed to fetch project ${projectId}:`, projectError);
+      return {
+        status: VERIFICATION_STATUS.REJECTED,
+        confidence: 0.1,
+        summary: `Project data access failed: ${projectError.message}`,
+        detailedAnalysis: {
+          repositoryValidity: {
+            isValid: false,
+            issues: [`Failed to load project requirements: ${projectError.message}`],
+            strengths: []
+          },
+          requirementsAssessment: [],
+          technicalEvaluation: {
+            codeQuality: "POOR",
+            projectOrganization: "POOR",
+            documentation: "POOR",
+            issuesFound: ["Project data access error"]
+          },
+          overallAssessment: "Cannot verify project: System error accessing project requirements."
+        },
+        recommendations: {
+          forStudent: ["System error occurred, please try again or contact support"],
+          forReviewer: ["Database error loading project, needs investigation"]
+        },
+        verificationMetadata: {
+          filesAnalyzed: 0,
+          requirementsTotal: 0,
+          requirementsMet: 0,
+          requirementsPartial: 0,
+          requirementsMissing: 0,
+          analysisTimestamp: new Date().toISOString(),
+          error: `Project fetch failed: ${projectError.message}`
+        },
+        rawData: null
+      };
+    }
+    
+    const projectRequirements = prepareProjectRequirements(actualProject);
     
     // Step 3: Fetch repository content safely
     logger.debug("Fetching repository content");
@@ -257,11 +462,66 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     logger.debug("Preparing AI verification request");
     const messages = prepareVerificationMessages(projectRequirements, structuredRepoContent);
     
-    logger.info("Calling AI for project verification");
-    const aiResult = await generateStructuredAI(messages);
+    // Check if we have enough file content for meaningful analysis
+    const filesWithContent = Object.keys(structuredRepoContent.keyFiles || {}).length;
+    if (filesWithContent === 0) {
+      logger.warn("No file content available for AI analysis");
+      // Still proceed but note the limitation
+      messages[1].content += "\n\nIMPORTANT: No actual file content could be fetched from the repository. Analysis will be based on repository structure and metadata only.";
+    }
     
-    // Step 6: Validate and process AI result
-    validateVerificationResult(aiResult);
+    logger.info("Calling AI for project verification");
+    let aiResult;
+    try {
+      aiResult = await generateStructuredAI(messages);
+      
+      // Step 6: Validate and process AI result
+      validateVerificationResult(aiResult);
+      
+    } catch (aiError) {
+      logger.error("AI verification failed:", aiError);
+      
+      // Handle AI failure gracefully
+      return {
+        status: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        confidence: 0.3,
+        summary: `AI analysis failed: ${aiError.message}. Requires manual review.`,
+        detailedAnalysis: {
+          repositoryValidity: {
+            isValid: repoContent.success,
+            issues: [`AI verification failed: ${aiError.message}`],
+            strengths: filesWithContent > 0 ? [`${filesWithContent} files analyzed`] : []
+          },
+          requirementsAssessment: [],
+          technicalEvaluation: {
+            codeQuality: "UNKNOWN",
+            projectOrganization: "UNKNOWN",
+            documentation: "UNKNOWN",
+            issuesFound: ["AI verification system error"]
+          },
+          overallAssessment: "AI verification could not complete. Project requires manual review by administrator."
+        },
+        recommendations: {
+          forStudent: ["Verification system encountered an error. Your project will be reviewed manually."],
+          forReviewer: ["AI verification failed, requires manual review"]
+        },
+        verificationMetadata: {
+          filesAnalyzed: filesWithContent,
+          requirementsTotal: projectRequirements.requirements.length,
+          requirementsMet: 0,
+          requirementsPartial: 0,
+          requirementsMissing: 0,
+          analysisTimestamp: new Date().toISOString(),
+          error: `AI verification failed: ${aiError.message}`,
+          aiFailed: true
+        },
+        rawData: {
+          projectRequirements,
+          repositoryContent: structuredRepoContent,
+          repoMetadata: repoContent.data?.metadata
+        }
+      };
+    }
     
     const verificationTime = Date.now() - startTime;
     logger.info(`Verification completed in ${verificationTime}ms with status: ${aiResult.verificationStatus}`);
@@ -333,7 +593,7 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
 }
 
 /**
- * Process verification result for database storage
+ * Process verification result for database storage with EVIDENCE PRESERVATION
  */
 export function processVerificationForStorage(verificationResult, candidateId, projectId) {
   if (!verificationResult) {
@@ -357,6 +617,60 @@ export function processVerificationForStorage(verificationResult, candidateId, p
   const requirementsPartial = requirementsAssessment.filter(req => req.status === "PARTIAL").length;
   const requirementsMissing = requirementsAssessment.filter(req => req.status === "MISSING").length;
   
+  // Extract evidence from requirements assessment
+  const evidenceSummary = {};
+  if (requirementsAssessment && Array.isArray(requirementsAssessment)) {
+    requirementsAssessment.forEach(req => {
+      if (req.evidence) {
+        evidenceSummary[req.requirementId] = {
+          status: req.status,
+          evidence: req.evidence,
+          relevantFiles: req.relevantFiles || [],
+          notes: req.notes || ""
+        };
+      }
+    });
+  }
+  
+  // Extract file analysis statistics
+  const fileAnalysisStats = {
+    filesWithContent: rawData?.repositoryContent?.structure?.filesWithContent || 0,
+    totalFilesAnalyzed: verificationMetadata?.filesAnalyzed || 0,
+    repositorySize: rawData?.repositoryContent?.structure?.size || "unknown",
+    languages: rawData?.repositoryContent?.structure?.languageBreakdown || {},
+    security: rawData?.repositoryContent?.metadata?.security || {}
+  };
+  
+  // Compress evidence for storage (keep key information only)
+  const compressedEvidence = {};
+  Object.entries(evidenceSummary).forEach(([reqId, evidence]) => {
+    compressedEvidence[reqId] = {
+      status: evidence.status,
+      evidence: evidence.evidence ? evidence.evidence.substring(0, 500) : "", // Limit evidence length
+      evidenceTruncated: evidence.evidence && evidence.evidence.length > 500,
+      fileCount: evidence.relevantFiles ? evidence.relevantFiles.length : 0,
+      hasNotes: !!evidence.notes
+    };
+  });
+  
+  // Preserve critical evidence for admin review
+  const criticalEvidence = {};
+  const criticalRequirements = requirementsAssessment.filter(req => 
+    req.critical !== false && (req.status === "MISSING" || req.status === "PARTIAL")
+  );
+  
+  criticalRequirements.forEach(req => {
+    if (req.evidence || req.relevantFiles) {
+      criticalEvidence[req.requirementId] = {
+        description: req.description || "",
+        status: req.status,
+        evidence: req.evidence ? req.evidence.substring(0, 1000) : "",
+        relevantFiles: req.relevantFiles || [],
+        notes: req.notes || ""
+      };
+    }
+  });
+  
   return {
     candidateId,
     projectId,
@@ -376,6 +690,12 @@ export function processVerificationForStorage(verificationResult, candidateId, p
     organizationScore: mapQualityToScore(detailedAnalysis?.technicalEvaluation?.projectOrganization),
     documentationScore: mapQualityToScore(detailedAnalysis?.technicalEvaluation?.documentation),
     
+    // Evidence and file analysis
+    evidenceSummary: compressedEvidence,
+    criticalEvidence: Object.keys(criticalEvidence).length > 0 ? criticalEvidence : null,
+    fileAnalysis: fileAnalysisStats,
+    technicalEvaluation: detailedAnalysis?.technicalEvaluation || {},
+    
     // Recommendations
     studentRecommendations: recommendations?.forStudent || [],
     reviewerNotes: recommendations?.forReviewer || [],
@@ -385,14 +705,20 @@ export function processVerificationForStorage(verificationResult, candidateId, p
     verificationDurationMs: verificationMetadata?.verificationTimeMs || 0,
     aiModel: verificationMetadata?.aiModel,
     repositoryUrl: verificationMetadata?.repositoryUrl,
+    projectTitle: rawData?.projectRequirements?.title || "Unknown Project",
     
     // Full data (can be stored separately or in compressed form)
     fullAnalysis: {
       detailedAnalysis,
+      evidenceCount: Object.keys(evidenceSummary).length,
+      criticalEvidenceCount: Object.keys(criticalEvidence).length,
       rawDataPreview: rawData ? {
         projectTitle: rawData.projectRequirements?.title,
         repoSize: rawData.repositoryContent?.structure?.size,
-        filesAnalyzed: rawData.repositoryContent?.structure?.files?.length
+        filesAnalyzed: rawData.repositoryContent?.structure?.files?.length,
+        filesWithContent: rawData.repositoryContent?.structure?.filesWithContent || 0,
+        languages: Object.keys(rawData.repositoryContent?.structure?.languageBreakdown || {}),
+        dependencies: rawData.repositoryContent?.metadata?.dependencies || []
       } : null
     }
   };

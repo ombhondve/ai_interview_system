@@ -751,12 +751,291 @@ function getFileExtension(filename) {
 }
 
 /**
+ * Comprehensive security validation for repository files
+ */
+function validateFileSecurity(path, content = null) {
+  const securityIssues = [];
+  const warnings = [];
+  
+  // 1. Check for dangerous file types
+  const dangerousExtensions = [
+    '.exe', '.dll', '.so', '.dylib', '.bin', '.o', '.obj', '.msi', '.app',
+    '.com', '.bat', '.cmd', '.ps1', '.sh', '.bash', '.vbs', '.wsf',
+    '.jar', '.war', '.ear', '.class', '.pyc', '.pyo', '.pyd',
+    '.zip', '.rar', '.tar', '.gz', '.7z', '.bz2', '.xz', '.iso', '.img',
+    '.dmg', '.pkg', '.deb', '.rpm', '.apk', '.msix', '.appx'
+  ];
+  
+  const ext = getFileExtension(path).toLowerCase();
+  if (dangerousExtensions.includes(`.${ext}`)) {
+    securityIssues.push(`Dangerous file extension: .${ext}`);
+  }
+  
+  // 2. Check for sensitive file patterns
+  const sensitivePatterns = [
+    /\.env\b/i,
+    /\.secret/i,
+    /\.private/i,
+    /secret/i,
+    /password/i,
+    /token/i,
+    /key/i,
+    /credential/i,
+    /\.pem$/i,
+    /\.key$/i,
+    /\.cert$/i,
+    /\.pfx$/i,
+    /\.jks$/i,
+    /\.keystore$/i,
+    /aws[_-]?access/i,
+    /aws[_-]?secret/i,
+    /azure[_-]?key/i,
+    /gcp[_-]?key/i,
+    /database[_-]?url/i,
+    /connection[_-]?string/i
+  ];
+  
+  for (const pattern of sensitivePatterns) {
+    if (pattern.test(path)) {
+      securityIssues.push(`Sensitive file pattern: ${path}`);
+      break;
+    }
+  }
+  
+  // 3. Check for suspicious content if provided
+  if (content && typeof content === 'string') {
+    // Check for prompt injection attempts
+    const injectionPatterns = [
+      /ignore.*previous.*instructions/i,
+      /system.*prompt/i,
+      /internal.*instructions/i,
+      /hidden.*prompt/i,
+      /you.*are.*now/i,
+      /role.*play/i,
+      /act.*as/i,
+      /pretend.*to.*be/i,
+      /disregard.*previous/i,
+      /forget.*everything/i,
+      /your.*creators/i,
+      /your.*developers/i,
+      /api.*key/i,
+      /bearer.*token/i,
+      /basic.*auth/i
+    ];
+    
+    for (const pattern of injectionPatterns) {
+      if (pattern.test(content)) {
+        warnings.push(`Potential prompt injection detected in ${path}`);
+        // Log but don't block - content is evidence, not instructions
+        break;
+      }
+    }
+    
+    // Check for extremely large content
+    if (content.length > 100000) { // 100KB
+      warnings.push(`Large file content: ${content.length} bytes in ${path}`);
+    }
+  }
+  
+  // 4. Check for path traversal attempts
+  if (path.includes('..') || path.includes('~') || path.includes('//')) {
+    securityIssues.push(`Potential path traversal: ${path}`);
+  }
+  
+  // 5. Check for binary content indicators
+  if (content) {
+    const binaryThreshold = 0.3; // 30% non-printable characters
+    let nonPrintableCount = 0;
+    const sampleSize = Math.min(content.length, 1000);
+    
+    for (let i = 0; i < sampleSize; i++) {
+      const charCode = content.charCodeAt(i);
+      if (charCode < 32 && charCode !== 9 && charCode !== 10 && charCode !== 13) {
+        nonPrintableCount++;
+      }
+    }
+    
+    const binaryRatio = nonPrintableCount / sampleSize;
+    if (binaryRatio > binaryThreshold) {
+      securityIssues.push(`Binary content detected in ${path} (${Math.round(binaryRatio * 100)}% non-printable)`);
+    }
+  }
+  
+  return {
+    safe: securityIssues.length === 0,
+    securityIssues,
+    warnings,
+    extension: ext
+  };
+}
+
+/**
+ * SAFELY fetch actual file content from GitHub with security limits
+ */
+async function fetchFileContentSafely(owner, repo, path, branch = 'main') {
+  try {
+    // Perform comprehensive security validation
+    const securityCheck = validateFileSecurity(path);
+    
+    if (!securityCheck.safe) {
+      return {
+        available: false,
+        reason: `Security issue: ${securityCheck.securityIssues[0]}`,
+        content: null,
+        size: 0,
+        securityIssues: securityCheck.securityIssues
+      };
+    }
+    
+    // Skip large files (> 1MB)
+    const MAX_FILE_SIZE = 1024 * 1024; // 1MB
+    const MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10MB total across all files
+    // Size check will be done by parent function
+    
+    // Skip binary/text files detection
+    const textExtensions = [
+      '.js', '.ts', '.jsx', '.tsx', '.py', '.java', '.cpp', '.c', '.cc',
+      '.cs', '.php', '.rb', '.go', '.rs', '.swift', '.kt', '.kts', '.scala',
+      '.html', '.htm', '.css', '.scss', '.sass', '.less', '.json', '.yml',
+      '.yaml', '.xml', '.md', '.txt', '.rst', '.ini', '.cfg', '.conf',
+      '.env', '.gitignore', '.dockerignore', '.editorconfig', '.prettierrc',
+      '.eslintrc', '.babelrc', '.npmrc', '.tsconfig', '.jsconfig', '.csv',
+      '.sql', '.graphql', '.gql', '.proto', '.thrift', '.sh', '.bash',
+      '.ps1', '.bat', '.cmd', '.Makefile', 'Dockerfile', '.dockerfile'
+    ];
+    
+    const isTextFile = textExtensions.includes(`.${securityCheck.extension}`) || 
+                      path.toLowerCase().includes('dockerfile') ||
+                      path.toLowerCase().includes('makefile');
+    
+    if (!isTextFile) {
+      return {
+        available: false,
+        reason: 'Non-text file type',
+        content: null,
+        size: 0,
+        extension: securityCheck.extension
+      };
+    }
+    
+    // Fetch file content from GitHub API
+    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${branch}`;
+    
+    const response = await axios.get(apiUrl, {
+      timeout: 10000,
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'RecruitAI-Backend'
+      }
+    });
+    
+    if (response.status === 200) {
+      const fileData = response.data;
+      
+      // Check size
+      if (fileData.size > MAX_FILE_SIZE) {
+        return {
+          available: false,
+          reason: `File too large (${fileData.size} bytes > ${MAX_FILE_SIZE} limit)`,
+          content: null,
+          size: fileData.size
+        };
+      }
+      
+      // Decode base64 content
+      let content = '';
+      try {
+        content = Buffer.from(fileData.content, 'base64').toString('utf-8');
+      } catch (decodeError) {
+        return {
+          available: false,
+          reason: 'Failed to decode file content',
+          content: null,
+          size: fileData.size
+        };
+      }
+      
+      // Perform content security validation
+      const contentSecurityCheck = validateFileSecurity(path, content);
+      
+      // Log warnings but don't block for content issues (they're evidence, not instructions)
+      if (contentSecurityCheck.warnings.length > 0) {
+        console.warn(`Security warnings for ${path}:`, contentSecurityCheck.warnings);
+      }
+      
+      // Truncate very large text files
+      const MAX_CONTENT_LENGTH = 50000; // 50KB max content
+      const truncated = content.length > MAX_CONTENT_LENGTH;
+      if (truncated) {
+        content = content.substring(0, MAX_CONTENT_LENGTH) + '\n...[truncated]';
+      }
+      
+      // Sanitize content (remove null bytes and control characters except standard whitespace)
+      content = content.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+      
+      return {
+        available: true,
+        content,
+        size: fileData.size,
+        truncated,
+        sha: fileData.sha,
+        path: fileData.path,
+        encoding: fileData.encoding,
+        security: {
+          warnings: contentSecurityCheck.warnings,
+          issues: contentSecurityCheck.securityIssues,
+          safe: contentSecurityCheck.safe
+        }
+      };
+    }
+    
+    return {
+      available: false,
+      reason: `GitHub API returned status ${response.status}`,
+      content: null,
+      size: 0
+    };
+    
+  } catch (error) {
+    if (error.response && error.response.status === 404) {
+      return {
+        available: false,
+        reason: 'File not found',
+        content: null,
+        size: 0
+      };
+    }
+    
+    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+      return {
+        available: false,
+        reason: 'GitHub API timeout',
+        content: null,
+        size: 0
+      };
+    }
+    
+    return {
+      available: false,
+      reason: `Failed to fetch file: ${error.message}`,
+      content: null,
+      size: 0
+    };
+  }
+}
+
+/**
  * Get key files from repository
  * 
  * Identifies important files for project analysis:
  * - Package.json, requirements.txt, etc.
  * - Source code files
  * - Configuration files
+ */
+/**
+ * Get key repository files WITH ACTUAL CONTENT for AI verification
+ * 
+ * IMPORTANT SECURITY: Never execute untrusted code
  */
 export async function getKeyRepositoryFiles(url) {
   try {
@@ -770,7 +1049,7 @@ export async function getKeyRepositoryFiles(url) {
     }
     
     const keyFilePatterns = [
-      // Package management
+      // Package management (HIGH PRIORITY - essential for analysis)
       /package\.json$/i,
       /requirements\.txt$/i,
       /Pipfile$/i,
@@ -781,16 +1060,24 @@ export async function getKeyRepositoryFiles(url) {
       /composer\.json$/i,
       /pom\.xml$/i,
       /build\.gradle$/i,
+      /yarn\.lock$/i,
       
-      // Configuration
-      /\.env\./i,
-      /config\./i,
-      /settings\./i,
-      /webpack\.config\./i,
+      // Configuration (HIGH PRIORITY)
       /dockerfile/i,
       /docker-compose\.yml$/i,
+      /docker-compose\.yaml$/i,
+      /\.config\./i,
+      /webpack\.config\./i,
+      /vite\.config\./i,
+      /rollup\.config\./i,
+      /babel\.config\./i,
+      /tsconfig\.json$/i,
+      /jsconfig\.json$/i,
+      /\.prettierrc/i,
+      /\.eslintrc/i,
+      /\.babelrc/i,
       
-      // Source code (common extensions)
+      // Source code (MEDIUM PRIORITY)
       /\.(js|ts|jsx|tsx)$/i,
       /\.(py)$/i,
       /\.(java)$/i,
@@ -803,22 +1090,44 @@ export async function getKeyRepositoryFiles(url) {
       /\.(swift)$/i,
       /\.(kt|kts)$/i,
       /\.(scala)$/i,
+      /\.(html|htm)$/i,
+      /\.(css|scss|sass|less)$/i,
       
-      // Project files
+      // Project documentation (LOW PRIORITY)
       /README\./i,
       /CONTRIBUTING\./i,
       /LICENSE$/i,
       /\.gitignore$/i,
+      /\.gitattributes$/i,
       
-      // Test files
+      // Test files (MEDIUM PRIORITY)
       /test\./i,
       /spec\./i,
       /\.test\./i,
-      /\.spec\./i
+      /\.spec\./i,
+      
+      // Build/CI files (MEDIUM PRIORITY)
+      /\.github\/workflows\//i,
+      /\.gitlab-ci\.yml$/i,
+      /\.travis\.yml$/i,
+      /jenkinsfile/i,
+      /Makefile$/i,
+      /CMakeLists\.txt$/i
     ];
     
     const keyFiles = [];
+    const MAX_FILES_TO_FETCH = 20;
+    const MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10MB total
+    let totalSize = 0;
     
+    // Parse GitHub URL to get owner and repo
+    const urlObj = new URL(url);
+    const pathParts = urlObj.pathname.split('/').filter(p => p.trim());
+    const owner = pathParts[0];
+    const repo = pathParts[1];
+    const branch = structure.repository?.default_branch || 'main';
+    
+    // First pass: identify key files
     if (structure.structure.files && Array.isArray(structure.structure.files)) {
       structure.structure.files.forEach(file => {
         for (const pattern of keyFilePatterns) {
@@ -826,8 +1135,10 @@ export async function getKeyRepositoryFiles(url) {
             keyFiles.push({
               path: file.path,
               extension: file.extension,
-              size: file.size,
-              type: categorizeFile(file.path)
+              size: file.size || 0,
+              type: categorizeFile(file.path),
+              priority: getFilePriority(file.path),
+              content: null // Will be fetched later
             });
             break; // Found a match, move to next file
           }
@@ -835,25 +1146,108 @@ export async function getKeyRepositoryFiles(url) {
       });
     }
     
-    // Sort by importance
-    keyFiles.sort((a, b) => {
-      const importanceOrder = {
-        'package': 1,
-        'config': 2,
-        'readme': 3,
-        'source': 4,
-        'test': 5,
-        'other': 6
-      };
+    // Sort by priority (package files first, then source, then docs)
+    keyFiles.sort((a, b) => a.priority - b.priority);
+    
+    // Fetch content for top files only
+    const filesToFetch = keyFiles.slice(0, MAX_FILES_TO_FETCH);
+    const filesWithContent = [];
+    
+    for (const file of filesToFetch) {
+      // Skip if we've already reached total size limit
+      if (totalSize >= MAX_TOTAL_SIZE) {
+        filesWithContent.push({
+          ...file,
+          content: null,
+          fetchStatus: 'skipped',
+          reason: 'Total size limit reached'
+        });
+        continue;
+      }
       
-      return (importanceOrder[a.type] || 6) - (importanceOrder[b.type] || 6);
-    });
+      // Skip dangerous/sensitive files
+      const dangerousExtensions = ['.exe', '.dll', '.so', '.dylib', '.bin', '.o', '.obj'];
+      const ext = file.extension.toLowerCase();
+      if (dangerousExtensions.includes(`.${ext}`)) {
+        filesWithContent.push({
+          ...file,
+          content: null,
+          fetchStatus: 'skipped',
+          reason: 'Dangerous file type'
+        });
+        continue;
+      }
+      
+      // Skip .env files and secrets
+      if (file.path.toLowerCase().includes('.env') || 
+          file.path.toLowerCase().includes('secret') ||
+          file.path.toLowerCase().includes('key') ||
+          file.path.toLowerCase().includes('credential')) {
+        filesWithContent.push({
+          ...file,
+          content: null,
+          fetchStatus: 'skipped',
+          reason: 'Sensitive file type'
+        });
+        continue;
+      }
+      
+      // Skip binary files
+      const textExtensions = ['.js', '.ts', '.jsx', '.tsx', '.py', '.java', '.html', '.css', '.json', '.yml', '.yaml', '.md', '.txt', '.xml'];
+      const isTextFile = textExtensions.includes(`.${ext}`) || 
+                        file.path.toLowerCase().includes('dockerfile') ||
+                        file.path.toLowerCase().includes('makefile');
+      
+      if (!isTextFile) {
+        filesWithContent.push({
+          ...file,
+          content: null,
+          fetchStatus: 'skipped',
+          reason: 'Non-text file type'
+        });
+        continue;
+      }
+      
+      try {
+        // Fetch actual file content
+        const contentResult = await fetchFileContentSafely(owner, repo, file.path, branch);
+        
+        if (contentResult.available && contentResult.content) {
+          totalSize += contentResult.size || 0;
+          filesWithContent.push({
+            ...file,
+            content: contentResult.content,
+            truncated: contentResult.truncated || false,
+            fetchStatus: 'fetched',
+            size: contentResult.size || file.size
+          });
+        } else {
+          filesWithContent.push({
+            ...file,
+            content: null,
+            fetchStatus: 'failed',
+            reason: contentResult.reason || 'Unknown error'
+          });
+        }
+      } catch (fetchError) {
+        filesWithContent.push({
+          ...file,
+          content: null,
+          fetchStatus: 'error',
+          reason: fetchError.message
+        });
+      }
+    }
     
     return {
       available: true,
-      files: keyFiles.slice(0, 30), // Limit to 30 key files
+      files: filesWithContent,
       totalKeyFiles: keyFiles.length,
-      repositoryInfo: structure.repository || null
+      filesFetched: filesWithContent.filter(f => f.fetchStatus === 'fetched').length,
+      filesSkipped: filesWithContent.filter(f => f.fetchStatus === 'skipped').length,
+      totalSize,
+      repositoryInfo: structure.repository || null,
+      securityNote: 'Only text files fetched via GitHub API. No code execution.'
     };
   } catch (error) {
     return {
@@ -861,6 +1255,66 @@ export async function getKeyRepositoryFiles(url) {
       error: `Failed to get key repository files: ${error.message}`
     };
   }
+}
+
+/**
+ * Get file priority for sorting (lower = higher priority)
+ */
+function getFilePriority(filepath) {
+  const filename = filepath.toLowerCase();
+  
+  // Package files are highest priority
+  if (filename.includes('package.json') || 
+      filename.includes('requirements.txt') ||
+      filename.includes('pom.xml') ||
+      filename.includes('build.gradle') ||
+      filename.includes('cargo.toml') ||
+      filename.includes('go.mod')) {
+    return 1;
+  }
+  
+  // Configuration files
+  if (filename.includes('dockerfile') ||
+      filename.includes('webpack.config') ||
+      filename.includes('tsconfig.json') ||
+      filename.includes('.config.')) {
+    return 2;
+  }
+  
+  // Main source files (likely entry points)
+  if (filename.includes('index.') ||
+      filename.includes('app.') ||
+      filename.includes('main.') ||
+      filename.includes('server.') ||
+      filename.includes('src/index.')) {
+    return 3;
+  }
+  
+  // Other source files
+  const sourceExtensions = [
+    '.js', '.ts', '.jsx', '.tsx', '.py', '.java', '.cpp', '.c', '.cc',
+    '.cs', '.php', '.rb', '.go', '.rs', '.swift', '.kt', '.kts', '.scala',
+    '.html', '.css', '.scss', '.sass', '.less'
+  ];
+  
+  for (const ext of sourceExtensions) {
+    if (filename.endsWith(ext)) {
+      return 4;
+    }
+  }
+  
+  // Documentation
+  if (filename.includes('readme')) {
+    return 5;
+  }
+  
+  // Test files
+  if (filename.includes('test') || filename.includes('spec')) {
+    return 6;
+  }
+  
+  // Other files
+  return 7;
 }
 
 /**
@@ -1113,40 +1567,263 @@ export async function validateRepositoryForProject(repositorySummary, project) {
 
 
 /**
- * Fetch repository content - compatibility wrapper for verification service
+ * Fetch repository content WITH ACTUAL FILE CONTENT for AI verification
  * 
  * This function maintains compatibility with the verification service
  * which expects a { success, error, data } format
+ * 
+ * EDGE CASE HANDLING:
+ * - GitHub API rate limits
+ * - Timeouts
+ * - Empty repositories
+ * - Large repositories
+ * - Private repositories
+ * - Invalid URLs
  */
 export async function fetchRepositoryContent(url) {
+  const startTime = Date.now();
+  
   try {
-    const repoStructure = await getRepositoryStructure(url);
-    
-    if (!repoStructure.accessible) {
+    // Validate URL first
+    const urlValidation = validateRepositoryUrl(url);
+    if (!urlValidation.valid) {
       return {
         success: false,
-        error: repoStructure.error || "Repository not accessible",
-        data: null
+        error: urlValidation.error || "Invalid repository URL",
+        data: null,
+        metadata: {
+          validationFailed: true,
+          validationError: urlValidation.error
+        }
       };
     }
+    
+    // Set timeout for entire operation (30 seconds)
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Repository fetch timeout (30s)")), 30000);
+    });
+    
+    // Fetch repository structure AND key files with actual content
+    const fetchPromise = (async () => {
+      const [repoStructure, keyFilesResult, readmeInfo] = await Promise.all([
+        getRepositoryStructure(url),
+        getKeyRepositoryFiles(url),
+        getReadmeContent(url)
+      ]);
+      
+      // Handle empty or inaccessible repository
+      if (!repoStructure.accessible) {
+        return {
+          success: false,
+          error: repoStructure.error || "Repository not accessible",
+          data: null,
+          metadata: {
+            accessible: false,
+            error: repoStructure.error
+          }
+        };
+      }
+      
+      // Handle empty repository (no files)
+      if (repoStructure.structure && 
+          repoStructure.structure.files && 
+          repoStructure.structure.files.length === 0) {
+        return {
+          success: false,
+          error: "Repository appears to be empty",
+          data: null,
+          metadata: {
+            accessible: true,
+            empty: true,
+            filesCount: 0
+          }
+        };
+      }
+      
+      // Handle very large repositories (warning but continue)
+      const fileCount = repoStructure.structure?.files?.length || 0;
+      if (fileCount > 1000) {
+        console.warn(`Large repository detected: ${fileCount} files, analysis may be limited`);
+      }
+    
+    // Extract actual file content for AI analysis
+    const keyFilesWithContent = {};
+    if (keyFilesResult.available && keyFilesResult.files) {
+      keyFilesResult.files.forEach(file => {
+        if (file.content && file.fetchStatus === 'fetched') {
+          keyFilesWithContent[file.path] = {
+            content: file.content,
+            size: file.size,
+            truncated: file.truncated || false,
+            type: file.type
+          };
+        }
+      });
+    }
+    
+    // Extract README content if available
+    let readmeContent = null;
+    if (readmeInfo.available && readmeInfo.content) {
+      readmeContent = {
+        content: readmeInfo.content,
+        size: readmeInfo.size,
+        truncated: readmeInfo.truncated || false
+      };
+      // Add to key files as well
+      keyFilesWithContent['README.md'] = {
+        content: readmeInfo.content.substring(0, 5000), // Limit README to 5000 chars
+        size: Math.min(readmeInfo.size || 0, 5000),
+        truncated: readmeInfo.truncated || readmeInfo.content.length > 5000,
+        type: 'readme'
+      };
+    }
+    
+    // Calculate statistics
+    const statistics = {
+      totalCommits: repoStructure.repository?.commits || 0,
+      lastCommit: repoStructure.repository?.updatedAt || "unknown",
+      languages: repoStructure.repository?.languages || {},
+      size: repoStructure.repository?.size || 0
+    };
+    
+    // Build metadata
+    const metadata = {
+      platform: repoStructure.platform,
+      url: repoStructure.url,
+      accessible: repoStructure.accessible,
+      repository: repoStructure.repository || {},
+      dependencies: extractDependencies(keyFilesWithContent),
+      buildFiles: extractBuildFiles(keyFilesWithContent),
+      filesAnalyzed: keyFilesResult.filesFetched || 0,
+      filesSkipped: keyFilesResult.filesSkipped || 0,
+      totalSize: keyFilesResult.totalSize || 0
+    };
     
     return {
       success: true,
       error: null,
       data: {
         structure: repoStructure.structure,
-        metadata: {
-          platform: repoStructure.platform,
-          url: repoStructure.url,
-          accessible: repoStructure.accessible
+        keyFiles: keyFilesWithContent,
+        metadata,
+        statistics,
+        readme: readmeContent,
+        security: {
+          codeExecution: false,
+          fileDownload: false,
+          onlyMetadata: false,
+          actualContentFetched: true,
+          unsafeFilesSkipped: keyFilesResult.filesSkipped || 0
         }
       }
     };
   } catch (error) {
+    const fetchTime = Date.now() - startTime;
+    
+    // Handle specific error types with user-friendly messages
+    let errorMessage = error.message || "Failed to fetch repository content";
+    let errorType = "unknown";
+    
+    if (error.message.includes("timeout") || error.message.includes("Timeout")) {
+      errorMessage = "Repository analysis timed out (30 second limit exceeded)";
+      errorType = "timeout";
+    } else if (error.message.includes("rate limit") || error.message.includes("API rate limit") || error.message.includes("403")) {
+      errorMessage = "GitHub API rate limit exceeded. Please try again in a few minutes.";
+      errorType = "rate_limit";
+    } else if (error.message.includes("Not Found") || error.message.includes("404")) {
+      errorMessage = "Repository not found. Please check if the repository exists and is publicly accessible.";
+      errorType = "not_found";
+    } else if (error.message.includes("network") || error.message.includes("ECONN") || error.message.includes("ENOTFOUND")) {
+      errorMessage = "Network error accessing repository. Please check your internet connection and try again.";
+      errorType = "network_error";
+    } else if (error.message.includes("Invalid URL")) {
+      errorMessage = "Invalid repository URL. Please provide a valid GitHub repository URL.";
+      errorType = "invalid_url";
+    } else if (error.message.includes("empty")) {
+      errorMessage = "Repository appears to be empty or contains no project files.";
+      errorType = "empty_repository";
+    }
+    
     return {
       success: false,
-      error: error.message || "Failed to fetch repository content",
-      data: null
+      error: errorMessage,
+      data: null,
+      metadata: {
+        fetchTimeMs: fetchTime,
+        errorType,
+        originalError: process.env.NODE_ENV === 'development' ? error.message : undefined
+      }
     };
   }
+}
+
+/**
+ * Extract dependencies from package files
+ */
+function extractDependencies(keyFiles) {
+  const dependencies = [];
+  
+  // Check for package.json
+  if (keyFiles['package.json'] && keyFiles['package.json'].content) {
+    try {
+      const packageJson = JSON.parse(keyFiles['package.json'].content);
+      if (packageJson.dependencies) {
+        dependencies.push(...Object.keys(packageJson.dependencies));
+      }
+      if (packageJson.devDependencies) {
+        dependencies.push(...Object.keys(packageJson.devDependencies));
+      }
+    } catch (error) {
+      // Invalid JSON, skip
+    }
+  }
+  
+  // Check for requirements.txt
+  if (keyFiles['requirements.txt'] && keyFiles['requirements.txt'].content) {
+    const lines = keyFiles['requirements.txt'].content.split('\n');
+    lines.forEach(line => {
+      const match = line.match(/^([a-zA-Z0-9_-]+)/);
+      if (match) {
+        dependencies.push(match[1]);
+      }
+    });
+  }
+  
+  return [...new Set(dependencies)]; // Remove duplicates
+}
+
+/**
+ * Extract build files from repository
+ */
+function extractBuildFiles(keyFiles) {
+  const buildFiles = [];
+  
+  const buildFilePatterns = [
+    'package.json',
+    'Dockerfile',
+    'docker-compose.yml',
+    'docker-compose.yaml',
+    'webpack.config.js',
+    'webpack.config.ts',
+    'vite.config.js',
+    'vite.config.ts',
+    'rollup.config.js',
+    'rollup.config.ts',
+    'tsconfig.json',
+    'jsconfig.json',
+    'Makefile',
+    'CMakeLists.txt',
+    '.github/workflows/'
+  ];
+  
+  Object.keys(keyFiles).forEach(path => {
+    for (const pattern of buildFilePatterns) {
+      if (path.includes(pattern)) {
+        buildFiles.push(path);
+        break;
+      }
+    }
+  });
+  
+  return buildFiles;
 }

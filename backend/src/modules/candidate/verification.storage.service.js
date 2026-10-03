@@ -43,11 +43,14 @@ export async function storeVerificationResult(candidateId, verificationResult) {
       nextAiVerificationStatus = "rejected";
     }
     
-    // Update candidate document
+    // Process verification for storage (extracts evidence and key metrics)
+    const processedData = processVerificationForStorage(verificationResult, candidateId);
+    
+    // Update candidate document with EVIDENCE PRESERVATION
     const updateData = {
       "projectSubmissionStatus": nextSubmissionStatus,
       "projectSubmission.aiVerificationStatus": nextAiVerificationStatus,
-      "projectSubmission.aiVerificationResult": verificationResult,
+      "projectSubmission.aiVerificationResult": verificationResult, // Full result
       "projectSubmission.aiVerificationCompletedAt": new Date(),
       "projectSubmission.aiVerificationDurationMs": verificationResult.verificationMetadata?.verificationTimeMs || 0,
       "projectSubmission.verificationStats": {
@@ -61,7 +64,18 @@ export async function storeVerificationResult(candidateId, verificationResult) {
           : 0,
         codeQualityScore: mapQualityToNumericScore(stats?.qualityScores?.codeQuality),
         organizationScore: mapQualityToNumericScore(stats?.qualityScores?.organization),
-        documentationScore: mapQualityToNumericScore(stats?.qualityScores?.documentation)
+        documentationScore: mapQualityToNumericScore(stats?.qualityScores?.documentation),
+        // Evidence metrics
+        evidenceCount: processedData.evidenceSummary ? Object.keys(processedData.evidenceSummary).length : 0,
+        criticalEvidenceCount: processedData.criticalEvidence ? Object.keys(processedData.criticalEvidence).length : 0,
+        filesWithContent: processedData.fileAnalysis?.filesWithContent || 0
+      },
+      // Store processed evidence for quick access
+      "projectSubmission.verificationEvidence": {
+        summary: processedData.evidenceSummary || {},
+        critical: processedData.criticalEvidence || null,
+        fileAnalysis: processedData.fileAnalysis || {},
+        technicalEvaluation: processedData.technicalEvaluation || {}
       }
     };
     

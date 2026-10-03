@@ -99,7 +99,7 @@ router.post(
  *
  * GET /api/student/verification-status
  *
- * Gets verification status for submitted project
+ * Gets verification status with PERSISTED AI VERIFICATION RESULT
  */
 
 router.get(
@@ -109,15 +109,67 @@ router.get(
     try {
       const candidate = req.candidate;
       
-      // Import verification tracker
-      const verificationTracker = (await import("../projects/verification.tracker.service.js")).verificationTracker;
+      // Import verification storage service to get PERSISTED result
+      const { getVerificationResult } = await import("../candidate/verification.storage.service.js");
       
-      const status = await verificationTracker.getVerificationStatus(candidate._id);
+      const verificationData = await getVerificationResult(candidate._id);
       
-      res.json({
+      if (!verificationData.success) {
+        return res.status(500).json({
+          success: false,
+          error: verificationData.error || "Failed to load verification data"
+        });
+      }
+      
+      // Format response with PERSISTED AI verification result
+      const response = {
         success: true,
-        data: status
-      });
+        data: {
+          // Current status
+          status: verificationData.verificationResult?.verificationStatus || verificationData.status || "unknown",
+          submissionStatus: verificationData.submissionStatus || "unknown",
+          
+          // Persisted AI verification result (what student should see)
+          verificationResult: verificationData.verificationResult ? {
+            verificationStatus: verificationData.verificationResult.verificationStatus,
+            confidence: verificationData.verificationResult.confidence,
+            summary: verificationData.verificationResult.summary,
+            
+            // Detailed analysis (limited for student view)
+            detailedAnalysis: {
+              overallAssessment: verificationData.verificationResult.detailedAnalysis?.overallAssessment || "",
+              technicalEvaluation: verificationData.verificationResult.detailedAnalysis?.technicalEvaluation || {}
+            },
+            
+            // Requirements assessment (what requirements were met/missing)
+            requirementsAssessment: verificationData.verificationResult.detailedAnalysis?.requirementsAssessment?.map(req => ({
+              requirementId: req.requirementId,
+              description: req.description,
+              status: req.status,
+              evidence: req.evidence ? req.evidence.substring(0, 200) + (req.evidence.length > 200 ? "..." : "") : "",
+              notes: req.notes || ""
+            })) || [],
+            
+            // Recommendations for student
+            recommendations: verificationData.verificationResult.recommendations?.forStudent || [],
+            
+            // Stats
+            stats: verificationData.stats || {},
+            
+            // Admin review status if applicable
+            adminReview: verificationData.adminReview
+          } : null,
+          
+          // Metadata
+          stats: verificationData.stats,
+          adminReview: verificationData.adminReview,
+          
+          // Verification metadata
+          verificationMetadata: verificationData.verificationResult?.verificationMetadata || {}
+        }
+      };
+      
+      res.json(response);
       
     } catch (error) {
       console.error("Error getting verification status:", error);
