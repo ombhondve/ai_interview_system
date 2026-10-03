@@ -723,6 +723,15 @@ export const uploadAdminPdf = async (req, res) => {
     const projectId = String(req.params.id || "").trim();
     const { filename, data } = req.body || {};
 
+    console.log("DEBUG - Admin PDF upload started:", {
+      projectId,
+      hasFilename: !!filename,
+      filenameLength: filename?.length,
+      hasData: !!data,
+      dataLength: data?.length,
+      dataPrefix: data?.substring(0, 50) + '...'
+    });
+
     if (!projectId) {
       return res.status(400).json({ success: false, message: "Project ID is required." });
     }
@@ -738,10 +747,21 @@ export const uploadAdminPdf = async (req, res) => {
     const base64 = data.replace(/^data:application\/pdf;base64,/i, "").trim();
     const pdfBuffer = Buffer.from(base64, "base64");
 
+    console.log("DEBUG - PDF buffer created:", {
+      bufferSize: pdfBuffer.length,
+      filename: typeof filename === "string" ? filename : "admin-project.pdf"
+    });
+
     const result = await uploadAdminProjectPdf(
       pdfBuffer,
       typeof filename === "string" ? filename : "admin-project.pdf"
     );
+
+    console.log("DEBUG - Cloudinary upload successful:", {
+      cloudinaryUrl: result.secure_url,
+      urlLength: result.secure_url?.length,
+      isCloudinary: result.secure_url?.includes('cloudinary.com')
+    });
 
     const project = await updateProjectService(projectId, {
       briefUrl: result.secure_url,
@@ -750,8 +770,17 @@ export const uploadAdminPdf = async (req, res) => {
     });
 
     if (!project) {
+      console.error("DEBUG - Project not found after update:", { projectId });
       return res.status(404).json({ success: false, message: "Project not found." });
     }
+
+    console.log("DEBUG - MongoDB update successful:", {
+      projectId: project._id,
+      pdfUrl: project.pdfUrl,
+      detailedPdfUrl: project.detailedPdfUrl,
+      briefUrl: project.briefUrl,
+      allFieldsSet: !!(project.pdfUrl && project.detailedPdfUrl && project.briefUrl)
+    });
 
     return res.status(200).json({
       success: true,
@@ -943,6 +972,61 @@ export const updateProject = async (
         });
       }
       updateData.detailedPdfUrl = detailedPdfUrlValue;
+    }
+
+    /* -----------------------------------------
+       PDF DATA HANDLING (NEW)
+    ----------------------------------------- */
+    
+    // Handle pdfData if provided (similar to createProject)
+    const pdfData =
+      typeof body.pdfData === "string"
+        ? body.pdfData.trim()
+        : "";
+
+    if (pdfData) {
+      try {
+        const base64 = pdfData.replace(
+          /^data:application\/pdf;base64,/i,
+          ""
+        );
+
+        const pdfBuffer =
+          Buffer.from(base64, "base64");
+
+        const uploadedPdf =
+          await uploadProjectPdfBuffer(
+            pdfBuffer,
+            cleanString(
+              body.pdfFilename,
+              "project.pdf"
+            ),
+            body.title || "Updated Project"
+          );
+
+        // Set all PDF fields to the Cloudinary URL
+        updateData.pdfUrl = uploadedPdf.secure_url;
+        updateData.detailedPdfUrl = uploadedPdf.secure_url;
+        updateData.briefUrl = uploadedPdf.secure_url;
+        
+        console.log("DEBUG - PDF uploaded during update:", {
+          projectId: req.params.id,
+          cloudinaryUrl: uploadedPdf.secure_url,
+          urlLength: uploadedPdf.secure_url?.length
+        });
+      } catch (pdfError) {
+        console.error(
+          "PDF upload during project update failed:",
+          pdfError
+        );
+
+        return res.status(400).json({
+          success: false,
+          message:
+            pdfError?.message ||
+            "Failed to upload project PDF.",
+        });
+      }
     }
 
     /* -----------------------------------------

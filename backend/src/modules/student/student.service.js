@@ -312,14 +312,17 @@ export async function getCandidateWithProject(candidateId) {
     // Convert PDF URLs if project exists
     let processedProject = null;
     if (project) {
-      console.log("DEBUG - Project PDF fields:", {
+      console.log("DEBUG - Student project PDF fields:", {
         projectId: project._id,
+        title: project.title,
         hasPdfUrl: !!project.pdfUrl,
         hasDetailedPdfUrl: !!project.detailedPdfUrl,
         hasBriefUrl: !!project.briefUrl,
         pdfUrl: project.pdfUrl ? (typeof project.pdfUrl === 'string' ? project.pdfUrl.substring(0, 50) + '...' : 'non-string') : null,
         detailedPdfUrl: project.detailedPdfUrl ? (typeof project.detailedPdfUrl === 'string' ? project.detailedPdfUrl.substring(0, 50) + '...' : 'non-string') : null,
-        briefUrl: project.briefUrl ? (typeof project.briefUrl === 'string' ? project.briefUrl.substring(0, 50) + '...' : 'non-string') : null
+        briefUrl: project.briefUrl ? (typeof project.briefUrl === 'string' ? project.briefUrl.substring(0, 50) + '...' : 'non-string') : null,
+        candidateId: candidate._id,
+        candidateName: candidate.name
       });
       
       // Determine the primary PDF URL to return
@@ -339,9 +342,11 @@ export async function getCandidateWithProject(candidateId) {
         duration: project.duration
       };
       
-      console.log("DEBUG - Processed project PDF URLs:", {
+      console.log("DEBUG - Processed student project PDF URLs:", {
         returnedPdfUrl: processedProject.pdfUrl ? processedProject.pdfUrl.substring(0, 50) + '...' : null,
-        returnedDetailedPdfUrl: processedProject.detailedPdfUrl ? processedProject.detailedPdfUrl.substring(0, 50) + '...' : null
+        returnedDetailedPdfUrl: processedProject.detailedPdfUrl ? processedProject.detailedPdfUrl.substring(0, 50) + '...' : null,
+        hasReturnedPdfUrl: !!processedProject.pdfUrl,
+        primaryPdfUrlSource: project.pdfUrl ? 'pdfUrl' : project.detailedPdfUrl ? 'detailedPdfUrl' : project.briefUrl ? 'briefUrl' : 'none'
       });
     }
     
