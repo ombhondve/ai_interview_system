@@ -498,23 +498,32 @@ export async function createProjectSubmission(candidateId, url) {
       reason: candidate.projectSubmission?.url ? "Resubmission" : "Initial submission"
     };
     
-    const historyUpdate = candidate.projectSubmission?.history 
-      ? { $push: { "projectSubmission.history": historyEntry } }
-      : { $set: { "projectSubmission.history": [historyEntry] } };
+    // Build update operation - handle history based on whether it exists
+    let updateOperation = {
+      $set: {
+        ...submissionData,
+        projectSubmissionStatus: "submitted"
+      }
+    };
+    
+    if (candidate.projectSubmission?.history) {
+      // For resubmission: add to existing history with $push
+      updateOperation.$push = { "projectSubmission.history": historyEntry };
+    } else {
+      // For initial submission: set history array with $set
+      updateOperation.$set["projectSubmission.history"] = [historyEntry];
+    }
     
     // Update candidate
     const updatedCandidate = await Candidate.findByIdAndUpdate(
       candidateId,
-      {
-        $set: submissionData,
-        ...historyUpdate,
-        projectSubmissionStatus: "submitted"
-      },
+      updateOperation,
       { new: true }
     ).populate('assignedProjectId', 'title');
     
-    // Start verification process asynchronously
-    startVerificationProcess(candidateId, candidate.assignedProjectId._id, url).catch(error => {
+    // Start verification process asynchronously with correct project ID
+    // candidate.assignedProjectId is already the ObjectId or string, not an object with _id
+    startVerificationProcess(candidateId, candidate.assignedProjectId, url).catch(error => {
       console.error(`Failed to start verification for candidate ${candidateId}:`, error);
       
       // Update candidate with error status
