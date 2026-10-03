@@ -2018,45 +2018,71 @@ export const projectService = {
   ======================================================= */
 
   async uploadAdminProjectPdf(
-    projectId: string,
-    pdfData: string,
-    filename: string
-  ): Promise<{ url: string; project: Project }> {
-    if (!projectId) {
-      throw new Error("Project ID is required.");
-    }
-
-    if (!pdfData || typeof pdfData !== "string") {
-      throw new Error("PDF data is required.");
-    }
-
-    if (!filename || typeof filename !== "string") {
-      throw new Error("PDF filename is required.");
-    }
-
-    const result = await request<{
-      success: boolean;
-      message?: string;
-      url: string;
-      project: RawProject;
-    }>(
-      `/api/projects/${encodeURIComponent(projectId)}/admin-pdf`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          filename,
-          data: pdfData,
-        }),
+      projectId: string,
+      pdfData: string,
+      filename: string
+    ): Promise<{ url: string; project: Project }> {
+      if (!projectId) {
+        throw new Error("Project ID is required.");
       }
-    );
 
-    if (!result.success) {
-      throw new Error(result.message || "Failed to upload admin PDF.");
+      if (!pdfData || typeof pdfData !== "string") {
+        throw new Error("PDF data is required.");
+      }
+
+      if (!filename || typeof filename !== "string") {
+        throw new Error("PDF filename is required.");
+      }
+
+      const result = await request<{
+        success: boolean;
+        message?: string;
+        url?: string;
+        project?: RawProject;
+      }>(
+        `/api/projects/${encodeURIComponent(projectId)}/admin-pdf`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            filename,
+            data: pdfData,
+          }),
+        }
+      );
+
+      if (!result.success) {
+        throw new Error(
+          result.message || "Failed to upload admin PDF."
+        );
+      }
+
+      if (!result.url) {
+        throw new Error(
+          "PDF upload completed but no Cloudinary URL was returned."
+        );
+      }
+
+      if (!result.project) {
+        throw new Error(
+          "PDF upload completed but updated project was not returned."
+        );
+      }
+
+      const project = normalizeProject(result.project);
+
+      if (
+        !project.pdfUrl &&
+        !project.detailedPdfUrl &&
+        !project.briefUrl
+      ) {
+        throw new Error(
+          "PDF upload completed but the project PDF URL was not saved."
+        );
+      }
+
+      return {
+        url: result.url,
+        project,
+      };
     }
-
-    return {
-      url: result.url,
-      project: normalizeProject(result.project),
-    };
-  },
-};
+  }

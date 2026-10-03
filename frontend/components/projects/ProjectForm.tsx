@@ -66,6 +66,9 @@ export interface ProjectFormData {
    */
   pdfFile?: File;
 
+  /** Complete PDF data URL used by the parent upload handler. */
+  pdfData?: string;
+
   detailedPdfUrl?: string;
 
   projectType?: string;
@@ -460,6 +463,11 @@ export default function ProjectForm({
   ] = useState<File | null>(null);
 
   const [
+    pdfData,
+    setPdfData,
+  ] = useState<string>("");
+
+  const [
     pdfFilePreviewUrl,
     setPdfFilePreviewUrl,
   ] = useState("");
@@ -552,6 +560,7 @@ export default function ProjectForm({
 
     if (!initialData) {
       setPdfFile(null);
+      setPdfData("");
       setTitle("");
       setRole("");
       setDifficulty("junior");
@@ -589,6 +598,7 @@ export default function ProjectForm({
     =============================================== */
 
     setPdfFile(null);
+    setPdfData("");
 
     setTitle(
       safeString(
@@ -775,11 +785,19 @@ export default function ProjectForm({
   ) => {
     const file = event.target.files?.[0];
 
-    if (!file) return;
+    if (!file) {
+      return;
+    }
 
-    if (file.type !== "application/pdf") {
+    const isPdf =
+      file.type === "application/pdf" ||
+      file.name.toLowerCase().endsWith(".pdf");
+
+    if (!isPdf) {
       setError("Only PDF files are allowed.");
       event.target.value = "";
+      setPdfFile(null);
+      setPdfData("");
       return;
     }
 
@@ -788,15 +806,49 @@ export default function ProjectForm({
     if (file.size > MAX_PDF_SIZE) {
       setError("PDF file size must be 10 MB or less.");
       event.target.value = "";
+      setPdfFile(null);
+      setPdfData("");
       return;
     }
 
     setError("");
     setPdfFile(file);
+    setPdfData("");
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        setError("Failed to read PDF file.");
+        setPdfFile(null);
+        setPdfData("");
+        return;
+      }
+
+      setPdfData(reader.result);
+    };
+
+    reader.onerror = () => {
+      setError("Failed to read PDF file.");
+      setPdfFile(null);
+      setPdfData("");
+    };
+
+    reader.readAsDataURL(file);
   };
 
   const handleRemovePdfFile = () => {
     setPdfFile(null);
+    setPdfData("");
+    setError("");
+
+    const input = document.getElementById(
+      "project-pdf-upload"
+    ) as HTMLInputElement | null;
+
+    if (input) {
+      input.value = "";
+    }
   };
 
   /* ===================================================
@@ -957,6 +1009,9 @@ export default function ProjectForm({
 
       pdfFile:
         pdfFile || undefined,
+
+      pdfData:
+        pdfData || undefined,
 
       /* =========================================
          PROJECT METADATA
