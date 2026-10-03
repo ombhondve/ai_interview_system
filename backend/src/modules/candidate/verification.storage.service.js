@@ -20,7 +20,8 @@ export async function storeVerificationResult(candidateId, verificationResult) {
     }
     
     // Process verification for storage
-    const processedData = processVerificationForStorage(verificationResult, candidateId);
+    const projectId = verificationResult.verificationMetadata?.projectId;
+    const processedData = processVerificationForStorage(verificationResult, candidateId, projectId);
     
     // Get verification statistics
     const stats = getVerificationStatistics(verificationResult);
@@ -44,7 +45,7 @@ export async function storeVerificationResult(candidateId, verificationResult) {
     }
     
     // Process verification for storage (extracts evidence and key metrics)
-    const processedData = processVerificationForStorage(verificationResult, candidateId);
+    // processedData already declared above - using the same instance
     
     // Update candidate document with EVIDENCE PRESERVATION
     const updateData = {
