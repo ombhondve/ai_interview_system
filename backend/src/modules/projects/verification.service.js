@@ -80,12 +80,15 @@ function structureRepositoryContent(repoData) {
  * Prepare ACTUAL project requirements for verification
  * 
  * Converts MongoDB Project model to AI verification format
+ * Distinguishes between REQUIRED/MUST VERIFY items and SUPPORTING CONTEXT
  */
 function prepareProjectRequirements(project) {
   // Extract requirements from various project fields
   const allRequirements = [];
   
-  // Core requirements from requirements array
+  // A. REQUIRED / MUST VERIFY items (explicit mandatory requirements)
+  
+  // 1. Core requirements array - explicitly required functionality
   if (project.requirements && Array.isArray(project.requirements)) {
     project.requirements.forEach((req, index) => {
       if (req && typeof req === 'string') {
@@ -93,13 +96,14 @@ function prepareProjectRequirements(project) {
           id: `core-req-${index + 1}`,
           description: req,
           type: "feature",
-          critical: true
+          critical: true,
+          source: "requirements"
         });
       }
     });
   }
   
-  // Functional requirements
+  // 2. Functional requirements - explicitly required functionality
   if (project.functionalRequirements && Array.isArray(project.functionalRequirements)) {
     project.functionalRequirements.forEach((req, index) => {
       if (req && typeof req === 'string') {
@@ -107,27 +111,14 @@ function prepareProjectRequirements(project) {
           id: `func-req-${index + 1}`,
           description: req,
           type: "feature",
-          critical: true
+          critical: true,
+          source: "functionalRequirements"
         });
       }
     });
   }
   
-  // Non-functional requirements
-  if (project.nonFunctionalRequirements && Array.isArray(project.nonFunctionalRequirements)) {
-    project.nonFunctionalRequirements.forEach((req, index) => {
-      if (req && typeof req === 'string') {
-        allRequirements.push({
-          id: `nonfunc-req-${index + 1}`,
-          description: req,
-          type: "quality",
-          critical: false
-        });
-      }
-    });
-  }
-  
-  // Extract deliverables as requirements
+  // 3. Deliverables - explicitly required deliverables
   if (project.deliverables && Array.isArray(project.deliverables)) {
     project.deliverables.forEach((deliverable, index) => {
       if (deliverable && typeof deliverable === 'string') {
@@ -135,33 +126,100 @@ function prepareProjectRequirements(project) {
           id: `deliverable-${index + 1}`,
           description: deliverable,
           type: "deliverable",
-          critical: true
+          critical: true,
+          source: "deliverables"
         });
       }
     });
   }
   
-  // Extract expected files from suggested folder structure
-  const expectedFiles = [];
-  if (project.suggestedFolderStructure && Array.isArray(project.suggestedFolderStructure)) {
-    project.suggestedFolderStructure.forEach(item => {
-      if (item && typeof item === 'string') {
-        // Look for file references in the structure
-        if (item.includes('.') && !item.includes('node_modules') && !item.includes('dist')) {
-          const parts = item.split('/');
-          const lastPart = parts[parts.length - 1];
-          if (lastPart.includes('.')) {
-            expectedFiles.push(lastPart);
-          }
+  // 4. Module features - only if explicitly described as required functionality
+  if (project.modules && Array.isArray(project.modules)) {
+    project.modules.forEach((module, moduleIndex) => {
+      if (module && module.name) {
+        // Module name itself is supporting context, not a requirement
+        // Only module.features if they explicitly describe required functionality
+        if (module.features && Array.isArray(module.features)) {
+          module.features.forEach((feature, featureIndex) => {
+            if (feature && typeof feature === 'string') {
+              // Features should be explicitly required functionality
+              allRequirements.push({
+                id: `module-${moduleIndex + 1}-feature-${featureIndex + 1}`,
+                description: feature,
+                type: "feature",
+                critical: true,
+                source: `modules[${moduleIndex}].features`
+              });
+            }
+          });
         }
       }
     });
   }
   
-  // Add standard expected files
-  expectedFiles.push('package.json', 'README.md');
+  // B. NON-FUNCTIONAL REQUIREMENTS (supporting quality criteria, not mandatory features)
+  const nonFunctionalRequirements = [];
+  if (project.nonFunctionalRequirements && Array.isArray(project.nonFunctionalRequirements)) {
+    project.nonFunctionalRequirements.forEach((req, index) => {
+      if (req && typeof req === 'string') {
+        nonFunctionalRequirements.push({
+          id: `nonfunc-req-${index + 1}`,
+          description: req,
+          type: "quality",
+          critical: false,
+          source: "nonFunctionalRequirements"
+        });
+      }
+    });
+  }
   
-  // Extract evaluation criteria from project
+  // C. SUPPORTING CONTEXT (help AI understand project, not mandatory requirements)
+  
+  // Extract expected files - only from explicitly required files, not suggested structure
+  const expectedFiles = [];
+  
+  // Only include files explicitly mentioned in requirements/deliverables
+  // Suggested folder structure is guidance, not mandatory
+  const allText = [
+    ...(project.requirements || []),
+    ...(project.functionalRequirements || []),
+    ...(project.deliverables || [])
+  ].join(' ').toLowerCase();
+  
+  // Look for explicit file mentions in requirements
+  const filePatterns = [
+    /(?:create|implement|build|write|submit)\s+(?:a\s+)?([a-zA-Z0-9_-]+\.(?:js|ts|jsx|tsx|py|java|html|css|md|json|yml|yaml|xml))/gi,
+    /(?:file|called|named)\s+["']?([a-zA-Z0-9_-]+\.[a-z]+)["']?/gi,
+    /(?:package\.json|readme\.md|dockerfile)/gi
+  ];
+  
+  filePatterns.forEach(pattern => {
+    let match;
+    while ((match = pattern.exec(allText)) !== null) {
+      if (match[1]) {
+        const fileName = match[1].toLowerCase();
+        if (!expectedFiles.includes(fileName)) {
+          expectedFiles.push(fileName);
+        }
+      }
+    }
+  });
+  
+  // Only add package.json and README.md if explicitly required by project type
+  // Not automatically mandatory for every project
+  const projectType = project.projectType || "fullstack";
+  const requiresPackageJson = ["backend", "fullstack", "mobile", "ai_ml", "devops"].includes(projectType.toLowerCase());
+  const requiresReadme = true; // README is generally expected but not critical
+  
+  if (requiresPackageJson && !expectedFiles.includes('package.json')) {
+    expectedFiles.push('package.json');
+  }
+  
+  if (requiresReadme && !expectedFiles.includes('readme.md')) {
+    expectedFiles.push('README.md');
+  }
+  
+  // D. EVALUATION CRITERIA (supporting context for AI assessment)
   const evaluationCriteria = {};
   if (project.evaluationCriteria && Array.isArray(project.evaluationCriteria)) {
     // Convert array to weighted object if needed
@@ -181,32 +239,57 @@ function prepareProjectRequirements(project) {
     evaluationCriteria.completeness = 0.1;
   }
   
-  // Extract minimal features from modules
-  const minimalFeatures = [];
-  if (project.modules && Array.isArray(project.modules)) {
-    project.modules.forEach(module => {
-      if (module && module.name) {
-        minimalFeatures.push(module.name);
-      }
-    });
-  }
+  // E. SUPPORTING CONTEXT FIELDS (help AI understand project scope)
+  const supportingContext = {
+    // Objectives provide project goals but aren't individual requirements
+    objectives: project.objectives || [],
+    
+    // Implementation plan provides development phases
+    implementationPlan: project.implementationPlan || [],
+    
+    // API endpoints, database design, testing plan are implementation details
+    apiEndpoints: project.apiEndpoints || [],
+    databaseDesign: project.databaseDesign || [],
+    testingPlan: project.testingPlan || [],
+    
+    // Suggested folder structure is guidance, not mandatory requirements
+    suggestedFolderStructure: project.suggestedFolderStructure || [],
+    
+    // Module names provide project structure context
+    moduleNames: (project.modules || []).map(module => module.name).filter(name => name)
+  };
   
   return {
     title: project.title || "Untitled Project",
     description: project.description || "",
     difficulty: project.difficulty || "intermediate",
+    
+    // REQUIRED ITEMS: Explicit mandatory requirements
     requirements: allRequirements,
+    
+    // SUPPORTING QUALITY CRITERIA: Non-functional aspects
+    nonFunctionalRequirements: nonFunctionalRequirements,
+    
+    // SUPPORTING CONTEXT: Help AI understand project scope
+    supportingContext: supportingContext,
+    
+    // Technology stack and expected files
     technologyStack: project.technologies || [],
     expectedFiles: [...new Set(expectedFiles)], // Remove duplicates
-    minimalFeatures: minimalFeatures,
+    
+    // Evaluation criteria for AI assessment
     evaluationCriteria: evaluationCriteria,
-    // Additional context from actual project
+    
+    // Project type for context
     projectType: project.projectType || "fullstack",
-    modules: project.modules || [],
-    implementationPlan: project.implementationPlan || [],
-    apiEndpoints: project.apiEndpoints || [],
-    databaseDesign: project.databaseDesign || [],
-    testingPlan: project.testingPlan || []
+    
+    // Additional context notes for AI
+    contextNotes: {
+      totalRequirements: allRequirements.length,
+      totalNonFunctional: nonFunctionalRequirements.length,
+      hasExplicitFileRequirements: expectedFiles.length > 0,
+      requirementSources: [...new Set(allRequirements.map(req => req.source))]
+    }
   };
 }
 
@@ -465,9 +548,48 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     // Check if we have enough file content for meaningful analysis
     const filesWithContent = Object.keys(structuredRepoContent.keyFiles || {}).length;
     if (filesWithContent === 0) {
-      logger.warn("No file content available for AI analysis");
-      // Still proceed but note the limitation
-      messages[1].content += "\n\nIMPORTANT: No actual file content could be fetched from the repository. Analysis will be based on repository structure and metadata only.";
+      logger.warn("No file content available for AI analysis - requiring admin review");
+      
+      // Directly return NEEDS_ADMIN_REVIEW when insufficient content for evidence-based verification
+      return {
+        status: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        confidence: 0.4,
+        summary: "Insufficient repository content available for evidence-based verification. Requires admin review.",
+        detailedAnalysis: {
+          repositoryValidity: {
+            isValid: repoContent.success,
+            issues: ["No actual file content available for evidence-based verification"],
+            strengths: repoContent.success ? ["Repository is accessible"] : []
+          },
+          requirementsAssessment: [],
+          technicalEvaluation: {
+            codeQuality: "UNKNOWN",
+            projectOrganization: "UNKNOWN",
+            documentation: "UNKNOWN",
+            issuesFound: ["Cannot verify requirements without actual file content"]
+          },
+          overallAssessment: "Repository structure exists but no actual file content could be analyzed. Filenames and metadata alone are insufficient for evidence-based verification. Manual admin review required."
+        },
+        recommendations: {
+          forStudent: ["Your repository structure was found but actual file content could not be analyzed. Ensure your repository contains the actual project files."],
+          forReviewer: ["Insufficient file content for automated verification. Requires manual review of repository structure and metadata only."]
+        },
+        verificationMetadata: {
+          filesAnalyzed: 0,
+          requirementsTotal: projectRequirements.requirements.length,
+          requirementsMet: 0,
+          requirementsPartial: 0,
+          requirementsMissing: 0,
+          analysisTimestamp: new Date().toISOString(),
+          insufficientContent: true,
+          note: "No actual file content available - filenames/metadata only"
+        },
+        rawData: {
+          projectRequirements,
+          repositoryContent: structuredRepoContent,
+          repoMetadata: repoContent.data?.metadata
+        }
+      };
     }
     
     logger.info("Calling AI for project verification");
