@@ -25,6 +25,7 @@ type AssignedProject = {
   requirements?: string;
   pdfUrl?: string;
   detailedPdfUrl?: string;
+  briefUrl?: string;
   duration?: number;
   deadline?: string;
   bufferDeadline?: string;
@@ -600,7 +601,7 @@ export default function Project() {
 
                   {/* Download Project Button */}
                   <div className="mt-5 pt-5 border-t border-slate-200">
-                    {(project.pdfUrl || project.detailedPdfUrl) ? (
+                    {(project.pdfUrl || project.detailedPdfUrl || project.briefUrl) ? (
                       <Button
                         loading={downloading}
                         disabled={downloading}

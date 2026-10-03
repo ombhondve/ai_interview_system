@@ -283,7 +283,7 @@ function ensureAccessibleUrl(url) {
 export async function getCandidateWithProject(candidateId) {
   try {
     const candidate = await Candidate.findById(candidateId)
-      .populate('assignedProjectId', 'title description difficulty technologies requirements pdfUrl detailedPdfUrl duration durationDays bufferDays')
+      .populate('assignedProjectId', 'title description difficulty technologies requirements pdfUrl detailedPdfUrl briefUrl duration durationDays bufferDays')
       .lean();
     
     if (!candidate) {
@@ -312,6 +312,20 @@ export async function getCandidateWithProject(candidateId) {
     // Convert PDF URLs if project exists
     let processedProject = null;
     if (project) {
+      console.log("DEBUG - Project PDF fields:", {
+        projectId: project._id,
+        hasPdfUrl: !!project.pdfUrl,
+        hasDetailedPdfUrl: !!project.detailedPdfUrl,
+        hasBriefUrl: !!project.briefUrl,
+        pdfUrl: project.pdfUrl ? (typeof project.pdfUrl === 'string' ? project.pdfUrl.substring(0, 50) + '...' : 'non-string') : null,
+        detailedPdfUrl: project.detailedPdfUrl ? (typeof project.detailedPdfUrl === 'string' ? project.detailedPdfUrl.substring(0, 50) + '...' : 'non-string') : null,
+        briefUrl: project.briefUrl ? (typeof project.briefUrl === 'string' ? project.briefUrl.substring(0, 50) + '...' : 'non-string') : null
+      });
+      
+      // Determine the primary PDF URL to return
+      // Try pdfUrl first, then detailedPdfUrl, then briefUrl
+      const primaryPdfUrl = project.pdfUrl || project.detailedPdfUrl || project.briefUrl;
+      
       processedProject = {
         id: project._id,
         title: project.title,
@@ -319,10 +333,16 @@ export async function getCandidateWithProject(candidateId) {
         difficulty: project.difficulty,
         technologies: project.technologies,
         requirements: project.requirements,
-        pdfUrl: ensureAccessibleUrl(project.pdfUrl),
+        pdfUrl: ensureAccessibleUrl(primaryPdfUrl),
         detailedPdfUrl: ensureAccessibleUrl(project.detailedPdfUrl),
+        briefUrl: ensureAccessibleUrl(project.briefUrl),
         duration: project.duration
       };
+      
+      console.log("DEBUG - Processed project PDF URLs:", {
+        returnedPdfUrl: processedProject.pdfUrl ? processedProject.pdfUrl.substring(0, 50) + '...' : null,
+        returnedDetailedPdfUrl: processedProject.detailedPdfUrl ? processedProject.detailedPdfUrl.substring(0, 50) + '...' : null
+      });
     }
     
     return {
@@ -378,8 +398,9 @@ export async function recordProjectDownload(candidateId) {
       throw new Error("Assigned project not found");
     }
     
-    // Check PDF availability
-    if (!project.pdfUrl && !project.detailedPdfUrl) {
+    // Check PDF availability - check all three possible PDF fields
+    const hasPdfUrl = project.pdfUrl || project.detailedPdfUrl || project.briefUrl;
+    if (!hasPdfUrl) {
       throw new Error("Project PDF is not available");
     }
     
@@ -418,7 +439,7 @@ export async function recordProjectDownload(candidateId) {
     return {
       candidate: updatedCandidate,
       project: project,
-      pdfUrl: ensureAccessibleUrl(project.pdfUrl || project.detailedPdfUrl)
+      pdfUrl: ensureAccessibleUrl(project.pdfUrl || project.detailedPdfUrl || project.briefUrl)
     };
   } catch (error) {
     console.error("Error recording project download:", error);
