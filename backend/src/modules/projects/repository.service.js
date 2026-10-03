@@ -1110,3 +1110,43 @@ export async function validateRepositoryForProject(repositorySummary, project) {
   
   return validations;
 }
+
+
+/**
+ * Fetch repository content - compatibility wrapper for verification service
+ * 
+ * This function maintains compatibility with the verification service
+ * which expects a { success, error, data } format
+ */
+export async function fetchRepositoryContent(url) {
+  try {
+    const repoStructure = await getRepositoryStructure(url);
+    
+    if (!repoStructure.accessible) {
+      return {
+        success: false,
+        error: repoStructure.error || "Repository not accessible",
+        data: null
+      };
+    }
+    
+    return {
+      success: true,
+      error: null,
+      data: {
+        structure: repoStructure.structure,
+        metadata: {
+          platform: repoStructure.platform,
+          url: repoStructure.url,
+          accessible: repoStructure.accessible
+        }
+      }
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || "Failed to fetch repository content",
+      data: null
+    };
+  }
+}

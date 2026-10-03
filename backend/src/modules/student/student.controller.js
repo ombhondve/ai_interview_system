@@ -401,7 +401,11 @@ export async function submitProjectController(req, res) {
     
     return res.status(200).json(response);
   } catch (error) {
-    console.error("Error submitting project:", error);
+    console.error("Error submitting project:", {
+      message: error?.message,
+      name: error?.name,
+      stack: error?.stack
+    });
     
     // Handle specific errors
     const errorMessages = {

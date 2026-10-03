@@ -474,10 +474,6 @@ export async function createProjectSubmission(candidateId, url) {
     if (!['http:', 'https:'].includes(urlObj.protocol)) {
       throw new Error("URL must use HTTP or HTTPS protocol");
     }
-    
-    // Import verification tracker
-    const verificationTracker = (await import("../projects/verification.tracker.service.js")).verificationTracker;
-    
     const submissionData = {
       "projectSubmission.url": url,
       "projectSubmission.submittedAt": now,
@@ -543,7 +539,13 @@ export async function createProjectSubmission(candidateId, url) {
       submission: updatedCandidate.projectSubmission
     };
   } catch (error) {
-    console.error("Error creating project submission:", error);
+    console.error("Error creating project submission:", {
+      message: error?.message,
+      name: error?.name,
+      stack: error?.stack,
+      candidateId,
+      url
+    });
     throw error;
   }
 }
