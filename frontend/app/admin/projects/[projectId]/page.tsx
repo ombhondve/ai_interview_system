@@ -679,7 +679,7 @@ export default function ProjectDetailsPage() {
                 No PDF uploaded yet
               </p>
               <p className="mt-1 text-sm text-amber-700">
-                Students will see "Project PDF is not available yet" until a PDF is uploaded.
+                Students will see &quot;Project PDF is not available yet&quot; until a PDF is uploaded.
               </p>
             </div>
           )}
@@ -735,7 +735,7 @@ export default function ProjectDetailsPage() {
               />
               
               <p className="mt-2 text-xs text-slate-500">
-                Select a PDF file (max 10 MB). The PDF will be uploaded to Cloudinary when you click "Save PDF".
+                Select a PDF file (max 10 MB). The PDF will be uploaded to Cloudinary when you click &quot;Save PDF&quot;.
               </p>
             </div>
 
