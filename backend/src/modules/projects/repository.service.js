@@ -657,14 +657,14 @@ async function getGitHubRepositoryStructure(url) {
       console.warn('Failed to fetch repository languages:', langError.message);
     }
     
-    // Get repository tree (top-level files and directories)
-    // Using recursive=false to limit data and prevent deep traversal
-    const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${repoData.default_branch || 'main'}?recursive=false`;
+    // Get repository tree with RECURSIVE traversal to discover nested files
+    // Using recursive=true to get complete file structure
+    const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${repoData.default_branch || 'main'}?recursive=true`;
     let tree = { files: [], directories: [] };
     
     try {
       const treeResponse = await axios.get(treeUrl, {
-        timeout: 5000,
+        timeout: 10000, // Increased timeout for recursive tree
         headers: {
           'Accept': 'application/vnd.github.v3+json',
           'User-Agent': 'RecruitAI-Backend'
@@ -674,9 +674,14 @@ async function getGitHubRepositoryStructure(url) {
       if (treeResponse.status === 200) {
         const treeData = treeResponse.data;
         
-        // Categorize tree items
+        // Safety check: limit total files to prevent overwhelming data
+        const MAX_TREE_ITEMS = 1000;
+        
         if (treeData.tree && Array.isArray(treeData.tree)) {
-          treeData.tree.forEach(item => {
+          // Filter and categorize tree items
+          const allItems = treeData.tree.slice(0, MAX_TREE_ITEMS);
+          
+          allItems.forEach(item => {
             if (item.type === 'blob') {
               tree.files.push({
                 path: item.path,
@@ -690,11 +695,51 @@ async function getGitHubRepositoryStructure(url) {
               });
             }
           });
+          
+          // Warn if we hit the limit
+          if (treeData.tree.length > MAX_TREE_ITEMS) {
+            console.warn(`Repository has ${treeData.tree.length} items, limiting to ${MAX_TREE_ITEMS} for analysis`);
+          }
         }
       }
     } catch (treeError) {
-      // Tree API might fail, but that's okay
-      console.warn('Failed to fetch repository tree:', treeError.message);
+      // If recursive fails, fall back to non-recursive
+      console.warn('Recursive tree fetch failed, falling back to non-recursive:', treeError.message);
+      
+      try {
+        // Fallback to non-recursive tree
+        const fallbackTreeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${repoData.default_branch || 'main'}?recursive=false`;
+        const fallbackResponse = await axios.get(fallbackTreeUrl, {
+          timeout: 5000,
+          headers: {
+            'Accept': 'application/vnd.github.v3+json',
+            'User-Agent': 'RecruitAI-Backend'
+          }
+        });
+        
+        if (fallbackResponse.status === 200) {
+          const treeData = fallbackResponse.data;
+          
+          if (treeData.tree && Array.isArray(treeData.tree)) {
+            treeData.tree.forEach(item => {
+              if (item.type === 'blob') {
+                tree.files.push({
+                  path: item.path,
+                  size: item.size || 0,
+                  extension: getFileExtension(item.path)
+                });
+              } else if (item.type === 'tree') {
+                tree.directories.push({
+                  path: item.path,
+                  type: 'directory'
+                });
+              }
+            });
+          }
+        }
+      } catch (fallbackError) {
+        console.warn('Failed to fetch repository tree (both recursive and non-recursive):', fallbackError.message);
+      }
     }
     
     // Get README content
@@ -1603,13 +1648,20 @@ export async function fetchRepositoryContent(url) {
       setTimeout(() => reject(new Error("Repository fetch timeout (30s)")), 30000);
     });
     
-    // Fetch repository structure AND key files with actual content
-    const fetchPromise = (async () => {
+    // Variables to share data between fetch operation and outer scope
+    let fileCount = 0;
+    let keyFilesResultRef = null;
+    
+    // Execute repository fetching with timeout
+    const fetchOperation = async () => {
       const [repoStructure, keyFilesResult, readmeInfo] = await Promise.all([
         getRepositoryStructure(url),
         getKeyRepositoryFiles(url),
         getReadmeContent(url)
       ]);
+      
+      // Store references for use in outer scope
+      keyFilesResultRef = keyFilesResult;
       
       // Handle empty or inaccessible repository
       if (!repoStructure.accessible) {
@@ -1641,82 +1693,110 @@ export async function fetchRepositoryContent(url) {
       }
       
       // Handle very large repositories (warning but continue)
-      const fileCount = repoStructure.structure?.files?.length || 0;
+      fileCount = repoStructure.structure?.files?.length || 0;
       if (fileCount > 1000) {
         console.warn(`Large repository detected: ${fileCount} files, analysis may be limited`);
       }
     
-    // Extract actual file content for AI analysis
-    const keyFilesWithContent = {};
-    if (keyFilesResult.available && keyFilesResult.files) {
-      keyFilesResult.files.forEach(file => {
-        if (file.content && file.fetchStatus === 'fetched') {
-          keyFilesWithContent[file.path] = {
-            content: file.content,
-            size: file.size,
-            truncated: file.truncated || false,
-            type: file.type
-          };
-        }
-      });
-    }
-    
-    // Extract README content if available
-    let readmeContent = null;
-    if (readmeInfo.available && readmeInfo.content) {
-      readmeContent = {
-        content: readmeInfo.content,
-        size: readmeInfo.size,
-        truncated: readmeInfo.truncated || false
-      };
-      // Add to key files as well
-      keyFilesWithContent['README.md'] = {
-        content: readmeInfo.content.substring(0, 5000), // Limit README to 5000 chars
-        size: Math.min(readmeInfo.size || 0, 5000),
-        truncated: readmeInfo.truncated || readmeInfo.content.length > 5000,
-        type: 'readme'
-      };
-    }
-    
-    // Calculate statistics
-    const statistics = {
-      totalCommits: repoStructure.repository?.commits || 0,
-      lastCommit: repoStructure.repository?.updatedAt || "unknown",
-      languages: repoStructure.repository?.languages || {},
-      size: repoStructure.repository?.size || 0
-    };
-    
-    // Build metadata
-    const metadata = {
-      platform: repoStructure.platform,
-      url: repoStructure.url,
-      accessible: repoStructure.accessible,
-      repository: repoStructure.repository || {},
-      dependencies: extractDependencies(keyFilesWithContent),
-      buildFiles: extractBuildFiles(keyFilesWithContent),
-      filesAnalyzed: keyFilesResult.filesFetched || 0,
-      filesSkipped: keyFilesResult.filesSkipped || 0,
-      totalSize: keyFilesResult.totalSize || 0
-    };
-    
-    return {
-      success: true,
-      error: null,
-      data: {
-        structure: repoStructure.structure,
-        keyFiles: keyFilesWithContent,
-        metadata,
-        statistics,
-        readme: readmeContent,
-        security: {
-          codeExecution: false,
-          fileDownload: false,
-          onlyMetadata: false,
-          actualContentFetched: true,
-          unsafeFilesSkipped: keyFilesResult.filesSkipped || 0
-        }
+      // Extract actual file content for AI analysis
+      const keyFilesWithContent = {};
+      if (keyFilesResult.available && keyFilesResult.files) {
+        keyFilesResult.files.forEach(file => {
+          if (file.content && file.fetchStatus === 'fetched') {
+            keyFilesWithContent[file.path] = {
+              content: file.content,
+              size: file.size,
+              truncated: file.truncated || false,
+              type: file.type
+            };
+          }
+        });
       }
+      
+      // Extract README content if available
+      let readmeContent = null;
+      if (readmeInfo.available && readmeInfo.content) {
+        readmeContent = {
+          content: readmeInfo.content,
+          size: readmeInfo.size,
+          truncated: readmeInfo.truncated || false
+        };
+        // Add to key files as well
+        keyFilesWithContent['README.md'] = {
+          content: readmeInfo.content.substring(0, 5000), // Limit README to 5000 chars
+          size: Math.min(readmeInfo.size || 0, 5000),
+          truncated: readmeInfo.truncated || readmeInfo.content.length > 5000,
+          type: 'readme'
+        };
+      }
+      
+      // Calculate statistics
+      const statistics = {
+        totalCommits: repoStructure.repository?.commits || 0,
+        lastCommit: repoStructure.repository?.updatedAt || "unknown",
+        languages: repoStructure.repository?.languages || {},
+        size: repoStructure.repository?.size || 0
+      };
+      
+      // Build metadata
+      const metadata = {
+        platform: repoStructure.platform,
+        url: repoStructure.url,
+        accessible: repoStructure.accessible,
+        repository: repoStructure.repository || {},
+        dependencies: extractDependencies(keyFilesWithContent),
+        buildFiles: extractBuildFiles(keyFilesWithContent),
+        filesAnalyzed: keyFilesResult.filesFetched || 0,
+        filesSkipped: keyFilesResult.filesSkipped || 0,
+        totalSize: keyFilesResult.totalSize || 0
+      };
+      
+      return {
+        success: true,
+        error: null,
+        data: {
+          structure: repoStructure.structure,
+          keyFiles: keyFilesWithContent,
+          metadata,
+          statistics,
+          readme: readmeContent,
+          security: {
+            codeExecution: false,
+            fileDownload: false,
+            onlyMetadata: false,
+            actualContentFetched: true,
+            unsafeFilesSkipped: keyFilesResult.filesSkipped || 0
+          }
+        }
+      };
     };
+    
+    // Execute with timeout protection
+    const result = await Promise.race([fetchOperation(), timeoutPromise]);
+    const fetchTime = Date.now() - startTime;
+    
+    // Add timing metadata
+    if (result.success && result.data) {
+      result.data.metadata.fetchTimeMs = fetchTime;
+      result.data.metadata.timestamp = new Date().toISOString();
+      
+      // Add edge case warnings
+      const warnings = [];
+      if (fileCount > 1000) {
+        warnings.push(`Large repository: ${fileCount} files (analysis limited to key files)`);
+      }
+      
+      if (keyFilesResultRef?.filesSkipped > 10) {
+        warnings.push(`Many files skipped: ${keyFilesResultRef.filesSkipped} files not analyzed due to security/size limits`);
+      }
+      
+      if (warnings.length > 0) {
+        result.data.metadata.warnings = warnings;
+      }
+    }
+    
+    return result;
+    
   } catch (error) {
     const fetchTime = Date.now() - startTime;
     

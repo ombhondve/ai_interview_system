@@ -282,7 +282,7 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     // Step 1: Validate repository URL
     logger.debug("Validating repository URL");
     const urlValidation = validateRepositoryUrl(repositoryUrl);
-    if (!urlValidation.isValid) {
+    if (!urlValidation.valid) {
       logger.warn(`Invalid repository URL: ${urlValidation.error}`);
       return {
         status: VERIFICATION_STATUS.REJECTED,
