@@ -338,6 +338,24 @@ export const createProject = async (
         ? body.pdfData.trim()
         : "";
 
+    // Validate PDF URLs: if provided, they must be Cloudinary URLs, not local paths
+    const isLocalPath = (url) => url && url.startsWith('/uploads/');
+    const isCloudinaryUrl = (url) => url && (url.includes('cloudinary.com') || url.startsWith('https://') || url.startsWith('http://'));
+    
+    if (isLocalPath(pdfUrl) || isLocalPath(detailedPdfUrl)) {
+      return res.status(400).json({
+        success: false,
+        message: "Project PDF URLs cannot be local paths. Please provide PDF data for Cloudinary upload or use valid Cloudinary URLs.",
+      });
+    }
+    
+    if ((pdfUrl || detailedPdfUrl) && !isCloudinaryUrl(pdfUrl || detailedPdfUrl)) {
+      return res.status(400).json({
+        success: false,
+        message: "Project PDF URLs must be valid Cloudinary URLs.",
+      });
+    }
+
     if (pdfData) {
       try {
         const base64 = pdfData.replace(
@@ -889,20 +907,42 @@ export const updateProject = async (
     if (
       body.pdfUrl !== undefined
     ) {
-      updateData.pdfUrl =
-        cleanString(
-          body.pdfUrl
-        );
+      const pdfUrlValue = cleanString(body.pdfUrl);
+      // Validate PDF URL: cannot be local path, must be Cloudinary URL if provided
+      if (pdfUrlValue && pdfUrlValue.startsWith('/uploads/')) {
+        return res.status(400).json({
+          success: false,
+          message: "Project PDF URL cannot be a local path. Please use a valid Cloudinary URL.",
+        });
+      }
+      if (pdfUrlValue && !(pdfUrlValue.includes('cloudinary.com') || pdfUrlValue.startsWith('https://') || pdfUrlValue.startsWith('http://'))) {
+        return res.status(400).json({
+          success: false,
+          message: "Project PDF URL must be a valid Cloudinary URL.",
+        });
+      }
+      updateData.pdfUrl = pdfUrlValue;
     }
 
     if (
       body.detailedPdfUrl !==
       undefined
     ) {
-      updateData.detailedPdfUrl =
-        cleanString(
-          body.detailedPdfUrl
-        );
+      const detailedPdfUrlValue = cleanString(body.detailedPdfUrl);
+      // Validate detailed PDF URL: cannot be local path, must be Cloudinary URL if provided
+      if (detailedPdfUrlValue && detailedPdfUrlValue.startsWith('/uploads/')) {
+        return res.status(400).json({
+          success: false,
+          message: "Detailed PDF URL cannot be a local path. Please use a valid Cloudinary URL.",
+        });
+      }
+      if (detailedPdfUrlValue && !(detailedPdfUrlValue.includes('cloudinary.com') || detailedPdfUrlValue.startsWith('https://') || detailedPdfUrlValue.startsWith('http://'))) {
+        return res.status(400).json({
+          success: false,
+          message: "Detailed PDF URL must be a valid Cloudinary URL.",
+        });
+      }
+      updateData.detailedPdfUrl = detailedPdfUrlValue;
     }
 
     /* -----------------------------------------
