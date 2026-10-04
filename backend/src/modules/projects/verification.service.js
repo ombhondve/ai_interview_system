@@ -367,10 +367,13 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     const urlValidation = validateRepositoryUrl(repositoryUrl);
     if (!urlValidation.valid) {
       logger.warn(`Invalid repository URL: ${urlValidation.error}`);
+      // An invalid URL means no repository could be fetched and therefore no
+      // evidence exists -> manual review, never an automatic REJECTED.
       return {
-        status: VERIFICATION_STATUS.REJECTED,
-        confidence: 0.1,
-        summary: `Invalid repository URL: ${urlValidation.error}`,
+        status: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        verificationStatus: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        confidence: 0.3,
+        summary: `Invalid repository URL, so automated verification could not obtain sufficient evidence: ${urlValidation.error}`,
         detailedAnalysis: {
           repositoryValidity: {
             isValid: false,
@@ -418,10 +421,12 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       
       if (!actualProject) {
         logger.warn(`Project ${projectId} not found in database`);
+        // No project/evidence available -> manual review, never automatic REJECTED.
         return {
-          status: VERIFICATION_STATUS.REJECTED,
-          confidence: 0.1,
-          summary: `Project not found: Invalid project ID`,
+          status: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+          verificationStatus: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+          confidence: 0.3,
+          summary: `Project not found, so automated verification could not obtain sufficient evidence: invalid project ID`,
           detailedAnalysis: {
             repositoryValidity: {
               isValid: false,
@@ -458,10 +463,12 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       
     } catch (projectError) {
       logger.error(`Failed to fetch project ${projectId}:`, projectError);
+      // System/data error, not evidence of missing requirements -> manual review.
       return {
-        status: VERIFICATION_STATUS.REJECTED,
-        confidence: 0.1,
-        summary: `Project data access failed: ${projectError.message}`,
+        status: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        verificationStatus: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        confidence: 0.3,
+        summary: `Project data access failed, so automated verification could not obtain sufficient evidence: ${projectError.message}`,
         detailedAnalysis: {
           repositoryValidity: {
             isValid: false,
@@ -501,37 +508,60 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     const repoContent = await fetchRepositoryContent(repositoryUrl);
     
     if (!repoContent.success) {
-      logger.warn(`Failed to fetch repository: ${repoContent.error}`);
+      // -----------------------------------------------------------------
+      // A repository FETCH FAILURE is NOT a rejection.
+      //
+      // A timeout, network error, GitHub API outage, 5xx, rate limit, 404,
+      // empty repo, etc. means we could not obtain enough evidence to run
+      // automated verification. Such failures MUST be routed to manual
+      // admin review. REJECTED is reserved for the case where the repo WAS
+      // fetched successfully AND the AI/static evidence actually shows the
+      // required project requirements are missing or failed (see Step 5).
+      //
+      // The AI verification stage is intentionally NOT called here, so the
+      // model is never fed empty/incomplete content produced by a failure.
+      // -----------------------------------------------------------------
+      const errorType = repoContent.metadata?.errorType || "repository_fetch_failure";
+      const reason =
+        "Repository could not be fetched, so automated verification could not obtain sufficient evidence.";
+
+      logger.warn(
+        `Failed to fetch repository (${errorType}): ${repoContent.error}`
+      );
+
       return {
-        status: VERIFICATION_STATUS.REJECTED,
-        confidence: 0.2,
-        summary: `Repository access failed: ${repoContent.error}`,
+        status: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        verificationStatus: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        confidence: 0.3,
+        summary: `${reason} (${repoContent.error})`,
         detailedAnalysis: {
           repositoryValidity: {
             isValid: false,
-            issues: [`Repository access failed: ${repoContent.error}`],
+            issues: [`Repository could not be fetched: ${repoContent.error}`],
             strengths: []
           },
           requirementsAssessment: [],
           technicalEvaluation: {
-            codeQuality: "POOR",
-            projectOrganization: "POOR",
-            documentation: "POOR",
-            issuesFound: ["Repository inaccessible"]
+            codeQuality: "UNKNOWN",
+            projectOrganization: "UNKNOWN",
+            documentation: "UNKNOWN",
+            issuesFound: ["Repository fetch failed - insufficient evidence"]
           },
-          overallAssessment: "Could not access repository content for verification."
+          overallAssessment: `${reason} Failure type: '${errorType}'. A human reviewer must determine whether this is a transient GitHub/network problem or a genuinely inaccessible repository.`
         },
         recommendations: {
-          forStudent: ["Please ensure the repository is publicly accessible"],
-          forReviewer: []
+          forStudent: ["Your repository could not be fetched. Ensure it is public and the URL is correct, then try again."],
+          forReviewer: [`Automated verification skipped: repository fetch failed (${errorType}). Repository could not be fetched, so automated verification could not obtain sufficient evidence.`]
         },
         verificationMetadata: {
           filesAnalyzed: 0,
           requirementsTotal: projectRequirements.requirements.length,
           requirementsMet: 0,
           requirementsPartial: 0,
-          requirementsMissing: projectRequirements.requirements.length,
+          requirementsMissing: 0,
           analysisTimestamp: new Date().toISOString(),
+          repositoryFetchFailed: true,
+          errorType,
           error: repoContent.error
         },
         rawData: null
@@ -553,6 +583,7 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       // Directly return NEEDS_ADMIN_REVIEW when insufficient content for evidence-based verification
       return {
         status: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        verificationStatus: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
         confidence: 0.4,
         summary: "Insufficient repository content available for evidence-based verification. Requires admin review.",
         detailedAnalysis: {
@@ -592,6 +623,50 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       };
     }
     
+    // Defensive guard: NEVER call the AI stage with content produced by a
+    // failed/empty fetch. The checks above already guarantee this, but we
+    // re-assert it so a future refactor cannot feed the model empty or
+    // incomplete content caused by a repository fetch failure.
+    if (!repoContent.success || filesWithContent === 0) {
+      logger.warn("Skipping AI verification - repository content unavailable/insufficient");
+      return {
+        status: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        verificationStatus: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        confidence: 0.3,
+        summary: "Repository content was unavailable, so automated verification could not obtain sufficient evidence.",
+        detailedAnalysis: {
+          repositoryValidity: {
+            isValid: false,
+            issues: ["Repository content unavailable at AI verification stage"],
+            strengths: []
+          },
+          requirementsAssessment: [],
+          technicalEvaluation: {
+            codeQuality: "UNKNOWN",
+            projectOrganization: "UNKNOWN",
+            documentation: "UNKNOWN",
+            issuesFound: ["No usable repository content for AI verification"]
+          },
+          overallAssessment: "Automated verification could not run because repository content was unavailable."
+        },
+        recommendations: {
+          forStudent: ["Your repository content could not be analyzed. Check the repository and try again."],
+          forReviewer: ["AI verification skipped: no usable repository content."]
+        },
+        verificationMetadata: {
+          filesAnalyzed: filesWithContent,
+          requirementsTotal: projectRequirements.requirements.length,
+          requirementsMet: 0,
+          requirementsPartial: 0,
+          requirementsMissing: 0,
+          analysisTimestamp: new Date().toISOString(),
+          aiSkipped: true,
+          reason: "no_usable_repository_content"
+        },
+        rawData: null
+      };
+    }
+
     logger.info("Calling AI for project verification");
     let aiResult;
     try {
@@ -606,6 +681,7 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       // Handle AI failure gracefully
       return {
         status: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        verificationStatus: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
         confidence: 0.3,
         summary: `AI analysis failed: ${aiError.message}. Requires manual review.`,
         detailedAnalysis: {
@@ -651,6 +727,11 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     // Step 7: Add metadata to result
     const finalResult = {
       ...aiResult,
+      // Normalise the decision key: the AI returns `verificationStatus`, while
+      // downstream consumers (storage / reporting) read `status`. Expose both
+      // so the result is classified consistently on every code path.
+      status: aiResult.verificationStatus ?? aiResult.status,
+      verificationStatus: aiResult.verificationStatus ?? aiResult.status,
       verificationMetadata: {
         ...aiResult.verificationMetadata,
         candidateId,

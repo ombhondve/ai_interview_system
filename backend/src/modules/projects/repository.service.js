@@ -6,6 +6,7 @@
  */
 
 import axios from "axios";
+import { githubGet } from "./github.client.js";
 
 /**
  * Validate repository URL format
@@ -212,16 +213,8 @@ async function checkGitHubRepository(url) {
     // GitHub API endpoint
     const apiUrl = `https://api.github.com/repos/${owner}/${repo}`;
     
-    const response = await axios.get(apiUrl, {
-      timeout: 10000,
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'RecruitAI-Backend'
-      },
-      validateStatus: function (status) {
-        return status >= 200 && status < 400;
-      }
-    });
+    // Shared GitHub client: optional auth, configurable timeout + retry
+    const response = await githubGet(apiUrl);
     
     if (response.status === 200) {
       const repoData = response.data;
@@ -416,16 +409,8 @@ export async function getReadmeContent(url) {
     // Try to get README via GitHub API
     const apiUrl = `https://api.github.com/repos/${owner}/${repo}/readme`;
     
-    const response = await axios.get(apiUrl, {
-      timeout: 10000,
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'RecruitAI-Backend'
-      },
-      validateStatus: function (status) {
-        return status >= 200 && status < 400;
-      }
-    });
+    // Shared GitHub client: optional auth, configurable timeout + retry
+    const response = await githubGet(apiUrl);
     
     if (response.status === 200) {
       const readmeData = response.data;
@@ -622,13 +607,7 @@ async function getGitHubRepositoryStructure(url) {
     
     // Get repository info
     const repoUrl = `https://api.github.com/repos/${owner}/${repo}`;
-    const repoResponse = await axios.get(repoUrl, {
-      timeout: 10000,
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'RecruitAI-Backend'
-      }
-    });
+    const repoResponse = await githubGet(repoUrl);
     
     if (repoResponse.status !== 200) {
       throw new Error(`GitHub API returned status ${repoResponse.status}`);
@@ -641,13 +620,7 @@ async function getGitHubRepositoryStructure(url) {
     let languages = {};
     
     try {
-      const languagesResponse = await axios.get(languagesUrl, {
-        timeout: 5000,
-        headers: {
-          'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'RecruitAI-Backend'
-        }
-      });
+      const languagesResponse = await githubGet(languagesUrl);
       
       if (languagesResponse.status === 200) {
         languages = languagesResponse.data;
@@ -663,13 +636,7 @@ async function getGitHubRepositoryStructure(url) {
     let tree = { files: [], directories: [] };
     
     try {
-      const treeResponse = await axios.get(treeUrl, {
-        timeout: 10000, // Increased timeout for recursive tree
-        headers: {
-          'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'RecruitAI-Backend'
-        }
-      });
+      const treeResponse = await githubGet(treeUrl);
       
       if (treeResponse.status === 200) {
         const treeData = treeResponse.data;
@@ -709,13 +676,7 @@ async function getGitHubRepositoryStructure(url) {
       try {
         // Fallback to non-recursive tree
         const fallbackTreeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${repoData.default_branch || 'main'}?recursive=false`;
-        const fallbackResponse = await axios.get(fallbackTreeUrl, {
-          timeout: 5000,
-          headers: {
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'RecruitAI-Backend'
-          }
-        });
+        const fallbackResponse = await githubGet(fallbackTreeUrl);
         
         if (fallbackResponse.status === 200) {
           const treeData = fallbackResponse.data;
@@ -966,13 +927,7 @@ async function fetchFileContentSafely(owner, repo, path, branch = 'main') {
     // Fetch file content from GitHub API
     const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${branch}`;
     
-    const response = await axios.get(apiUrl, {
-      timeout: 10000,
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'RecruitAI-Backend'
-      }
-    });
+    const response = await githubGet(apiUrl);
     
     if (response.status === 200) {
       const fileData = response.data;
@@ -1643,9 +1598,20 @@ export async function fetchRepositoryContent(url) {
       };
     }
     
-    // Set timeout for entire operation (30 seconds)
+    // Safety-net timeout for the entire fetch operation. Configurable via
+    // REPO_FETCH_TIMEOUT_MS; leaves headroom for the per-request GitHub
+    // timeout (GITHUB_API_TIMEOUT_MS) plus its retries.
+    const operationTimeoutMs =
+      Number(process.env.REPO_FETCH_TIMEOUT_MS) > 0
+        ? Math.floor(Number(process.env.REPO_FETCH_TIMEOUT_MS))
+        : 90000;
+
+    let operationTimeoutHandle = null;
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("Repository fetch timeout (30s)")), 30000);
+      operationTimeoutHandle = setTimeout(
+        () => reject(new Error(`Repository fetch timeout (${operationTimeoutMs}ms)`)),
+        operationTimeoutMs
+      );
     });
     
     // Variables to share data between fetch operation and outer scope
@@ -1771,8 +1737,14 @@ export async function fetchRepositoryContent(url) {
       };
     };
     
-    // Execute with timeout protection
-    const result = await Promise.race([fetchOperation(), timeoutPromise]);
+    // Execute with timeout protection (clear the timer so a settled race
+    // never leaves a dangling timer / rejected promise behind)
+    let result;
+    try {
+      result = await Promise.race([fetchOperation(), timeoutPromise]);
+    } finally {
+      if (operationTimeoutHandle) clearTimeout(operationTimeoutHandle);
+    }
     const fetchTime = Date.now() - startTime;
     
     // Add timing metadata
