@@ -18,6 +18,7 @@
     "extensionsToTreatAsEsm": []
   },
   "dependencies": {
+    "@vercel/functions": "^3.9.11",
     "axios": "^1.20.0",
     "bcrypt": "^6.0.0",
     "canvas": "^3.2.3",

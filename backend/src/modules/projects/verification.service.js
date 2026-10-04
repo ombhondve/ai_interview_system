@@ -504,7 +504,7 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     const projectRequirements = prepareProjectRequirements(actualProject);
     
     // Step 3: Fetch repository content safely
-    logger.debug("Fetching repository content");
+    logger.info("Fetching repository content for verification");
     const repoContent = await fetchRepositoryContent(repositoryUrl);
     
     if (!repoContent.success) {

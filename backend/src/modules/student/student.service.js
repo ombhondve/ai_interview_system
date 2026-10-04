@@ -9,6 +9,8 @@ import {
   hashSessionToken,
 } from "../verification/token.service.js";
 
+import { keepInvocationAlive } from "../../utils/vercelBackground.js";
+
 /**
  * ============================================
  * GET CANDIDATE BY INVITATION TOKEN
@@ -545,20 +547,36 @@ export async function createProjectSubmission(candidateId, url) {
     
     // Start verification process asynchronously with correct project ID
     // candidate.assignedProjectId is already the ObjectId or string, not an object with _id
-    startVerificationProcess(candidateId, candidate.assignedProjectId, url).catch(error => {
-      console.error(`Failed to start verification for candidate ${candidateId}:`, error);
-      
-      // Update candidate with error status
-      Candidate.findByIdAndUpdate(candidateId, {
-        $set: {
-          "projectSubmissionStatus": "ai_verification_failed",
-          "projectSubmission.aiVerificationStatus": "error",
-          "projectSubmission.aiVerificationResult.error": error.message
-        }
-      }).catch(dbError => {
-        console.error(`Failed to update candidate error status:`, dbError);
+    //
+    // Verification (GitHub fetch + AI analysis + storage) takes far longer than
+    // this request, and the response is returned immediately below. On Vercel
+    // the invocation would normally be terminated as soon as the response is
+    // sent, so the promise is registered with waitUntil() to keep the runtime
+    // alive. The student never waits for verification to finish.
+    const verificationTask = startVerificationProcess(
+      candidateId,
+      candidate.assignedProjectId,
+      url
+    )
+      .then((verificationResult) => verificationResult?.verificationPromise)
+      .catch((error) => {
+        console.error(`Failed to start verification for candidate ${candidateId}:`, error);
+
+        // Update candidate with error status
+        return Candidate.findByIdAndUpdate(candidateId, {
+          $set: {
+            "projectSubmissionStatus": "ai_verification_failed",
+            "projectSubmission.aiVerificationStatus": "error",
+            "projectSubmission.aiVerificationResult.error": error.message
+          }
+        }).catch((dbError) => {
+          console.error(`Failed to update candidate error status:`, dbError);
+        });
       });
-    });
+
+    // Keep the serverless invocation alive until verification completes.
+    // No-op outside Vercel (e.g. local `npm start`).
+    keepInvocationAlive(verificationTask);
     
     return {
       candidate: updatedCandidate,

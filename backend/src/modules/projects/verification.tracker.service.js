@@ -152,15 +152,36 @@ class VerificationTracker {
         repositoryUrl
       });
 
-      // Start async verification
-      this.executeVerification(candidateId, projectId, repositoryUrl);
+      // Start async verification.
+      //
+      // The promise is returned to the caller so the HTTP layer can register it
+      // with the platform's background-execution primitive (Vercel waitUntil)
+      // and keep the invocation alive until verification has actually
+      // finished. Without this the returned promise would settle immediately
+      // and the invocation could be terminated mid-verification.
+      const verificationPromise = this.executeVerification(
+        candidateId,
+        projectId,
+        repositoryUrl
+      );
+
+      // Defensive: executeVerification handles its own errors internally, but
+      // never leave an unhandled rejection attached to the returned promise.
+      verificationPromise.catch((error) => {
+        logger.error(
+          `Unhandled error during verification for candidate ${candidateId}:`,
+          error
+        );
+      });
 
       return {
         success: true,
         message: "Verification started",
         candidateId,
         startedAt: verificationData.startedAt,
-        trackingId: `verify_${candidateId}_${Date.now()}`
+        trackingId: `verify_${candidateId}_${Date.now()}`,
+        // Full verification lifecycle (GitHub -> AI -> storage).
+        verificationPromise
       };
 
     } catch (error) {
