@@ -303,6 +303,21 @@ const candidateSchema = new mongoose.Schema(
                 type: Date
             },
 
+            /**
+             * Identifies THIS specific submission.
+             *
+             * Verification runs asynchronously in the background, so a
+             * verification started for submission A can finish after the
+             * student has already submitted repository B. Every verification
+             * result carries the submissionId it was started for and is only
+             * persisted while the candidate is still on that same submission.
+             * This is what stops a stale result from overwriting a new one.
+             */
+            submissionId: {
+                type: String,
+                trim: true
+            },
+
             validationStatus: {
                 type: String,
                 enum: ["pending", "valid", "invalid"],

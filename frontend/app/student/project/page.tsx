@@ -33,6 +33,18 @@ type AssignedProject = {
   isExpired?: boolean;
 };
 
+type VerificationState = {
+  state:
+    | "not_submitted"
+    | "in_progress"
+    | "accepted"
+    | "rejected"
+    | "under_review";
+  label: string;
+  description: string;
+  isTerminal: boolean;
+};
+
 type Candidate = {
   id: string;
   name?: string;
@@ -44,7 +56,18 @@ type Candidate = {
     url?: string;
     submittedAt?: string;
     status?: string;
+    aiVerificationStatus?: string;
+    aiVerificationCompletedAt?: string;
+    verificationMetadata?: {
+      verificationTimeMs?: number;
+    };
   } | null;
+  /**
+   * Student-facing verification state, derived by the backend from the
+   * existing verification fields. Keeping the mapping on the server means the
+   * UI never has to interpret internal status names.
+   */
+  verification?: VerificationState;
 };
 
 type ProjectApiResponse = {
@@ -58,6 +81,125 @@ type ProjectApiResponse = {
   };
   message?: string;
 };
+
+const VERIFICATION_STYLES = {
+  not_submitted: {
+    badge: "bg-slate-100 text-slate-700",
+    border: "border-slate-200",
+    panel: "bg-slate-50",
+    dot: "bg-slate-400",
+    text: "text-slate-900",
+    sub: "text-slate-600",
+  },
+  in_progress: {
+    badge: "bg-amber-100 text-amber-800",
+    border: "border-amber-200",
+    panel: "bg-amber-50",
+    dot: "bg-amber-500",
+    text: "text-amber-900",
+    sub: "text-amber-700",
+  },
+  accepted: {
+    badge: "bg-emerald-100 text-emerald-800",
+    border: "border-emerald-200",
+    panel: "bg-emerald-50",
+    dot: "bg-emerald-600",
+    text: "text-emerald-900",
+    sub: "text-emerald-700",
+  },
+  rejected: {
+    badge: "bg-rose-100 text-rose-800",
+    border: "border-rose-200",
+    panel: "bg-rose-50",
+    dot: "bg-rose-600",
+    text: "text-rose-900",
+    sub: "text-rose-700",
+  },
+  under_review: {
+    badge: "bg-blue-100 text-blue-800",
+    border: "border-blue-200",
+    panel: "bg-blue-50",
+    dot: "bg-blue-600",
+    text: "text-blue-900",
+    sub: "text-blue-700",
+  },
+};
+
+/**
+ * ============================================
+ * VERIFICATION STATUS CARD
+ * ============================================
+ *
+ * Shows the student-facing verification state next to the submission section.
+ * Labels come from the backend so internal status names are never exposed.
+ */
+function VerificationStatusCard({
+  verification,
+  hasSubmission,
+}: {
+  verification: VerificationState | null;
+  hasSubmission: boolean;
+}) {
+  const state: VerificationState["state"] =
+    verification?.state ??
+    (hasSubmission
+      ? "in_progress"
+      : "not_submitted");
+
+  const styles = VERIFICATION_STYLES[state];
+
+  const label =
+    verification?.label ??
+    (state === "in_progress"
+      ? "Verification In Progress"
+      : "Not Submitted");
+
+  const description =
+    verification?.description ??
+    (state === "in_progress"
+      ? "Your project has been submitted and is currently being verified."
+      : "You have not submitted a project yet.");
+
+  const isRunning = state === "in_progress";
+
+  return (
+    <div
+      className={`mt-4 rounded-xl border p-4 ${styles.border} ${styles.panel}`}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span
+            className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${styles.dot} ${
+              isRunning ? "animate-pulse" : ""
+            }`}
+          />
+
+          <div>
+            <p
+              className={`text-sm font-medium ${styles.text}`}
+            >
+              {label}
+            </p>
+
+            <p
+              className={`mt-1 text-sm ${styles.sub}`}
+            >
+              {description}
+            </p>
+          </div>
+        </div>
+
+        <span
+          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${styles.badge}`}
+        >
+          {label}
+        </span>
+      </div>
+    </div>
+  );
+}
 
 export default function Project() {
   const router = useRouter();
@@ -87,6 +229,16 @@ export default function Project() {
 
   const [showConfirm, setShowConfirm] =
     useState(false);
+
+  /**
+   * Student-facing verification state.
+   *
+   * Seeded from the backend and refreshed while a verification is running.
+   * Optimistically set to "in_progress" right after a submission so the page
+   * never shows a stale Accepted/Rejected while the new one verifies.
+   */
+  const [verification, setVerification] =
+    useState<VerificationState | null>(null);
 
   /**
    * ============================================
@@ -138,6 +290,9 @@ export default function Project() {
 
         setCandidate(data.candidate);
         setProject(data.project || null);
+        setVerification(
+          data.candidate.verification ?? null
+        );
 
         /**
          * If the candidate already has a
@@ -172,6 +327,85 @@ export default function Project() {
   useEffect(() => {
     loadCandidate();
   }, [loadCandidate]);
+
+  /**
+   * ============================================
+   * POLL VERIFICATION STATUS
+   * ============================================
+   *
+   * Verification runs asynchronously in the background, so while it is not in
+   * a terminal state we poll the existing status endpoint and stop as soon as
+   * it reaches Accepted / Rejected / Under Review.
+   *
+   * Polling is skipped entirely for terminal and "not submitted" states, so
+   * there are no unnecessary requests.
+   */
+
+  const isPollingActive =
+    verification?.state === "in_progress";
+
+  useEffect(() => {
+    if (!isPollingActive) {
+      return;
+    }
+
+    let cancelled = false;
+
+    /**
+     * Fetch the latest student-facing verification state.
+     */
+    const poll = async () => {
+      try {
+        const backendUrl =
+          process.env.NEXT_PUBLIC_BACKEND_URL ||
+          "https://ai-interview-system-eewl.vercel.app";
+
+        const response = await fetch(
+          `${backendUrl}/api/student/verification-status`,
+          {
+            method: "GET",
+            credentials: "include",
+            cache: "no-store",
+          }
+        );
+
+        if (cancelled || !response.ok) {
+          return;
+        }
+
+        const data = await response.json();
+
+        const next =
+          data?.data?.verification ?? null;
+
+        if (cancelled || !next) {
+          return;
+        }
+
+        setVerification(next);
+
+        /**
+         * Refresh the full candidate so the submitted URL and any
+         * verification details stay in sync once it completes.
+         */
+        if (next.isTerminal) {
+          await loadCandidate();
+        }
+      } catch {
+        // Transient polling failures are ignored; the next tick retries.
+      }
+    };
+
+    const intervalId = setInterval(
+      poll,
+      5000
+    );
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [isPollingActive, loadCandidate]);
 
   /**
    * ============================================
@@ -337,6 +571,21 @@ export default function Project() {
       setSuccess(
         "Your project has been submitted successfully."
       );
+
+      /**
+       * Immediately show "Verification In Progress".
+       *
+       * A previous Accepted/Rejected result must not remain visible while the
+       * new submission is being verified, so we clear it locally right away
+       * and then adopt the backend's derived state from the response.
+       */
+      setVerification({
+        state: "in_progress",
+        label: "Verification In Progress",
+        description:
+          "Your project has been submitted and is currently being verified.",
+        isTerminal: false,
+      });
 
       /**
        * Keep the submitted URL visible.
@@ -712,12 +961,25 @@ export default function Project() {
                         <p className="mt-2 text-xs text-blue-700">
                           Submitted on{" "}
                           {
-                            existingSubmission.submittedAt
+                            new Date(
+                              existingSubmission.submittedAt
+                            ).toLocaleString()
                           }
                         </p>
                       )}
                     </div>
                   )}
+
+                  {/* ==================================== */}
+                  {/* VERIFICATION STATUS */}
+                  {/* ==================================== */}
+
+                  <VerificationStatusCard
+                    verification={verification}
+                    hasSubmission={
+                      Boolean(existingSubmission?.url)
+                    }
+                  />
 
                   <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
                     <Button

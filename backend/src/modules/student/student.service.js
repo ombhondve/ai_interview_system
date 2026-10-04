@@ -10,6 +10,7 @@ import {
 } from "../verification/token.service.js";
 
 import { keepInvocationAlive } from "../../utils/vercelBackground.js";
+import { createSubmissionId, deriveVerificationState } from "../projects/verificationState.js";
 
 /**
  * ============================================
@@ -361,7 +362,9 @@ export async function getCandidateWithProject(candidateId) {
         role: candidate.role,
         status: candidate.status,
         projectSubmissionStatus: candidate.projectSubmissionStatus,
-        projectSubmission: candidate.projectSubmission
+        projectSubmission: candidate.projectSubmission,
+        // Student-facing verification state (single source of truth).
+        verification: deriveVerificationState(candidate)
       },
       project: processedProject,
       deadline: deadlineInfo
@@ -502,18 +505,22 @@ export async function createProjectSubmission(candidateId, url) {
     if (!['http:', 'https:'].includes(urlObj.protocol)) {
       throw new Error("URL must use HTTP or HTTPS protocol");
     }
+    // Identify this specific submission so an older background verification
+    // can never overwrite the result of this newer one.
+    const submissionId = createSubmissionId();
+
     const submissionData = {
       "projectSubmission.url": url,
       "projectSubmission.submittedAt": now,
+      "projectSubmission.submissionId": submissionId,
       "projectSubmission.validationStatus": "pending",
       "projectSubmission.aiVerificationStatus": "pending",
       "projectSubmission.aiVerificationStartedAt": null,
       "projectSubmission.aiVerificationCompletedAt": null,
-      "projectSubmission.aiVerificationResult": null,
       "projectSubmission.verificationStats": null,
       "projectSubmission.adminReview": null
     };
-    
+
     // Add to history if this is a resubmission
     const historyEntry = {
       url,
@@ -521,12 +528,22 @@ export async function createProjectSubmission(candidateId, url) {
       status: "submitted",
       reason: candidate.projectSubmission?.url ? "Resubmission" : "Initial submission"
     };
-    
+
     // Build update operation - handle history based on whether it exists
     let updateOperation = {
       $set: {
         ...submissionData,
         projectSubmissionStatus: "submitted"
+      },
+
+      // Explicitly remove the previous verification's result and stored
+      // evidence so a previous REJECTED / ACCEPTED result cannot linger on the
+      // page while the new submission is still being verified.
+      // Unset (rather than null) so schema defaults are not re-applied.
+      $unset: {
+        "projectSubmission.aiVerificationResult": "",
+        "projectSubmission.verificationEvidence": "",
+        "projectSubmission.aiVerificationDurationMs": ""
       }
     };
     
@@ -556,7 +573,8 @@ export async function createProjectSubmission(candidateId, url) {
     const verificationTask = startVerificationProcess(
       candidateId,
       candidate.assignedProjectId,
-      url
+      url,
+      submissionId
     )
       .then((verificationResult) => verificationResult?.verificationPromise)
       .catch((error) => {
@@ -597,7 +615,7 @@ export async function createProjectSubmission(candidateId, url) {
 /**
  * Start verification process for submitted project
  */
-async function startVerificationProcess(candidateId, projectId, repositoryUrl) {
+async function startVerificationProcess(candidateId, projectId, repositoryUrl, submissionId) {
   try {
     console.log(`Starting verification process for candidate ${candidateId}`);
     
@@ -608,7 +626,8 @@ async function startVerificationProcess(candidateId, projectId, repositoryUrl) {
     const verificationResult = await verificationTracker.startVerification(
       candidateId,
       projectId,
-      repositoryUrl
+      repositoryUrl,
+      submissionId
     );
     
     if (!verificationResult.success) {

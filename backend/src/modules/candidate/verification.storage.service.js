@@ -1,5 +1,6 @@
 import Candidate from "./candidate.model.js";
 import { processVerificationForStorage, requiresAdminReview, isVerificationApproved, getVerificationStatistics } from "../projects/verification.service.js";
+import { buildSubmissionGuard } from "../projects/verificationState.js";
 import logger from "../../utils/logger.js";
 
 /**
@@ -10,14 +11,25 @@ import logger from "../../utils/logger.js";
 
 /**
  * Store verification result in candidate document
+ *
+ * @param {string} candidateId
+ * @param {object} verificationResult
+ * @param {string} [submissionId] submission this verification belongs to.
+ *   When provided, the write is conditional: if the student has since made a
+ *   NEWER submission, the result is discarded instead of overwriting the newer
+ *   submission's state. This prevents a slow background verification of an old
+ *   repository from clobbering the status of the current one.
  */
-export async function storeVerificationResult(candidateId, verificationResult) {
+export async function storeVerificationResult(candidateId, verificationResult, submissionId) {
   try {
     logger.info(`Storing verification result for candidate ${candidateId}`);
-    
+
     if (!verificationResult) {
       throw new Error("No verification result provided");
     }
+
+    // Only ever write to the submission that actually started this verification.
+    const query = buildSubmissionGuard(candidateId, submissionId);
     
     // Process verification for storage
     const projectId = verificationResult.verificationMetadata?.projectId;
@@ -98,7 +110,7 @@ export async function storeVerificationResult(candidateId, verificationResult) {
     }
     
     const updatedCandidate = await Candidate.findByIdAndUpdate(
-      candidateId,
+      query,
       {
         $set: updateData,
         $push: {
@@ -113,9 +125,23 @@ export async function storeVerificationResult(candidateId, verificationResult) {
       },
       { new: true, runValidators: true }
     ).populate("assignedProjectId");
-    
+
     if (!updatedCandidate) {
-      throw new Error(`Candidate ${candidateId} not found`);
+      // A newer submission superseded this verification. Discard the stale
+      // result rather than overwriting the student's current submission.
+      logger.warn(
+        `Discarded stale verification result for candidate ${candidateId}: ` +
+          `submission ${submissionId} is no longer current`
+      );
+
+      return {
+        success: true,
+        candidate: null,
+        verificationStatus: verificationResult.status,
+        requiresAdminReview: requiresAdminReview(verificationResult),
+        stats: processedData,
+        stale: true
+      };
     }
     
     logger.info(`Verification result stored for candidate ${candidateId}, status: ${verificationResult.status}`);
@@ -133,7 +159,9 @@ export async function storeVerificationResult(candidateId, verificationResult) {
     
     // Try to update with error status
     try {
-      await Candidate.findByIdAndUpdate(candidateId, {
+      const errorQuery = buildSubmissionGuard(candidateId, submissionId);
+
+      await Candidate.findByIdAndUpdate(errorQuery, {
         $set: {
           "projectSubmissionStatus": "ai_verification_failed",
           "projectSubmission.aiVerificationStatus": "error",
@@ -154,11 +182,16 @@ export async function storeVerificationResult(candidateId, verificationResult) {
 
 /**
  * Update verification status to processing
+ *
+ * Guarded by submissionId so a stale background verification can never move a
+ * NEWER submission back into "processing".
  */
-export async function setVerificationProcessing(candidateId) {
+export async function setVerificationProcessing(candidateId, submissionId) {
   try {
+    const query = buildSubmissionGuard(candidateId, submissionId);
+
     const updatedCandidate = await Candidate.findByIdAndUpdate(
-      candidateId,
+      query,
       {
         $set: {
           "projectSubmissionStatus": "verification_processing",
@@ -169,6 +202,15 @@ export async function setVerificationProcessing(candidateId) {
       },
       { new: true }
     );
+
+    if (!updatedCandidate) {
+      // Either the candidate is gone, or this verification is stale.
+      logger.warn(
+        `Skipped setVerificationProcessing for candidate ${candidateId}: ` +
+          `submission ${submissionId} is no longer current`
+      );
+      return { success: false, stale: true, error: "Submission is no longer current" };
+    }
     
     if (!updatedCandidate) {
       throw new Error(`Candidate ${candidateId} not found`);

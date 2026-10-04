@@ -122,12 +122,25 @@ router.get(
       }
       
       // Format response with PERSISTED AI verification result
+      const { deriveVerificationState } = await import("../projects/verificationState.js");
+      const verification = deriveVerificationState({
+        projectSubmissionStatus: verificationData.submissionStatus,
+        projectSubmission: {
+          url: verificationData.verificationResult?.verificationMetadata?.repositoryUrl,
+          aiVerificationStatus: verificationData.status,
+          aiVerificationResult: verificationData.verificationResult
+        }
+      });
+
       const response = {
         success: true,
         data: {
           // Current status
           status: verificationData.verificationResult?.verificationStatus || verificationData.status || "unknown",
           submissionStatus: verificationData.submissionStatus || "unknown",
+
+          // Student-facing state (label/description/terminal flag)
+          verification,
           
           // Persisted AI verification result (what student should see)
           verificationResult: verificationData.verificationResult ? {

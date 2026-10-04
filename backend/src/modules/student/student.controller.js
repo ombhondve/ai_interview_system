@@ -385,18 +385,25 @@ export async function submitProjectController(req, res) {
     const result = await createProjectSubmission(candidate._id, url);
     
     // Format response
+    const { deriveVerificationState } = await import("../projects/verificationState.js");
+
     const response = {
       submission: {
         url: result.submission.url,
         submittedAt: result.submission.submittedAt,
         status: "submitted",
+        // Identifies this submission; lets the client ignore stale results.
+        submissionId: result.submission.submissionId,
         message: "Project submitted successfully. It will now be validated."
       },
       candidate: {
         id: result.candidate._id,
         name: result.candidate.name,
         projectSubmissionStatus: result.candidate.projectSubmissionStatus
-      }
+      },
+      // Immediately reflects the reset state, so the page shows
+      // "Verification In Progress" without waiting for the AI.
+      verification: deriveVerificationState(result.candidate)
     };
     
     return res.status(200).json(response);

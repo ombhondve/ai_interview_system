@@ -107,22 +107,28 @@ class VerificationTracker {
   /**
    * Start verification process for a candidate
    */
-  async startVerification(candidateId, projectId, repositoryUrl) {
+  async startVerification(candidateId, projectId, repositoryUrl, submissionId) {
     try {
-      // Check if already being verified
+      // Check if already being verified.
+      // When a new submission arrives it gets a NEW submissionId, so a
+      // previous in-flight verification must not block the new one.
       if (this.activeVerifications.has(candidateId)) {
         const active = this.activeVerifications.get(candidateId);
-        return {
-          success: false,
-          message: "Verification already in progress",
-          candidateId,
-          startedAt: active.startedAt,
-          attempts: active.attempts
-        };
+
+        if (active.submissionId === submissionId) {
+          return {
+            success: false,
+            message: "Verification already in progress",
+            candidateId,
+            startedAt: active.startedAt,
+            attempts: active.attempts
+          };
+        }
       }
 
-      // Set status to processing in database
-      const processingResult = await setVerificationProcessing(candidateId);
+      // Set status to processing in database (guarded by submissionId so a
+      // stale job can never move the NEW submission into "processing").
+      const processingResult = await setVerificationProcessing(candidateId, submissionId);
       if (!processingResult.success) {
         return {
           success: false,
@@ -136,6 +142,9 @@ class VerificationTracker {
         candidateId,
         projectId,
         repositoryUrl,
+        // Identifies the submission this verification belongs to. Used to
+        // discard results from a superseded submission.
+        submissionId,
         startedAt: new Date().toISOString(),
         attempts: 0,
         lastAttempt: null,
@@ -162,7 +171,8 @@ class VerificationTracker {
       const verificationPromise = this.executeVerification(
         candidateId,
         projectId,
-        repositoryUrl
+        repositoryUrl,
+        submissionId
       );
 
       // Defensive: executeVerification handles its own errors internally, but
@@ -201,7 +211,7 @@ class VerificationTracker {
   /**
    * Execute verification with retry logic
    */
-  async executeVerification(candidateId, projectId, repositoryUrl) {
+  async executeVerification(candidateId, projectId, repositoryUrl, submissionId) {
     const verificationData = this.activeVerifications.get(candidateId);
     if (!verificationData) {
       logger.warn(`No verification data found for candidate ${candidateId}`);
@@ -228,7 +238,11 @@ class VerificationTracker {
         const result = await verifyProjectSubmission(candidateId, projectId, repositoryUrl);
 
         // Store result
-        const storageResult = await storeVerificationResult(candidateId, result);
+        const storageResult = await storeVerificationResult(
+          candidateId,
+          result,
+          submissionId
+        );
 
         if (!storageResult.success) {
           throw new Error(`Failed to store verification result: ${storageResult.error}`);
