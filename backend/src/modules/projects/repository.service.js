@@ -9,6 +9,67 @@ import axios from "axios";
 import { githubGet } from "./github.client.js";
 
 /**
+ * Parse and normalise a GitHub repository URL into its owner/repo pair.
+ *
+ * Students commonly paste the clone URL, which carries a trailing ".git"
+ * (e.g. https://github.com/ombhondve/EduReg2.git). The GitHub REST API does
+ * NOT accept that suffix, so requesting
+ *   https://api.github.com/repos/ombhondve/EduReg2.git
+ * returns 404 even though the repository exists.
+ *
+ * This helper is the single source of truth for owner/repo extraction so every
+ * GitHub API call in this service uses the same normalised values. It handles:
+ *   https://github.com/owner/repo          -> owner, repo
+ *   https://github.com/owner/repo.git      -> owner, repo      (.git stripped)
+ *   https://github.com/owner/repo.git/     -> owner, repo      (.git/ stripped)
+ *   https://github.com/owner/repo/         -> owner, repo      (trailing slash)
+ *   https://github.com/owner/repo?tab=readme-ov-ri -> owner, repo (query ignored)
+ *
+ * @param {string} url - repository URL (any casing of the .git suffix)
+ * @returns {{owner: string, repo: string}|null} null when the URL is not a
+ *   recognisable GitHub repository URL (missing owner or repo segment).
+ */
+export function parseGitHubRepoUrl(url) {
+  let urlObj;
+  try {
+    urlObj = new URL(url);
+  } catch {
+    return null;
+  }
+
+  // pathname excludes query string and hash, and splitting on "/" plus
+  // filtering empty segments transparently drops any trailing slash.
+  const pathParts = urlObj.pathname.split("/").filter((part) => part.trim());
+
+  if (pathParts.length < 2) {
+    return null;
+  }
+
+  let owner = pathParts[0];
+  let repo = pathParts[1];
+
+  // Safely decode percent-encoded segments; fall back to the raw value.
+  try {
+    owner = decodeURIComponent(owner);
+    repo = decodeURIComponent(repo);
+  } catch {
+    // keep raw values
+  }
+
+  // Strip the clone-URL ".git" suffix (case-insensitive, only at the end).
+  // A trailing slash may leave the suffix as ".git/" only if the URL was not
+  // split on "/" - filter() above handles that, so a final slash strip is
+  // applied defensively anyway.
+  repo = repo.replace(/\/+$/, "").replace(/\.git$/i, "");
+
+  if (!owner || !repo) {
+    return null;
+  }
+
+  return { owner, repo };
+}
+
+/**
  * Validate repository URL format
  * 
  * Supported platforms:
@@ -197,19 +258,17 @@ export async function checkRepositoryAccessibility(url) {
  */
 async function checkGitHubRepository(url) {
   try {
-    const urlObj = new URL(url);
-    const pathParts = urlObj.pathname.split('/').filter(p => p.trim());
-    
-    if (pathParts.length < 2) {
+    const parsed = parseGitHubRepoUrl(url);
+
+    if (!parsed) {
       return {
         accessible: false,
         error: "Invalid GitHub repository URL format"
       };
     }
-    
-    const owner = pathParts[0];
-    const repo = pathParts[1];
-    
+
+    const { owner, repo } = parsed;
+
     // GitHub API endpoint
     const apiUrl = `https://api.github.com/repos/${owner}/${repo}`;
     
@@ -394,18 +453,17 @@ export async function getReadmeContent(url) {
       };
     }
     
-    const pathParts = urlObj.pathname.split('/').filter(p => p.trim());
-    
-    if (pathParts.length < 2) {
+    const parsed = parseGitHubRepoUrl(url);
+
+    if (!parsed) {
       return {
         available: false,
         reason: 'Invalid GitHub repository URL'
       };
     }
-    
-    const owner = pathParts[0];
-    const repo = pathParts[1];
-    
+
+    const { owner, repo } = parsed;
+
     // Try to get README via GitHub API
     const apiUrl = `https://api.github.com/repos/${owner}/${repo}/readme`;
     
@@ -595,16 +653,14 @@ export async function getRepositoryStructure(url) {
  */
 async function getGitHubRepositoryStructure(url) {
   try {
-    const urlObj = new URL(url);
-    const pathParts = urlObj.pathname.split('/').filter(p => p.trim());
-    
-    if (pathParts.length < 2) {
+    const parsed = parseGitHubRepoUrl(url);
+
+    if (!parsed) {
       throw new Error('Invalid GitHub repository URL');
     }
-    
-    const owner = pathParts[0];
-    const repo = pathParts[1];
-    
+
+    const { owner, repo } = parsed;
+
     // Get repository info
     const repoUrl = `https://api.github.com/repos/${owner}/${repo}`;
     const repoResponse = await githubGet(repoUrl);
@@ -1120,11 +1176,19 @@ export async function getKeyRepositoryFiles(url) {
     const MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10MB total
     let totalSize = 0;
     
-    // Parse GitHub URL to get owner and repo
-    const urlObj = new URL(url);
-    const pathParts = urlObj.pathname.split('/').filter(p => p.trim());
-    const owner = pathParts[0];
-    const repo = pathParts[1];
+    // Parse GitHub URL to get owner and repo (normalised: strips ".git")
+    const parsed = parseGitHubRepoUrl(url);
+    if (!parsed) {
+      return {
+        available: false,
+        error: 'Invalid GitHub repository URL',
+        files: [],
+        filesFetched: 0,
+        filesSkipped: 0,
+        totalSize: 0
+      };
+    }
+    const { owner, repo } = parsed;
     const branch = structure.repository?.default_branch || 'main';
     
     // First pass: identify key files
