@@ -1,6 +1,13 @@
 import { projectVerificationPrompt } from "../ai/ai.prompt.js";
 import { generateStructuredAI } from "../ai/ai.service.js";
 import { validateRepositoryUrl, fetchRepositoryContent } from "./repository.service.js";
+import {
+  buildCompactRepository,
+  enforcePayloadBudget,
+  estimateTokens,
+  getMaxInputTokens,
+  getUserPayloadBudgetChars
+} from "./aiPayloadBudget.js";
 import logger from "../../utils/logger.js";
 
 /**
@@ -295,19 +302,67 @@ function prepareProjectRequirements(project) {
 
 /**
  * Prepare AI messages for verification
+ *
+ * The repository evidence is compacted and the serialised user payload is
+ * hard-capped so the request can never exceed the model's TPM limit (which
+ * previously produced HTTP 413 on large repositories). The system prompt and
+ * the VERIFIED / NEEDS_ADMIN_REVIEW / REJECTED rules are unchanged.
  */
 function prepareVerificationMessages(projectRequirements, repositoryContent) {
   const systemPrompt = projectVerificationPrompt;
-  
+
+  // The budget covers the whole request (system + user), because that is what
+  // the provider counts as input tokens.
+  const userBudget = getUserPayloadBudgetChars(systemPrompt.length);
+
+  // Requirements are essential evidence and are never trimmed, so their size
+  // is measured first and subtracted before the repository gets a share.
+  // Otherwise a large requirement list would squeeze out all source evidence.
+  const wrapperOverhead = JSON.stringify(
+    { PROJECT_REQUIREMENTS: {}, REPOSITORY_CONTENT: {}, METADATA: {} },
+    null,
+    2
+  ).length;
+  const requirementsChars = JSON.stringify(projectRequirements, null, 2).length;
+  const repoBudget = Math.max(
+    1200,
+    userBudget - requirementsChars - wrapperOverhead - 200
+  );
+
+  // Compact evidence only - never the whole repository.
+  const compact = buildCompactRepository(
+    repositoryContent,
+    projectRequirements,
+    repoBudget
+  );
+
   const userPrompt = {
     PROJECT_REQUIREMENTS: projectRequirements,
-    REPOSITORY_CONTENT: repositoryContent,
+    REPOSITORY_CONTENT: compact.content,
     METADATA: {
       analysisTimestamp: new Date().toISOString(),
-      safetyNote: "NO_CODE_EXECUTION - Analysis based on static content only"
+      safetyNote: "NO_CODE_EXECUTION - Analysis based on static content only",
+      evidenceScope: {
+        note: "Repository content is trimmed to fit the model token budget. Files marked [truncated] are partial.",
+        filesIncluded: compact.stats.filesIncluded,
+        filesExcluded: compact.stats.filesExcludedByRules,
+        filesDroppedForBudget: compact.stats.filesDroppedByBudget,
+        truncatedFiles: compact.stats.truncatedFiles
+      }
     }
   };
-  
+
+  // HARD cap: the serialised payload can never exceed the budget.
+  const enforced = enforcePayloadBudget(userPrompt, userBudget);
+
+  const totalChars = systemPrompt.length + enforced.content.length;
+  logger.info(
+    `AI verification payload: ${totalChars} characters / approximately ` +
+      `${estimateTokens(systemPrompt) + estimateTokens(enforced.content)} tokens ` +
+      `(repo section ${enforced.stats.finalChars} chars, budget ${userBudget}; ` +
+      `files ${compact.stats.filesIncluded}/${compact.stats.filesConsidered} included)`
+  );
+
   return [
     {
       role: "system",
@@ -315,7 +370,7 @@ function prepareVerificationMessages(projectRequirements, repositoryContent) {
     },
     {
       role: "user",
-      content: JSON.stringify(userPrompt, null, 2)
+      content: enforced.content
     }
   ];
 }
