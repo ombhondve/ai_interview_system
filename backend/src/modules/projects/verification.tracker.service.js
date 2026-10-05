@@ -81,6 +81,11 @@ class VerificationTracker {
 
       return {
         status: result.status || "unknown",
+        progress: activeInfo?.progress || {
+          stage: result.status === "VERIFIED" || result.status === "REJECTED" ? "completed" : "idle",
+          completed: result.status === "VERIFIED" || result.status === "REJECTED",
+          failed: false
+        },
         submissionStatus: result.submissionStatus || "unknown",
         verificationResult: result.verificationResult,
         stats: result.stats,
@@ -89,7 +94,8 @@ class VerificationTracker {
         activeInfo: activeInfo ? {
           startedAt: activeInfo.startedAt,
           attempts: activeInfo.attempts,
-          lastAttempt: activeInfo.lastAttempt
+          lastAttempt: activeInfo.lastAttempt,
+          progress: activeInfo.progress || null
         } : null,
         lastUpdated: new Date().toISOString()
       };
@@ -149,7 +155,15 @@ class VerificationTracker {
         attempts: 0,
         lastAttempt: null,
         completed: false,
-        result: null
+        result: null,
+        progress: {
+          stage: "validating",
+          label: "Validating repository",
+          status: "active",
+          completed: false,
+          failed: false,
+          message: "Checking the submitted project URL..."
+        }
       };
 
       this.activeVerifications.set(candidateId, verificationData);
@@ -234,8 +248,31 @@ class VerificationTracker {
 
         logger.info(`Verification attempt ${attempt} for candidate ${candidateId}`);
 
-        // Execute verification
-        const result = await verifyProjectSubmission(candidateId, projectId, repositoryUrl);
+        const setProgress = (progress) => {
+          verificationData.progress = {
+            ...verificationData.progress,
+            ...progress,
+            updatedAt: new Date().toISOString()
+          };
+          this.notifyStatusChange(candidateId, "VERIFICATION_PROGRESS", verificationData.progress);
+        };
+
+        // Execute verification with live stage reporting.
+        const result = await verifyProjectSubmission(
+          candidateId,
+          projectId,
+          repositoryUrl,
+          setProgress
+        );
+
+        setProgress({
+          stage: "finalizing",
+          label: "Finalizing results",
+          status: "active",
+          completed: false,
+          failed: false,
+          message: "Preparing the verification outcome..."
+        });
 
         // Store result
         const storageResult = await storeVerificationResult(
@@ -251,6 +288,17 @@ class VerificationTracker {
         // Update tracking data
         verificationData.completed = true;
         verificationData.result = result;
+        verificationData.progress = {
+          stage: "completed",
+          label: "Verification completed",
+          status: "completed",
+          completed: true,
+          failed: false,
+          message: result.status === "VERIFIED"
+            ? "All verification checks passed."
+            : "Verification completed with a rejected result.",
+          updatedAt: new Date().toISOString()
+        };
         verificationData.completedAt = new Date().toISOString();
         verificationData.storageResult = storageResult;
 
