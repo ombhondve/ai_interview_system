@@ -29,14 +29,6 @@ const IN_PROGRESS_SUBMISSION_STATUSES = new Set([
   "verification_completed"
 ]);
 
-/** Verification statuses that mean a human still has to look at it. */
-const ADMIN_REVIEW_VERIFICATION_STATUSES = new Set([
-  "needs_admin_review"
-]);
-
-/** Verification statuses that mean the automated check could not finish. */
-const ERROR_VERIFICATION_STATUSES = new Set(["error"]);
-
 /**
  * Can this candidate schedule an interview?
  *
@@ -79,46 +71,6 @@ export function getPersistedRejectionReason(candidate) {
 }
 
 /**
- * The persisted reason a submission was routed to admin review.
- *
- * NEEDS_ADMIN_REVIEW has several distinct causes:
- *   - the repository could not be fetched (rate limit / timeout / private)
- *   - the repository had no file content to analyse
- *   - the AI genuinely could not decide
- *
- * The student must be able to tell which one actually happened, otherwise every
- * case collapses into the same unhelpful "Under Review" message. This returns
- * the PERSISTED summary; it never invents a cause.
- */
-export function getPersistedReviewReason(candidate) {
-  return (
-    candidate?.projectSubmission?.aiVerificationResult?.summary ||
-    candidate?.projectSubmission?.aiVerificationResult?.detailedAnalysis
-      ?.overallAssessment ||
-    null
-  );
-}
-
-/**
- * Classify WHY a submission needs admin review, for student-facing messaging.
- *
- * Derived entirely from the persisted verification result, so it can never
- * claim a cause that did not actually occur.
- *
- * @returns {"repository_fetch_failed"|"insufficient_content"|"ai_uncertainty"|null}
- */
-export function getReviewCause(candidate) {
-  const metadata =
-    candidate?.projectSubmission?.aiVerificationResult?.verificationMetadata ||
-    {};
-
-  if (metadata.repositoryFetchFailed) return "repository_fetch_failed";
-  if (metadata.insufficientContent) return "insufficient_content";
-
-  return "ai_uncertainty";
-}
-
-/**
  * Derive the student-facing verification state from a candidate document.
  *
  * @param {object} candidate candidate (or projection) containing
@@ -141,9 +93,7 @@ export function deriveVerificationState(candidate) {
   ).toUpperCase();
 
   const rejectionReason = getPersistedRejectionReason(candidate);
-  const reviewReason = getPersistedReviewReason(candidate);
-  const reviewCause = getReviewCause(candidate);
-
+  
   // VERIFIED => immediately interview eligible. Never "Under Review".
   const interviewEligible = isInterviewEligible(candidate);
 
@@ -157,9 +107,7 @@ export function deriveVerificationState(candidate) {
     rejectionReason: s === "rejected" ? rejectionReason : null,
     // Surface the REAL persisted reason for admin review, so a rate-limited
     // fetch is never displayed identically to genuine AI uncertainty.
-    reviewReason: s === "under_review" ? reviewReason : null,
-    reviewCause: s === "under_review" ? reviewCause : null,
-  });
+      });
 
   // --- No submission at all ---
   if (!submission.url) {
@@ -190,35 +138,8 @@ export function deriveVerificationState(candidate) {
     );
   }
 
-  // NEEDS_ADMIN_REVIEW -> "Under Review" (never "Rejected")
-  if (
-    resultStatus === "NEEDS_ADMIN_REVIEW" ||
-    ADMIN_REVIEW_VERIFICATION_STATUSES.has(verificationStatus) ||
-    submissionStatus === "needs_admin_review"
-  ) {
-    return state(
-      "under_review",
-      "Under Review",
-      "Your project requires additional review.",
-      true
-    );
-  }
-
-  // Automated verification could not complete: a human must look at it.
-  if (
-    resultStatus === "ERROR" ||
-    ERROR_VERIFICATION_STATUSES.has(verificationStatus) ||
-    submissionStatus === "ai_verification_failed" ||
-    submissionStatus === "url_invalid"
-  ) {
-    return state(
-      "under_review",
-      "Under Review",
-      "Your project requires additional review.",
-      true
-    );
-  }
-
+  // Any non-terminal verification response is still shown as progress.
+  // The final decision is always VERIFIED or REJECTED.
   // --- Verification running ---
   if (
     verificationStatus === "pending" ||
