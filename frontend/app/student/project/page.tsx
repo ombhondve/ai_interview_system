@@ -84,40 +84,6 @@ type ProjectApiResponse = {
   message?: string;
 };
 
-const VERIFICATION_STYLES = {
-  not_submitted: {
-    badge: "bg-slate-100 text-slate-700",
-    border: "border-slate-200",
-    panel: "bg-slate-50",
-    dot: "bg-slate-400",
-    text: "text-slate-900",
-    sub: "text-slate-600",
-  },
-  in_progress: {
-    badge: "bg-amber-100 text-amber-800",
-    border: "border-amber-200",
-    panel: "bg-amber-50",
-    dot: "bg-amber-500",
-    text: "text-amber-900",
-    sub: "text-amber-700",
-  },
-  accepted: {
-    badge: "bg-emerald-100 text-emerald-800",
-    border: "border-emerald-200",
-    panel: "bg-emerald-50",
-    dot: "bg-emerald-600",
-    text: "text-emerald-900",
-    sub: "text-emerald-700",
-  },
-  rejected: {
-    badge: "bg-rose-100 text-rose-800",
-    border: "border-rose-200",
-    panel: "bg-rose-50",
-    dot: "bg-rose-600",
-    text: "text-rose-900",
-    sub: "text-rose-700",
-  },
-};
 
 /**
  * ============================================
@@ -687,9 +653,6 @@ export default function Project() {
       </StudentShell>
     );
   }
-
-  const existingSubmission =
-    candidate?.projectSubmission;
 
   /**
    * ============================================
