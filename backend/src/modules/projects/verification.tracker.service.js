@@ -249,7 +249,7 @@ class VerificationTracker {
 
         logger.info(`Verification attempt ${attempt} for candidate ${candidateId}`);
 
-        const setProgress = (progress) => {
+        const setProgress = async (progress) => {
           verificationData.progress = {
             ...verificationData.progress,
             ...progress,
@@ -257,7 +257,7 @@ class VerificationTracker {
           };
           // Persist every stage because Vercel polling can hit another
           // serverless invocation where the in-memory tracker Map is absent.
-          void updateVerificationProgress(candidateId, submissionId, verificationData.progress);
+          await updateVerificationProgress(candidateId, submissionId, verificationData.progress);
           this.notifyStatusChange(candidateId, "VERIFICATION_PROGRESS", verificationData.progress);
         };
 
