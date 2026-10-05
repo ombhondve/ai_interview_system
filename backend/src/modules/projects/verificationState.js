@@ -12,10 +12,7 @@
  *   in_progress    -> "Verification In Progress"
  *   accepted       -> "Accepted"
  *   rejected       -> "Rejected"
- *   under_review   -> "Under Review"
  *
- * NEEDS_ADMIN_REVIEW maps to "under_review" and is deliberately NEVER
- * treated as rejected.
  */
 
 /** Submission-level statuses that mean "a verification is running". */
@@ -76,7 +73,7 @@ export function getPersistedRejectionReason(candidate) {
  * @param {object} candidate candidate (or projection) containing
  *   projectSubmissionStatus and projectSubmission
  * @returns {{
- *   state: "not_submitted"|"in_progress"|"accepted"|"rejected"|"under_review",
+ *   state: "not_submitted"|"in_progress"|"accepted"|"rejected",
  *   label: string,
  *   description: string,
  *   isTerminal: boolean,
@@ -105,9 +102,7 @@ export function deriveVerificationState(candidate) {
     interviewEligible,
     // Only surface a reason for a genuinely rejected candidate.
     rejectionReason: s === "rejected" ? rejectionReason : null,
-    // Surface the REAL persisted reason for admin review, so a rate-limited
-    // fetch is never displayed identically to genuine AI uncertainty.
-      });
+    });
 
   // --- No submission at all ---
   if (!submission.url) {
