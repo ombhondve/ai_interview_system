@@ -43,8 +43,12 @@ export async function storeVerificationResult(candidateId, verificationResult, s
     let nextAiVerificationStatus = verificationResult.status.toLowerCase();
     
     if (verificationResult.status === "ERROR") {
-      nextSubmissionStatus = "ai_verification_failed";
-      nextAiVerificationStatus = "error";
+      // The student flow has only two terminal outcomes. Persist verification
+      // failures as REJECTED with the actual failure reason.
+      nextSubmissionStatus = "rejected";
+      nextAiVerificationStatus = "rejected";
+      verificationResult.status = "REJECTED";
+      verificationResult.verificationStatus = "REJECTED";
     } else if (isVerificationApproved(verificationResult)) {
       nextSubmissionStatus = "verified";
       nextAiVerificationStatus = "verified";
@@ -89,7 +93,7 @@ export async function storeVerificationResult(candidateId, verificationResult, s
       }
     };
     
-    // If needs admin review, initialize admin review section
+    // Admin review is intentionally not part of the student verification flow.
     if (false) {
       updateData["projectSubmission.adminReview"] = {
         status: "pending",
