@@ -167,6 +167,7 @@ router.get(
             liveStatus.activeInfo?.progress ||
             verificationData.progress ||
             null,
+          progressHistory: verificationData.stages || [],
 
           // Persisted AI verification result (what student should see)
           verificationResult: verificationData.verificationResult ? {
