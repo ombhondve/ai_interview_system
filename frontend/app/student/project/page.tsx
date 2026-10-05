@@ -266,8 +266,13 @@ function VerificationStep({
 
   return (
     <div className="relative flex items-start gap-3">
-      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all duration-500 ${indicatorClass}`}>
-        {failed ? "×" : complete ? "✓" : active ? "•" : ""}
+      <span className={`relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all duration-500 ${indicatorClass}`}>
+        {active && !failed && !complete && (
+          <span className="absolute inset-0 rounded-full border-2 border-blue-300 animate-ping" />
+        )}
+        <span className="relative z-10">
+          {failed ? "×" : complete ? "✓" : active ? "•" : ""}
+        </span>
       </span>
       <div className="min-w-0">
         <span className={`text-sm ${labelClass}`}>{label}</span>
@@ -479,7 +484,7 @@ export default function Project() {
 
     const intervalId = setInterval(
       poll,
-      5000
+      1000
     );
 
     return () => {
@@ -670,11 +675,9 @@ export default function Project() {
         message: "Checking the submitted project URL..."
       });
 
-      /**
-       * Refresh the persisted candidate state. The same page will now render
-       * only the verification view because the derived state is in progress.
-       */
-      await loadCandidate();
+      // Do not reload the candidate immediately. That can read the previous
+      // terminal result before the new async verification reaches processing.
+      // The verification-status polling endpoint is now the source of truth.
     } catch (err) {
       console.error(
         "Project submission error:",
