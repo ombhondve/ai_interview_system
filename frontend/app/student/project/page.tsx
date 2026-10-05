@@ -57,6 +57,12 @@ type VerificationProgress = {
   updatedAt?: string;
 };
 
+type VerificationStage = VerificationProgress & {
+  status: "active" | "completed" | "failed" | "pending";
+  startedAt?: string | null;
+  completedAt?: string | null;
+};
+
 type Candidate = {
   id: string;
   name?: string;
@@ -184,7 +190,13 @@ function VerificationResultView({
     { key: "finalizing", label: "Finalizing results" },
   ];
 
-  const currentIndex = Math.max(0, steps.findIndex((step) => step.key === progress?.stage));
+  const stageMap = new Map(
+    (progressHistory || []).map((entry) => [entry.stage, entry])
+  );
+  const currentIndex = Math.max(
+    0,
+    steps.findIndex((step) => step.key === progress?.stage)
+  );
 
   return (
     <Card className="border-blue-200 bg-blue-50/60">
@@ -197,17 +209,30 @@ function VerificationResultView({
           </p>
           <div className="mx-auto mt-7 max-w-md space-y-4 text-left">
             {steps.map((step, index) => {
-              const isFailed = progress?.status === "failed" && progress.stage === step.key;
-              const isActive = progress?.status === "active" && progress.stage === step.key;
+              const recorded = stageMap.get(step.key);
+              const isReplayCurrent = index === currentIndex;
+              const isFailed =
+                isReplayCurrent &&
+                recorded?.status === "failed";
+              const isActive =
+                isReplayCurrent &&
+                !isFailed &&
+                (recorded?.status === "active" || progress?.stage === step.key);
               const isComplete =
-                progress?.status === "completed" && progress.stage === step.key
-                  ? true
-                  : index < currentIndex;
+                index < currentIndex ||
+                (isReplayCurrent && recorded?.status === "completed");
+
               return (
                 <VerificationStep
                   key={step.key}
                   label={step.label}
-                  message={progress?.stage === step.key ? progress.message : isComplete ? "Completed successfully." : undefined}
+                  message={
+                    isReplayCurrent
+                      ? recorded?.message || progress?.message
+                      : isComplete
+                        ? "Completed successfully."
+                        : undefined
+                  }
                   active={isActive}
                   complete={!isFailed && isComplete}
                   failed={isFailed}
@@ -321,6 +346,17 @@ export default function Project() {
   const [verificationProgress, setVerificationProgress] =
     useState<VerificationProgress | null>(null);
 
+  const [verificationHistory, setVerificationHistory] =
+    useState<VerificationStage[]>([]);
+
+  const [pendingTerminalVerification, setPendingTerminalVerification] =
+    useState<VerificationState | null>(null);
+
+  const [replayIndex, setReplayIndex] = useState(0);
+
+  const [showTerminalResult, setShowTerminalResult] =
+    useState(false);
+
   /**
    * ============================================
    * LOAD CURRENT STUDENT
@@ -376,6 +412,9 @@ export default function Project() {
         );
         setVerificationProgress(
           (data as ProjectApiResponse & { progress?: VerificationProgress }).progress ?? null
+        );
+        setVerificationHistory(
+          (data as ProjectApiResponse & { progressHistory?: VerificationStage[] }).progressHistory ?? []
         );
 
         /**
@@ -463,19 +502,19 @@ export default function Project() {
           data?.data?.verification ?? null;
 
         setVerificationProgress(data?.data?.progress ?? null);
+        setVerificationHistory(data?.data?.progressHistory ?? []);
 
         if (cancelled || !next) {
           return;
         }
 
-        setVerification(next);
-
-        /**
-         * Refresh the full candidate so the submitted URL and any
-         * verification details stay in sync once it completes.
-         */
         if (next.isTerminal) {
-          await loadCandidate();
+          // Do not switch to Accepted/Rejected yet. Replay the persisted
+          // verification history first so the student sees the complete
+          // top-to-bottom process.
+          setPendingTerminalVerification(next);
+        } else {
+          setVerification(next);
         }
       } catch {
         // Transient polling failures are ignored; the next tick retries.
@@ -492,6 +531,53 @@ export default function Project() {
       clearInterval(intervalId);
     };
   }, [isPollingActive, loadCandidate]);
+
+  /**
+   * Replay persisted verification stages visually.
+   *
+   * Backend speed must never cause the UI to skip stages. This is presentation
+   * only: it does not delay or modify backend verification.
+   */
+  useEffect(() => {
+    if (!isPollingActive) return;
+
+    const occurredCount = verificationHistory.filter(
+      (stage) => stage.status !== "pending"
+    ).length;
+
+    if (!occurredCount) return;
+
+    if (replayIndex < occurredCount - 1) {
+      const timer = window.setTimeout(() => {
+        setReplayIndex((current) =>
+          Math.min(current + 1, occurredCount - 1)
+        );
+      }, 900);
+
+      return () => window.clearTimeout(timer);
+    }
+
+    if (pendingTerminalVerification && !showTerminalResult) {
+      const timer = window.setTimeout(() => {
+        setShowTerminalResult(true);
+        setVerification(pendingTerminalVerification);
+      }, 900);
+
+      return () => window.clearTimeout(timer);
+    }
+  }, [
+    isPollingActive,
+    verificationHistory,
+    replayIndex,
+    pendingTerminalVerification,
+    showTerminalResult
+  ]);
+
+  useEffect(() => {
+    if (verification?.isTerminal && !isPollingActive) {
+      setShowTerminalResult(true);
+    }
+  }, [verification?.isTerminal, isPollingActive]);
 
   /**
    * ============================================
@@ -674,6 +760,47 @@ export default function Project() {
         status: "active",
         message: "Checking the submitted project URL..."
       });
+      setVerificationHistory([
+        {
+          stage: "validating",
+          label: "Validating repository",
+          status: "active",
+          message: "Checking the submitted project URL..."
+        },
+        {
+          stage: "project_requirements",
+          label: "Loading project requirements",
+          status: "pending"
+        },
+        {
+          stage: "repository",
+          label: "Fetching repository",
+          status: "pending"
+        },
+        {
+          stage: "analyzing",
+          label: "Analyzing code and files",
+          status: "pending"
+        },
+        {
+          stage: "requirements",
+          label: "Checking project requirements",
+          status: "pending"
+        },
+        {
+          stage: "ai",
+          label: "AI verification in progress",
+          status: "pending"
+        },
+        {
+          stage: "finalizing",
+          label: "Finalizing results",
+          status: "pending"
+        }
+      ]);
+      setReplayIndex(0);
+      setPendingTerminalVerification(null);
+      setShowTerminalResult(false);
 
       // Do not reload the candidate immediately. That can read the previous
       // terminal result before the new async verification reaches processing.
@@ -813,6 +940,7 @@ export default function Project() {
           <VerificationResultView
             verification={verification}
             progress={verificationProgress}
+            progressHistory={verificationHistory}
             onScheduleInterview={() => router.push("/student/interview-scheduling")}
           />
         ) : (
