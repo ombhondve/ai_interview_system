@@ -38,25 +38,13 @@ type VerificationState = {
     | "not_submitted"
     | "in_progress"
     | "accepted"
-    | "rejected"
-    | "under_review";
+    | "rejected";
   label: string;
   description: string;
   isTerminal: boolean;
   /** Actual persisted reason, surfaced for rejected submissions. */
   rejectionReason?: string | null;
-  /** Actual persisted reason, surfaced for admin-review submissions. */
-  reviewReason?: string | null;
-  /**
-   * Why admin review was required, derived server-side from the persisted
-   * verification metadata. Lets the UI distinguish an infrastructure failure
-   * (rate limit / timeout) from genuine AI uncertainty.
-   */
-  reviewCause?:
-    | "repository_fetch_failed"
-    | "insufficient_content"
-    | "ai_uncertainty"
-    | null;
+  interviewEligible?: boolean;
 };
 
 type Candidate = {
@@ -129,129 +117,143 @@ const VERIFICATION_STYLES = {
     text: "text-rose-900",
     sub: "text-rose-700",
   },
-  under_review: {
-    badge: "bg-blue-100 text-blue-800",
-    border: "border-blue-200",
-    panel: "bg-blue-50",
-    dot: "bg-blue-600",
-    text: "text-blue-900",
-    sub: "text-blue-700",
-  },
 };
 
 /**
  * ============================================
- * VERIFICATION STATUS CARD
+ * VERIFICATION RESULT / PROGRESS
  * ============================================
  *
- * Shows the student-facing verification state next to the submission section.
- * Labels come from the backend so internal status names are never exposed.
+ * The same Project Submission page changes in place:
+ *   submitted -> live verification -> Accepted OR Rejected.
+ * No admin-review state is exposed to the student.
  */
-function VerificationStatusCard({
+function VerificationResultView({
   verification,
-  hasSubmission,
+  onScheduleInterview,
 }: {
-  verification: VerificationState | null;
-  hasSubmission: boolean;
+  verification: VerificationState;
+  onScheduleInterview: () => void;
 }) {
-  const state: VerificationState["state"] =
-    verification?.state ??
-    (hasSubmission
-      ? "in_progress"
-      : "not_submitted");
+  const state = verification.state;
 
-  const styles = VERIFICATION_STYLES[state];
+  if (state === "accepted") {
+    return (
+      <Card className="border-emerald-200 bg-emerald-50/60">
+        <CardContent className="p-8">
+          <div className="mx-auto max-w-2xl text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-600 text-2xl font-bold text-white">
+              ✓
+            </div>
+            <h2 className="mt-5 text-2xl font-semibold text-emerald-950">
+              Accepted
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-emerald-800">
+              Your project passed verification.
+            </p>
+            <span className="mt-4 inline-flex rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-800">
+              Accepted
+            </span>
+            <div className="mt-7">
+              <Button onClick={onScheduleInterview}>
+                Schedule Interview →
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
-  const label =
-    verification?.label ??
-    (state === "in_progress"
-      ? "Verification In Progress"
-      : "Not Submitted");
-
-  const description =
-    verification?.description ??
-    (state === "in_progress"
-      ? "Your project has been submitted and is currently being verified."
-      : "You have not submitted a project yet.");
-
-  const isRunning = state === "in_progress";
-
-  /**
-   * Show the ACTUAL persisted reason whenever one exists.
-   *
-   * Without this, a repository that could not be fetched (GitHub rate limit,
-   * timeout, private repo) displayed the identical generic "Your project
-   * requires additional review." as genuine AI uncertainty, which made an
-   * infrastructure outage indistinguishable from a modelling decision.
-   */
-  const detail =
-    state === "rejected"
-      ? verification?.rejectionReason
-      : state === "under_review"
-        ? verification?.reviewReason
-        : null;
-
-  const cause = state === "under_review" ? verification?.reviewCause : null;
-
-  const causeNotice =
-    cause === "repository_fetch_failed"
-      ? "We could not read your repository from GitHub, so automated verification could not run. This is usually a temporary service or rate-limit issue, not a problem with your project."
-      : cause === "insufficient_content"
-        ? "Your repository was reachable, but it did not contain enough file content for automated verification. This can happen when the default branch is empty or the project files are not committed."
-        : null;
+  if (state === "rejected") {
+    return (
+      <Card className="border-rose-200 bg-rose-50/60">
+        <CardContent className="p-8">
+          <div className="mx-auto max-w-2xl text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-rose-600 text-2xl font-bold text-white">
+              ×
+            </div>
+            <h2 className="mt-5 text-2xl font-semibold text-rose-950">
+              Rejected
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-rose-800">
+              Your project did not meet the required project requirements.
+            </p>
+            {verification.rejectionReason && (
+              <div className="mt-6 rounded-xl border border-rose-200 bg-white/70 p-4 text-left">
+                <p className="text-sm font-semibold text-rose-900">Reason</p>
+                <p className="mt-2 text-sm leading-6 text-rose-800">
+                  {verification.rejectionReason}
+                </p>
+              </div>
+            )}
+            <span className="mt-5 inline-flex rounded-full bg-rose-100 px-3 py-1 text-sm font-semibold text-rose-800">
+              Rejected
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
-    <div
-      className={`mt-4 rounded-xl border p-4 ${styles.border} ${styles.panel}`}
-      role="status"
-      aria-live="polite"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3">
-          <span
-            className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${styles.dot} ${
-              isRunning ? "animate-pulse" : ""
-            }`}
-          />
+    <Card className="border-blue-200 bg-blue-50/60">
+      <CardContent className="p-8">
+        <div className="mx-auto max-w-2xl text-center">
+          <div className="mx-auto h-14 w-14 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
+          <h2 className="mt-5 text-xl font-semibold text-slate-950">
+            Verifying your project
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Please wait while we analyze your repository and compare it with the assigned requirements.
+          </p>
 
-          <div>
-            <p
-              className={`text-sm font-medium ${styles.text}`}
-            >
-              {label}
-            </p>
+          <div className="mx-auto mt-7 max-w-md space-y-4 text-left">
+            <VerificationStep label="Fetching repository" active={false} complete />
+            <VerificationStep label="Analyzing code and files" active={false} complete />
+            <VerificationStep label="Checking project requirements" active />
+            <VerificationStep label="AI verification in progress" />
+            <VerificationStep label="Finalizing results" />
+          </div>
 
-            <p
-              className={`mt-1 text-sm ${styles.sub}`}
-            >
-              {description}
-            </p>
-
-            {detail && (
-              <p
-                className={`mt-2 text-sm ${styles.sub}`}
-              >
-                <span className="font-medium">Details: </span>
-                {detail}
-              </p>
-            )}
-
-            {causeNotice && (
-              <p
-                className={`mt-2 rounded-lg bg-white/70 p-2 text-xs ${styles.sub}`}
-              >
-                {causeNotice}
-              </p>
-            )}
+          <div className="mt-7 rounded-xl border border-blue-200 bg-white/70 p-3 text-left text-sm text-blue-800">
+            This may take a few minutes. Please do not close this page.
           </div>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
 
-        <span
-          className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${styles.badge}`}
-        >
-          {label}
-        </span>
-      </div>
+function VerificationStep({
+  label,
+  active = false,
+  complete = false,
+}: {
+  label: string;
+  active?: boolean;
+  complete?: boolean;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <span
+        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+          complete
+            ? "bg-emerald-600 text-white"
+            : active
+              ? "bg-blue-600 text-white"
+              : "bg-slate-200 text-slate-500"
+        }`}
+      >
+        {complete ? "✓" : active ? "•" : ""}
+      </span>
+      <span
+        className={`text-sm ${
+          active ? "font-semibold text-blue-800" : complete ? "text-slate-800" : "text-slate-500"
+        }`}
+      >
+        {label}
+      </span>
     </div>
   );
 }
@@ -281,9 +283,6 @@ export default function Project() {
 
   const [success, setSuccess] =
     useState("");
-
-  const [showConfirm, setShowConfirm] =
-    useState(false);
 
   /**
    * Student-facing verification state.
@@ -623,10 +622,6 @@ export default function Project() {
         );
       }
 
-      setSuccess(
-        "Your project has been submitted successfully."
-      );
-
       /**
        * Immediately show "Verification In Progress".
        *
@@ -643,18 +638,8 @@ export default function Project() {
       });
 
       /**
-       * Keep the submitted URL visible.
-       */
-      setUrl(cleanUrl);
-
-      /**
-       * Close confirmation dialog.
-       */
-      setShowConfirm(false);
-
-      /**
-       * Refresh candidate data so the UI
-       * reflects the current submission state.
+       * Refresh the persisted candidate state. The same page will now render
+       * only the verification view because the derived state is in progress.
        */
       await loadCandidate();
     } catch (err) {
@@ -735,33 +720,6 @@ export default function Project() {
         </div>
 
         {/* ====================================== */}
-        {/* SUCCESS MESSAGE */}
-        {/* ====================================== */}
-
-        {success && (
-          <div
-            role="status"
-            className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"
-          >
-            <div className="flex items-start gap-3">
-              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-xs font-bold text-white">
-                ✓
-              </div>
-
-              <div>
-                <p className="font-medium text-emerald-900">
-                  Project submitted
-                </p>
-
-                <p className="mt-1 text-sm text-emerald-700">
-                  {success}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ====================================== */}
         {/* ERROR MESSAGE */}
         {/* ====================================== */}
 
@@ -799,74 +757,45 @@ export default function Project() {
         )}
 
         {/* ====================================== */}
-        {/* NO PROJECT ASSIGNED */}
+        {/* PROJECT / SUBMISSION / VERIFICATION */}
         {/* ====================================== */}
 
         {!project ? (
           <Card>
             <CardContent className="py-14">
               <div className="text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-slate-100">
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.8"
-                    className="h-7 w-7 text-slate-500"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M9 13h6m-6 4h6M8 3h8a2 2 0 012 2v14a2 2 0 01-2 2H8a2 2 0 01-2-2V5a2 2 0 012-2z"
-                    />
-                  </svg>
-                </div>
-
-                <h2 className="mt-4 text-lg font-semibold text-slate-900">
+                <h2 className="text-lg font-semibold text-slate-900">
                   No project assigned
                 </h2>
-
                 <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
-                  A project has not been assigned to
-                  your application yet. Please check
-                  back later.
+                  A project has not been assigned to your application yet. Please check back later.
                 </p>
-
-                <Button
-                  className="mt-5"
-                  size="sm"
-                  onClick={loadCandidate}
-                >
+                <Button className="mt-5" size="sm" onClick={loadCandidate}>
                   Refresh
                 </Button>
               </div>
             </CardContent>
           </Card>
+        ) : verification?.state === "in_progress" || verification?.state === "accepted" || verification?.state === "rejected" ? (
+          <VerificationResultView
+            verification={verification}
+            onScheduleInterview={() => router.push("/student/interview-scheduling")}
+          />
         ) : (
           <>
-            {/* ==================================== */}
-            {/* PROJECT DETAILS */}
-            {/* ==================================== */}
-
+            {/* Assigned project stays on this same page until the student submits. */}
             <Card>
               <CardHeader
                 title="Assigned project"
                 subtitle="Review the requirements before submitting your work."
               />
-
               <CardContent>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                        Project
-                      </p>
-
-                      <h2 className="mt-1 text-lg font-semibold text-slate-900">
-                        {project.title}
-                      </h2>
+                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Project</p>
+                      <h2 className="mt-1 text-lg font-semibold text-slate-900">{project.title}</h2>
                     </div>
-
                     {project.difficulty && (
                       <span className="inline-flex w-fit rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-700">
                         {project.difficulty}
@@ -876,35 +805,19 @@ export default function Project() {
 
                   {project.description && (
                     <div className="mt-5">
-                      <p className="text-sm font-medium text-slate-800">
-                        Requirements
-                      </p>
-
-                      <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">
-                        {project.description}
-                      </p>
+                      <p className="text-sm font-medium text-slate-800">Requirements</p>
+                      <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{project.description}</p>
                     </div>
                   )}
 
-                  {project.deadline ? (
-                    <div className="mt-5 flex items-center gap-2 text-sm">
-                      <span className="font-medium text-slate-800">
-                        Deadline:
-                      </span>
-                      <span className="text-slate-600">
-                        {project.deadline}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="mt-5 flex items-center gap-2 text-sm">
-                      <span className="font-medium text-slate-800">
-                        Deadline will start after you download the project.
-                      </span>
-                    </div>
-                  )}
+                  <div className="mt-5 flex items-center gap-2 text-sm">
+                    <span className="font-medium text-slate-800">Deadline:</span>
+                    <span className="text-slate-600">
+                      {project.deadline || "Deadline will start after you download the project."}
+                    </span>
+                  </div>
 
-                  {/* Download Project Button */}
-                  <div className="mt-5 pt-5 border-t border-slate-200">
+                  <div className="mt-5 border-t border-slate-200 pt-5">
                     {(project.pdfUrl || project.detailedPdfUrl || project.briefUrl) ? (
                       <Button
                         loading={downloading}
@@ -912,40 +825,12 @@ export default function Project() {
                         onClick={downloadProject}
                         className="w-full sm:w-auto"
                       >
-                        {downloading ? (
-                          <>
-                            <svg className="mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                            </svg>
-                            Preparing download...
-                          </>
-                        ) : (
-                          <>
-                            <svg className="mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            Download Project
-                          </>
-                        )}
+                        {downloading ? "Preparing download..." : "Download Project"}
                       </Button>
                     ) : (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                        <p className="text-sm font-medium text-amber-900">
-                          Project PDF is not available yet.
-                        </p>
-                        <p className="mt-1 text-sm text-amber-700">
-                          Please contact the administrator to make the project PDF available.
-                        </p>
-                      </div>
-                    )}
-
-                    {candidate?.projectSubmissionStatus === "downloaded" && candidate.projectDownloadedAt && (
-                      <div className="mt-3 flex items-center gap-2 text-sm text-slate-600">
-                        <svg className="h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                        <span>Project downloaded on {new Date(candidate.projectDownloadedAt).toLocaleDateString()}</span>
+                        <p className="text-sm font-medium text-amber-900">Project PDF is not available yet.</p>
+                        <p className="mt-1 text-sm text-amber-700">Please contact the administrator to make the project PDF available.</p>
                       </div>
                     )}
                   </div>
@@ -953,241 +838,47 @@ export default function Project() {
               </CardContent>
             </Card>
 
-            {/* ==================================== */}
-            {/* SUBMISSION FORM */}
-            {/* ==================================== */}
-
-            <Card>
-              <CardHeader
-                title="Submit your project"
-                subtitle="Provide a public repository or deployed project URL."
-              />
-
-              <CardContent>
-                <div className="max-w-2xl">
-                  <Input
-                    label="Project URL"
-                    type="url"
-                    placeholder="https://github.com/username/project"
-                    value={url}
-                    onChange={(e) => {
-                      setUrl(
-                        e.target.value
-                      );
-
-                      if (error) {
-                        setError("");
-                      }
-
-                      if (success) {
-                        setSuccess("");
-                      }
-                    }}
-                    disabled={submitting}
-                  />
-
-                  <p className="mt-2 text-xs leading-5 text-slate-500">
-                    You can submit a GitHub/GitLab
-                    repository, a live deployment, or
-                    another publicly accessible project
-                    URL.
-                  </p>
-
-                  {existingSubmission?.url && (
-                    <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4">
-                      <p className="text-sm font-medium text-blue-900">
-                        Previous submission
-                      </p>
-
-                      <a
-                        href={
-                          existingSubmission.url
-                        }
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-1 block break-all text-sm text-blue-700 underline hover:text-blue-900"
+            {/* Submission appears only after the project has actually been downloaded. */}
+            {(candidate?.projectSubmissionStatus === "downloaded" || candidate?.projectDownloadedAt) && (
+              <Card>
+                <CardHeader
+                  title="Submit your project"
+                  subtitle="Provide a public repository or deployed project URL."
+                />
+                <CardContent>
+                  <div className="max-w-2xl">
+                    <Input
+                      label="Project URL"
+                      type="url"
+                      placeholder="https://github.com/username/project"
+                      value={url}
+                      onChange={(e) => {
+                        setUrl(e.target.value);
+                        if (error) setError("");
+                      }}
+                      disabled={submitting}
+                    />
+                    <p className="mt-2 text-xs leading-5 text-slate-500">
+                      You can submit a GitHub/GitLab repository, a live deployment, or another publicly accessible project URL.
+                    </p>
+                    <div className="mt-5">
+                      <Button
+                        loading={submitting}
+                        disabled={!url.trim() || submitting}
+                        onClick={submitProject}
                       >
-                        {
-                          existingSubmission.url
-                        }
-                      </a>
-
-                      {existingSubmission.submittedAt && (
-                        <p className="mt-2 text-xs text-blue-700">
-                          Submitted on{" "}
-                          {
-                            new Date(
-                              existingSubmission.submittedAt
-                            ).toLocaleString()
-                          }
-                        </p>
-                      )}
+                        Submit Project
+                      </Button>
                     </div>
-                  )}
-
-                  {/* ==================================== */}
-                  {/* VERIFICATION STATUS */}
-                  {/* ==================================== */}
-
-                  <VerificationStatusCard
-                    verification={verification}
-                    hasSubmission={
-                      Boolean(existingSubmission?.url)
-                    }
-                  />
-
-                  <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
-                    <Button
-                      loading={submitting}
-                      disabled={
-                        !url.trim() ||
-                        submitting
-                      }
-                      onClick={() =>
-                        setShowConfirm(true)
-                      }
-                    >
-                      {existingSubmission?.url
-                        ? "Update submission"
-                        : "Submit project"}
-                    </Button>
-
-                    {url.trim() && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setUrl("")
-                        }
-                        disabled={
-                          submitting
-                        }
-                        className="text-sm font-medium text-slate-500 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Clear
-                      </button>
-                    )}
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* ==================================== */}
-            {/* SUBMISSION GUIDELINES */}
-            {/* ==================================== */}
-
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
-              <p className="text-sm font-semibold text-slate-900">
-                Submission guidelines
-              </p>
-
-              <div className="mt-3 space-y-2 text-sm text-slate-600">
-                <p>
-                  • Make sure your repository or
-                  deployment is accessible to the
-                  reviewer.
-                </p>
-
-                <p>
-                  • Include a clear README with setup
-                  and usage instructions.
-                </p>
-
-                <p>
-                  • Verify the submitted URL before
-                  confirming.
-                </p>
-
-                <p>
-                  • Do not submit passwords, API keys,
-                  access tokens, or other secrets.
-                </p>
-              </div>
-            </div>
+                </CardContent>
+              </Card>
+            )}
           </>
         )}
       </div>
 
-      {/* ======================================== */}
-      {/* CONFIRMATION DIALOG */}
-      {/* ======================================== */}
-
-      {showConfirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="project-confirm-title"
-        >
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2
-                  id="project-confirm-title"
-                  className="text-lg font-semibold text-slate-900"
-                >
-                  Confirm project submission
-                </h2>
-
-                <p className="mt-1 text-sm leading-5 text-slate-500">
-                  Please make sure the URL below is
-                  correct before submitting.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setShowConfirm(false)
-                }
-                disabled={submitting}
-                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label="Close confirmation"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Project
-              </p>
-
-              <p className="mt-1 font-medium text-slate-900">
-                {project?.title}
-              </p>
-
-              <p className="mt-4 text-xs font-medium uppercase tracking-wide text-slate-500">
-                Submitted URL
-              </p>
-
-              <p className="mt-1 break-all text-sm text-slate-700">
-                {url.trim()}
-              </p>
-            </div>
-
-            <div className="mt-5 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <Button
-                size="sm"
-                onClick={() =>
-                  setShowConfirm(false)
-                }
-                disabled={submitting}
-              >
-                Cancel
-              </Button>
-
-              <Button
-                size="sm"
-                loading={submitting}
-                disabled={submitting}
-                onClick={submitProject}
-              >
-                Confirm submission
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>
     </StudentShell>
   );
 }
