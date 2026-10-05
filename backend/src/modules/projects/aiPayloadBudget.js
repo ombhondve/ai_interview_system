@@ -439,79 +439,159 @@ export function buildCompactRepository(repoData, projectRequirements = {}, charB
 export function enforcePayloadBudget(userPrompt, maxChars) {
   const cap = Math.max(0, Math.floor(maxChars));
 
-  let serialised = serialize(userPrompt);
-  const stats = {
-    initialChars: serialised.length,
-    finalChars: serialised.length,
-    shrank: false
+  const serialize = (value) => JSON.stringify(value, null, 2);
+
+  // Measure the fixed portion of the request first. This is the key fix:
+  // repository evidence must be sized from the REAL remaining space instead
+  // of using a large provisional budget and then deleting all file contents
+  // when the final serialized payload is slightly over the cap.
+  const emptyRepository = {
+    structure: {
+      files: [],
+      directories: [],
+      totalFilesAnalyzed: 0,
+      filesWithContent: 0,
+      languageBreakdown: {}
+    },
+    dependencies: [],
+    buildFiles: [],
+    platform: "unknown",
+    readme: null,
+    keyFiles: {}
   };
 
-  if (serialised.length <= cap) {
-    return { content: serialised, stats };
+  const fixedChars = serialize({
+    ...userPrompt,
+    REPOSITORY_CONTENT: emptyRepository
+  }).length;
+
+  const availableForRepository = cap - fixedChars;
+
+  if (availableForRepository < MIN_FILE_CHARS) {
+    return {
+      content: serialize({
+        ...userPrompt,
+        REPOSITORY_CONTENT: emptyRepository
+      }),
+      stats: {
+        initialChars: serialize(userPrompt).length,
+        finalChars: serialize({
+          ...userPrompt,
+          REPOSITORY_CONTENT: emptyRepository
+        }).length,
+        shrank: true,
+        withinBudget: serialize({
+          ...userPrompt,
+          REPOSITORY_CONTENT: emptyRepository
+        }).length <= cap,
+        filesIncluded: 0,
+        filesDroppedByBudget: 0,
+        truncatedFiles: 0
+      }
+    };
   }
 
-  stats.shrank = true;
+  // Try progressively smaller evidence budgets until the complete serialized
+  // request fits. buildCompactRepository preserves the highest-value files
+  // (README, explicit expected files, manifests, entry points, APIs, source,
+  // tests) and truncates their CONTENT rather than deleting all evidence.
+  const initialChars = serialize(userPrompt).length;
+  let repoBudget = availableForRepository;
+  let best = null;
 
-  // 1) Rebuild repository evidence against a reduced budget.
-  const repoCharBudget = Math.max(
-    MIN_FILE_CHARS,
-    Math.floor(cap * (1 - REQUIREMENTS_BUDGET_RATIO))
-  );
-  const rebuilt = buildCompactRepository(
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const rebuilt = buildCompactRepository(
+      userPrompt.REPOSITORY_CONTENT,
+      userPrompt.PROJECT_REQUIREMENTS,
+      repoBudget
+    );
+
+    const candidate = serialize({
+      ...userPrompt,
+      REPOSITORY_CONTENT: rebuilt.content
+    });
+
+    best = {
+      candidate,
+      rebuilt,
+      repoBudget
+    };
+
+    if (candidate.length <= cap) {
+      return {
+        content: candidate,
+        stats: {
+          initialChars,
+          finalChars: candidate.length,
+          shrank: candidate.length < initialChars,
+          withinBudget: true,
+          repositoryBudgetChars: repoBudget,
+          filesIncluded: rebuilt.stats.filesIncluded,
+          filesDroppedByBudget: rebuilt.stats.filesDroppedByBudget,
+          filesExcludedByRules: rebuilt.stats.filesExcludedByRules,
+          truncatedFiles: rebuilt.stats.truncatedFiles
+        }
+      };
+    }
+
+    // Reduce only the repository evidence budget. Never throw away all
+    // contents as the old implementation did.
+    repoBudget = Math.floor(repoBudget * 0.8);
+    if (repoBudget < MIN_FILE_CHARS) break;
+  }
+
+  // Last-resort compact evidence. Even here retain actual file content if
+  // there is enough room; do not silently replace evidence with metadata only.
+  const fallbackBudget = Math.max(MIN_FILE_CHARS, Math.min(repoBudget, availableForRepository));
+  const fallback = buildCompactRepository(
     userPrompt.REPOSITORY_CONTENT,
     userPrompt.PROJECT_REQUIREMENTS,
-    repoCharBudget
+    fallbackBudget
   );
-
-  serialised = serialize({
+  const fallbackContent = serialize({
     ...userPrompt,
-    REPOSITORY_CONTENT: rebuilt.content
+    REPOSITORY_CONTENT: fallback.content
   });
 
-  // 2) Progressive shrink. Repository evidence is sacrificed in order of
-  //    least value until the payload provably fits, so the cap is a guarantee
-  //    rather than a best-effort. Requirements are never touched.
-  const evidence = rebuilt.content;
-  const shrinkSteps = [
-    // (a) drop all file contents, keep the structural overview
-    () => ({ ...evidence, keyFiles: {}, readme: null }),
-    // (b) also shorten the file listing
-    () => ({
-      ...evidence,
-      keyFiles: {},
-      readme: null,
-      structure: {
-        ...evidence.structure,
-        files: evidence.structure.files.slice(0, 20),
-        directories: evidence.structure.directories.slice(0, 10)
+  // If a fixed prompt itself exceeds the cap, this is a configuration error.
+  // Otherwise the compact builder should always be able to fit by reducing
+  // repository evidence.
+  if (fallbackContent.length <= cap) {
+    return {
+      content: fallbackContent,
+      stats: {
+        initialChars,
+        finalChars: fallbackContent.length,
+        shrank: true,
+        withinBudget: true,
+        repositoryBudgetChars: fallbackBudget,
+        filesIncluded: fallback.stats.filesIncluded,
+        filesDroppedByBudget: fallback.stats.filesDroppedByBudget,
+        filesExcludedByRules: fallback.stats.filesExcludedByRules,
+        truncatedFiles: fallback.stats.truncatedFiles
       }
-    }),
-    // (c) minimum viable evidence: counts and platform only
-    () => ({
-      structure: {
-        files: [],
-        directories: [],
-        totalFilesAnalyzed: evidence.structure.totalFilesAnalyzed,
-        filesWithContent: 0,
-        languageBreakdown: evidence.structure.languageBreakdown
-      },
-      dependencies: [],
-      buildFiles: [],
-      platform: evidence.platform,
-      readme: null,
-      keyFiles: {}
-    })
-  ];
-
-  for (const shrink of shrinkSteps) {
-    if (serialised.length <= cap) break;
-    serialised = serialize({
-      ...userPrompt,
-      REPOSITORY_CONTENT: shrink()
-    });
+    };
   }
 
-  stats.finalChars = serialised.length;
-  stats.withinBudget = serialised.length <= cap;
-  return { content: serialised, stats };
+  // Preserve a valid request rather than returning an over-budget payload.
+  // This branch should only be reached if the fixed requirements/wrapper alone
+  // exceed the configured cap.
+  const fixed = serialize({
+    ...userPrompt,
+    REPOSITORY_CONTENT: emptyRepository
+  });
+
+  return {
+    content: fixed,
+    stats: {
+      initialChars,
+      finalChars: fixed.length,
+      shrank: true,
+      withinBudget: fixed.length <= cap,
+      configurationError: fixed.length > cap,
+      filesIncluded: 0,
+      filesDroppedByBudget: best?.rebuilt?.stats?.filesDroppedByBudget || 0,
+      truncatedFiles: 0
+    }
+  };
 }
