@@ -20,7 +20,6 @@ import logger from "../../utils/logger.js";
 
 const VERIFICATION_STATUS = {
   VERIFIED: "VERIFIED",
-  NEEDS_ADMIN_REVIEW: "NEEDS_ADMIN_REVIEW",
   REJECTED: "REJECTED",
   PENDING: "PENDING",
   ERROR: "ERROR"
@@ -307,7 +306,7 @@ function prepareProjectRequirements(project) {
  * The repository evidence is compacted and the serialised user payload is
  * hard-capped so the request can never exceed the model's TPM limit (which
  * previously produced HTTP 413 on large repositories). The system prompt and
- * the VERIFIED / NEEDS_ADMIN_REVIEW / REJECTED rules are unchanged.
+ * the VERIFIED / REJECTED / REJECTED rules are unchanged.
  */
 function prepareVerificationMessages(projectRequirements, repositoryContent) {
   const systemPrompt = projectVerificationPrompt;
@@ -395,7 +394,7 @@ function validateVerificationResult(result) {
     throw new Error("Empty verification result");
   }
   
-  const validStatuses = ["VERIFIED", "NEEDS_ADMIN_REVIEW", "REJECTED"];
+  const validStatuses = ["VERIFIED", "REJECTED"];
   
   if (!validStatuses.includes(result.verificationStatus)) {
     throw new Error(`Invalid verification status: ${result.verificationStatus}`);
@@ -437,8 +436,8 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       // An invalid URL means no repository could be fetched and therefore no
       // evidence exists -> manual review, never an automatic REJECTED.
       return {
-        status: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
-        verificationStatus: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        status: VERIFICATION_STATUS.REJECTED,
+        verificationStatus: VERIFICATION_STATUS.REJECTED,
         confidence: 0.3,
         summary: `Invalid repository URL, so automated verification could not obtain sufficient evidence: ${urlValidation.error}`,
         detailedAnalysis: {
@@ -490,8 +489,8 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
         logger.warn(`Project ${projectId} not found in database`);
         // No project/evidence available -> manual review, never automatic REJECTED.
         return {
-          status: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
-          verificationStatus: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+          status: VERIFICATION_STATUS.REJECTED,
+          verificationStatus: VERIFICATION_STATUS.REJECTED,
           confidence: 0.3,
           summary: `Project not found, so automated verification could not obtain sufficient evidence: invalid project ID`,
           detailedAnalysis: {
@@ -532,8 +531,8 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       logger.error(`Failed to fetch project ${projectId}:`, projectError);
       // System/data error, not evidence of missing requirements -> manual review.
       return {
-        status: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
-        verificationStatus: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        status: VERIFICATION_STATUS.REJECTED,
+        verificationStatus: VERIFICATION_STATUS.REJECTED,
         confidence: 0.3,
         summary: `Project data access failed, so automated verification could not obtain sufficient evidence: ${projectError.message}`,
         detailedAnalysis: {
@@ -597,8 +596,8 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       );
 
       return {
-        status: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
-        verificationStatus: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        status: VERIFICATION_STATUS.REJECTED,
+        verificationStatus: VERIFICATION_STATUS.REJECTED,
         confidence: 0.3,
         summary: `${reason} (${repoContent.error})`,
         detailedAnalysis: {
@@ -664,12 +663,12 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     if (filesWithContent === 0) {
       logger.warn("No file content available for AI analysis - requiring admin review");
       
-      // Directly return NEEDS_ADMIN_REVIEW when insufficient content for evidence-based verification
+      // Directly return REJECTED when insufficient content for evidence-based verification
       return {
-        status: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
-        verificationStatus: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        status: VERIFICATION_STATUS.REJECTED,
+        verificationStatus: VERIFICATION_STATUS.REJECTED,
         confidence: 0.4,
-        summary: "Insufficient repository content available for evidence-based verification. Requires admin review.",
+        summary: "Insufficient repository content available for evidence-based verification. Verification could not be completed.",
         detailedAnalysis: {
           repositoryValidity: {
             isValid: repoContent.success,
@@ -714,8 +713,8 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     if (!repoContent.success || filesWithContent === 0) {
       logger.warn("Skipping AI verification - repository content unavailable/insufficient");
       return {
-        status: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
-        verificationStatus: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        status: VERIFICATION_STATUS.REJECTED,
+        verificationStatus: VERIFICATION_STATUS.REJECTED,
         confidence: 0.3,
         summary: "Repository content was unavailable, so automated verification could not obtain sufficient evidence.",
         detailedAnalysis: {
@@ -764,8 +763,8 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       
       // Handle AI failure gracefully
       return {
-        status: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
-        verificationStatus: VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW,
+        status: VERIFICATION_STATUS.REJECTED,
+        verificationStatus: VERIFICATION_STATUS.REJECTED,
         confidence: 0.3,
         summary: `AI analysis failed: ${aiError.message}. Requires manual review.`,
         detailedAnalysis: {
@@ -1024,15 +1023,6 @@ function mapQualityToScore(quality) {
   };
   
   return mapping[quality?.toUpperCase()] || 0.5;
-}
-
-/**
- * Check if verification result indicates admin review needed
- */
-export function requiresAdminReview(verificationResult) {
-  if (!verificationResult) return false;
-  
-  return verificationResult.verificationStatus === VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW;
 }
 
 /**
