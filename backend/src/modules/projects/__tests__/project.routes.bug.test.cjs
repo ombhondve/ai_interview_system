@@ -1,25 +1,24 @@
 /**
- * Bug 5 — Duplicate PUT Route: Bug Condition Exploration Test
+ * Bug 5 — Duplicate PUT Route: Regression (Bug Condition Exploration) Test
  *
  * Property 1: Bug Condition
- * PUT /api/projects/:id is registered in the router (routes to updateProject
- * instead of returning 404).
+ * PUT /api/projects/:id must NOT be registered in the router (updates go
+ * through PATCH /:id only; a stray PUT would route to updateProject instead
+ * of returning 404).
  *
- * CRITICAL: The "BUG CONDITION" test is EXPECTED TO PASS on UNFIXED code —
- * passing confirms the bug exists (the PUT route IS registered).
- * After the fix (line removed), the "BUG CONDITION" test will FAIL,
- * which signals the duplicate route has been removed.
+ * CRITICAL: This "BUG CONDITION" test asserts the FIXED state. On the original
+ * unfixed code (router.put("/:id", ...) present) it FAILS, confirming the bug.
+ * On fixed code (the PUT line removed) it PASSES, confirming the fix.
  *
  * HOW TO RUN:
  *   cd backend
  *   npm run test:bug5
  *
  * EXPECTED OUTCOME (unfixed code):
- *   All tests PASS — PUT /:id route IS found → bug confirmed.
- *   Counterexample: router.put("/:id", updateProject) exists in project.route.js
+ *   "BUG CONDITION" test FAILS — PUT /:id route IS found → bug present.
  *
- * EXPECTED OUTCOME (after fix — remove router.put("/:id", ...)):
- *   "BUG CONDITION" test FAILS — PUT /:id route NOT found → fix confirmed.
+ * EXPECTED OUTCOME (fixed code — router.put("/:id", ...) removed):
+ *   All tests PASS — PUT /:id route NOT found → fix confirmed.
  *   Preservation tests continue to PASS — no regressions.
  *
  * Requirements: 5.2, 5.3
@@ -74,37 +73,37 @@ describe("Bug 5 — Duplicate PUT Route (Bug Condition Exploration)", () => {
   /**
    * BUG CONDITION TEST
    *
-   * On UNFIXED code: PASSES — router.put("/:id", updateProject) is present.
+   * On UNFIXED code: FAILS — router.put("/:id", updateProject) is present.
    * Counterexample: PUT /api/projects/:id routes to updateProject instead of 404.
    *
-   * After fix (line removed): FAILS — confirming the bug is gone.
+   * On fixed code: PASSES — confirming the duplicate PUT route is gone.
    *
    * Validates: Requirements 5.2, 5.3
    */
-  test('BUG CONDITION: router.put("/:id") is registered — confirms bug exists on unfixed code', () => {
+  test('BUG CONDITION: router.put("/:id") is NOT registered — confirms fix on fixed code', () => {
     const putIdRoutes = routes.filter(
       (r) => r.method === "put" && r.path === "/:id"
     );
 
-    // UNFIXED: putIdRoutes.length === 1  → PASSES → bug confirmed
-    // FIXED:   putIdRoutes.length === 0  → FAILS  → fix confirmed
-    expect(putIdRoutes.length).toBe(1);
+    // UNFIXED: putIdRoutes.length === 1  → FAILS → bug present
+    // FIXED:   putIdRoutes.length === 0  → PASSES → fix confirmed
+    expect(putIdRoutes.length).toBe(0);
 
     console.log(
-      'Counterexample: router.put("/:id", updateProject) is present in project.route.js'
+      'Confirmed: router.put("/:id", updateProject) is absent from project.route.js'
     );
     console.log(
-      "This means PUT /api/projects/:id resolves to updateProject (200) instead of 404."
+      "Updates go through PATCH /:id only; PUT /api/projects/:id returns 404."
     );
   });
 
   /**
-   * SUPPLEMENTARY: both PATCH /:id AND PUT /:id exist simultaneously,
-   * confirming the ambiguous duplicate route.
+   * SUPPLEMENTARY: PATCH /:id is registered while PUT /:id is NOT,
+   * confirming the ambiguous duplicate route was removed.
    *
    * Validates: Requirements 5.2, 5.3
    */
-  test("SUPPLEMENTARY: both PATCH /:id and PUT /:id are registered simultaneously (confirms ambiguous duplicate)", () => {
+  test("SUPPLEMENTARY: PATCH /:id is registered and PUT /:id is absent (no ambiguous duplicate)", () => {
     const patchRoutes = routes.filter(
       (r) => r.method === "patch" && r.path === "/:id"
     );
@@ -113,7 +112,7 @@ describe("Bug 5 — Duplicate PUT Route (Bug Condition Exploration)", () => {
     );
 
     expect(patchRoutes.length).toBeGreaterThanOrEqual(1);
-    expect(putRoutes.length).toBe(1);
+    expect(putRoutes.length).toBe(0);
 
     console.log(
       "All registered project routes: " +

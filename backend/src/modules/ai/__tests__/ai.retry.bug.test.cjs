@@ -222,22 +222,23 @@ describe("Bug 6 — AI Retry Corrupts System Messages (Bug Condition Exploration
   });
 
   /**
-   * SUPPLEMENTARY: confirm the exact buggy guard string that causes the problem.
+   * SUPPLEMENTARY: confirm the buggy guard clause that caused the problem
+   * is no longer present.
    *
-   * On UNFIXED code: PASSES — the buggy guard IS present → counterexample documented.
-   * After fix:       FAILS  — the buggy guard is gone → fix confirmed.
+   * On unfixed code: FAILS — the buggy guard IS present → bug confirmed.
+   * On fixed code:   PASSES — the buggy guard is gone → fix confirmed.
    *
    * Validates: Requirements 6.1
    */
-  test('SUPPLEMENTARY (unfixed): guard contains the buggy "message.role !== \\"system\\"" clause', () => {
+  test('SUPPLEMENTARY (fixed): guard no longer contains the buggy "message.role !== \\"system\\"" clause', () => {
     console.log(`Observed retry guard: "${retryGuard}"`);
 
-    // On unfixed code this PASSES, documenting the counterexample.
-    // On fixed code this FAILS — confirming the bad clause was removed.
+    // On unfixed code this FAILS, documenting the counterexample.
+    // On fixed code this PASSES — confirming the bad clause was removed.
     const hasBuggySystemClause =
       retryGuard && retryGuard.includes('message.role !== "system"');
 
-    expect(hasBuggySystemClause).toBe(true);
+    expect(hasBuggySystemClause).toBe(false);
   });
 });
 

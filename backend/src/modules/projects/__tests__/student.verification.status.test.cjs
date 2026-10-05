@@ -7,7 +7,7 @@
  *   1. First submission               -> Verification In Progress
  *   2. Verification succeeds          -> Accepted
  *   3. Verification rejects project   -> Rejected
- *   4. Verification needs admin review-> Under Review
+ *   4. Verification needs admin review-> In Progress (never Rejected)
  *   5. New submission after REJECTED  -> old result cleared
  *   6. New submission after ACCEPTED  -> old result cleared
  *   7. A stale background verification MUST NOT overwrite a newer submission
@@ -99,8 +99,9 @@ describe("student verification status mapping", () => {
     expect(result.label).toBe("Rejected");
     expect(result.isTerminal).toBe(true);
   });
-// (4) NEEDS_ADMIN_REVIEW -> Under Review (NEVER Rejected)
-  test("(4) NEEDS_ADMIN_REVIEW maps to Under Review, not Rejected", () => {
+  // (4) NEEDS_ADMIN_REVIEW -> In Progress (the admin-review state was removed;
+  //     a non-terminal submission status is never shown as Rejected).
+  test("(4) NEEDS_ADMIN_REVIEW shows In Progress, not Rejected", () => {
     const result = deriveVerificationState({
       projectSubmissionStatus: "needs_admin_review",
       projectSubmission: {
@@ -110,28 +111,28 @@ describe("student verification status mapping", () => {
       },
     });
 
-    expect(result.state).toBe("under_review");
-    expect(result.label).toBe("Under Review");
+    expect(result.state).toBe("in_progress");
+    expect(result.label).toBe("Verification In Progress");
     expect(result.state).not.toBe("rejected");
-    expect(result.isTerminal).toBe(true);
+    expect(result.isTerminal).toBe(false);
   });
 
-  test("(4b) NEEDS_ADMIN_REVIEW leaks through via submission status alone", () => {
+  test("(4b) NEEDS_ADMIN_REVIEW via submission status alone shows In Progress", () => {
     const result = deriveVerificationState({
       projectSubmissionStatus: "needs_admin_review",
       projectSubmission: { url: URL, aiVerificationStatus: "pending" },
     });
 
-    expect(result.state).toBe("under_review");
+    expect(result.state).toBe("in_progress");
   });
 
-  test("(4c) automated failure routes to Under Review, not Rejected", () => {
+  test("(4c) automated failure shows In Progress, not Rejected", () => {
     const result = deriveVerificationState({
       projectSubmissionStatus: "ai_verification_failed",
       projectSubmission: { url: URL, aiVerificationStatus: "error" },
     });
 
-    expect(result.state).toBe("under_review");
+    expect(result.state).toBe("in_progress");
     expect(result.state).not.toBe("rejected");
   });
 

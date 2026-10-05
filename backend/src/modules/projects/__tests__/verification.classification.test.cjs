@@ -7,7 +7,7 @@
  * layer and the AI layer mocked, asserting the DECISION rules:
  *
  *   (f) repository fetch failure (timeout / 5xx / network / 404 / rate limit)
- *       -> NEEDS_ADMIN_REVIEW  (NEVER REJECTED)
+ *       -> REJECTED  (verified-or-rejected; there is no admin-review state)
  *   (g) repository fetched successfully + AI evidence shows missing
  *       requirements -> REJECTED
  *   (h) repository fetched successfully + AI evidence meets requirements
@@ -131,7 +131,7 @@ function silenceLogger() {
 
 // --- Tests ------------------------------------------------------------------
 
-describe("verification classification — fetch failures must NOT be REJECTED", () => {
+describe("verification classification — fetch failures resolve to REJECTED (no admin-review state)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     repositoryService.validateRepositoryUrl.mockReturnValue({ valid: true, isRepoHost: true, hostname: "github.com" });
@@ -150,51 +150,47 @@ describe("verification classification — fetch failures must NOT be REJECTED", 
     ["rate_limit"],
     ["not_found"],
     ["repository_fetch_failure"]
-  ])("(f) fetch failure '%s' -> NEEDS_ADMIN_REVIEW (not REJECTED)", async (errorType) => {
+  ])("(f) fetch failure '%s' -> REJECTED (evidence could not be obtained)", async (errorType) => {
     repositoryService.fetchRepositoryContent.mockResolvedValue(failedRepoContent(errorType));
 
     const result = await verifyProjectSubmission("cand-1", "proj-1", "https://github.com/owner/repo");
 
-    expect(result.status).toBe(VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW);
-    expect(result.verificationStatus).toBe(VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW);
-    expect(result.status).not.toBe(VERIFICATION_STATUS.REJECTED);
+    expect(result.status).toBe(VERIFICATION_STATUS.REJECTED);
+    expect(result.verificationStatus).toBe(VERIFICATION_STATUS.REJECTED);
     expect(result.summary).toMatch(/could not be fetched/i);
 
     // The AI stage must never be called after a failed fetch.
     expect(aiService.generateStructuredAI).not.toHaveBeenCalled();
   });
 
-  test("(f) successfully fetched but EMPTY repository -> NEEDS_ADMIN_REVIEW (AI not called)", async () => {
+  test("(f) successfully fetched but EMPTY repository -> REJECTED (AI not called)", async () => {
     const content = successRepoContent();
     content.data.keyFiles = {}; // structure present, no analyzable file content
     repositoryService.fetchRepositoryContent.mockResolvedValue(content);
 
     const result = await verifyProjectSubmission("cand-2", "proj-2", "https://github.com/owner/empty");
 
-    expect(result.status).toBe(VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW);
-    expect(result.status).not.toBe(VERIFICATION_STATUS.REJECTED);
+    expect(result.status).toBe(VERIFICATION_STATUS.REJECTED);
     expect(aiService.generateStructuredAI).not.toHaveBeenCalled();
   });
 
-  test("(f) invalid repository URL -> NEEDS_ADMIN_REVIEW (AI not called)", async () => {
+  test("(f) invalid repository URL -> REJECTED (AI not called)", async () => {
     repositoryService.validateRepositoryUrl.mockReturnValueOnce({ valid: false, error: "Invalid URL format" });
 
     const result = await verifyProjectSubmission("cand-3", "proj-3", "not-a-url");
 
-    expect(result.status).toBe(VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW);
-    expect(result.status).not.toBe(VERIFICATION_STATUS.REJECTED);
+    expect(result.status).toBe(VERIFICATION_STATUS.REJECTED);
     expect(aiService.generateStructuredAI).not.toHaveBeenCalled();
     // repository fetch must not even be attempted for an invalid URL
     expect(repositoryService.fetchRepositoryContent).not.toHaveBeenCalled();
   });
 
-  test("(f) project not found -> NEEDS_ADMIN_REVIEW (not REJECTED)", async () => {
+  test("(f) project not found -> REJECTED (not VERIFIED)", async () => {
     Project.findById.mockReturnValue({ select: () => ({ lean: () => Promise.resolve(null) }) });
 
     const result = await verifyProjectSubmission("cand-4", "proj-4", "https://github.com/owner/repo");
 
-    expect(result.status).toBe(VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW);
-    expect(result.status).not.toBe(VERIFICATION_STATUS.REJECTED);
+    expect(result.status).toBe(VERIFICATION_STATUS.REJECTED);
     expect(aiService.generateStructuredAI).not.toHaveBeenCalled();
   });
 });
@@ -232,22 +228,23 @@ describe("verification classification — successful fetch keeps AI decisions", 
     expect(result.verificationStatus).toBe("VERIFIED");
   });
 
-  test("fetched successfully + AI uncertainty -> NEEDS_ADMIN_REVIEW preserved", async () => {
+  test("fetched successfully + AI returns unsupported status -> REJECTED (no admin-review state)", async () => {
+    // NEEDS_ADMIN_REVIEW is no longer a valid verification status; the
+    // validator rejects it and the failure path classifies it as REJECTED.
     aiService.generateStructuredAI.mockResolvedValue(aiResult("NEEDS_ADMIN_REVIEW", 0.6));
 
     const result = await verifyProjectSubmission("cand-7", "proj-7", "https://github.com/owner/repo");
 
-    expect(result.status).toBe("NEEDS_ADMIN_REVIEW");
-    expect(result.verificationStatus).toBe("NEEDS_ADMIN_REVIEW");
+    expect(result.status).toBe("REJECTED");
+    expect(result.verificationStatus).toBe("REJECTED");
   });
 
-  test("fetched successfully but AI call throws -> NEEDS_ADMIN_REVIEW (not REJECTED)", async () => {
+  test("fetched successfully but AI call throws -> REJECTED (graceful failure)", async () => {
     aiService.generateStructuredAI.mockRejectedValue(new Error("Groq unavailable"));
 
     const result = await verifyProjectSubmission("cand-8", "proj-8", "https://github.com/owner/repo");
 
-    expect(result.status).toBe(VERIFICATION_STATUS.NEEDS_ADMIN_REVIEW);
-    expect(result.status).not.toBe(VERIFICATION_STATUS.REJECTED);
+    expect(result.status).toBe(VERIFICATION_STATUS.REJECTED);
   });
 
   test("AI output exposes both `status` and `verificationStatus` (storage contract)", async () => {

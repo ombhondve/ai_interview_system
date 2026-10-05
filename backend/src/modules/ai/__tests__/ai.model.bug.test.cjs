@@ -50,25 +50,28 @@ const AI_SERVICE_FILE = path.resolve(
 // -----------------------------------------------------------------------
 
 /**
- * Parses the MODEL constant line from ai.service.js source text.
+ * Parses the MODEL resolution line from ai.service.js source text.
  *
- * Looks for a line of the form:
+ * Matches either the original module-level constant:
  *   const MODEL = process.env.GROQ_MODEL || "some-model-name";
+ * or the current lazy initialisation inside getGroqClient():
+ *   model = process.env.GROQ_MODEL || "some-model-name";
  *
  * Returns an object:
  *   {
  *     raw: the full matched line text,
  *     envVar: the environment variable name used (e.g. "GROQ_MODEL"),
- *     fallback: the fallback model string (e.g. "openai/gpt-oss-20b")
+ *     fallback: the fallback model string (e.g. "llama3-70b-8192")
  *   }
  *
- * Returns null if no MODEL constant is found.
+ * Returns null if no MODEL resolution is found.
  */
 function parseModelConstant(source) {
-  // Matches: const MODEL = process.env.SOME_VAR || "fallback-value";
-  // Also tolerates single quotes around the fallback.
+  // Matches: [const|let|var] model = process.env.SOME_VAR || "fallback-value";
+  // Case-insensitive on `model` and tolerant of single quotes / no declaration
+  // keyword (the lazy-init pattern assigns without `const`).
   const modelRegex =
-    /const\s+MODEL\s*=\s*process\.env\.(\w+)\s*\|\|\s*["'`]([^"'`]+)["'`]/;
+    /\bmodel\s*=\s*process\.env\.(\w+)\s*\|\|\s*["'`]([^"'`]+)["'`]/i;
 
   const match = modelRegex.exec(source);
   if (!match) return null;
@@ -138,21 +141,22 @@ describe("Bug 1 — Invalid Groq Model Fallback (Bug Condition Exploration)", ()
   });
 
   /**
-   * SUPPLEMENTARY: confirm the exact invalid string that causes the bug.
+   * SUPPLEMENTARY: confirm the known-bad fallback that caused the bug is gone.
    *
-   * On UNFIXED code: PASSES (the bad fallback IS present — confirming root cause).
-   * After fix: FAILS (the bad fallback is gone — confirming the fix removed it).
+   * On unfixed code: FAILS (the bad fallback IS present — root cause documented).
+   * On fixed code: PASSES (the bad fallback is gone — fix confirmed).
    *
    * Validates: Requirements 1.1
    */
-  test("SUPPLEMENTARY (unfixed): MODEL fallback is the known-bad value 'openai/gpt-oss-20b'", () => {
+  test("SUPPLEMENTARY (fixed): MODEL fallback is NOT the known-bad value 'openai/gpt-oss-20b'", () => {
     console.log(
       `MODEL fallback observed: "${modelConstant && modelConstant.fallback}"`
     );
 
-    // On unfixed code this PASSES, documenting the counterexample.
-    // On fixed code this FAILS — which is expected after the fix.
-    expect(modelConstant.fallback).toBe("openai/gpt-oss-20b");
+    // On unfixed code this FAILS, documenting the counterexample.
+    // On fixed code this PASSES — confirming the bad value was removed.
+    expect(modelConstant.fallback).not.toBe("openai/gpt-oss-20b");
+    expect(modelConstant.fallback).toBe("llama3-70b-8192");
   });
 });
 
@@ -236,14 +240,18 @@ describe("Bug 1 — Model Env Override Preservation (should always pass — no r
    *
    * Validates: Requirements 1.3.3
    */
-  test("PRESERVATION: MODEL constant is used in groq.chat.completions.create calls", () => {
-    // Source must reference MODEL inside a groq SDK call
-    const hasModelUsage = /model\s*:\s*MODEL/.test(source);
+  test("PRESERVATION: MODEL value is used in groq.chat.completions.create calls", () => {
+    // Source must pass the model into a groq SDK call. The refactor passes the
+    // local `model` via object shorthand (`{ model, ... }`), but we also accept
+    // the older explicit forms (`model: MODEL` / `model: model`).
+    const hasModelUsage = /chat\.completions\.create\(\s*\{[^}]*\bmodel\b/.test(
+      source
+    );
 
     expect(hasModelUsage).toBe(true);
 
     console.log(
-      "PRESERVATION confirmed: MODEL constant is referenced in groq.chat.completions.create — " +
+      "PRESERVATION confirmed: model value is passed to groq.chat.completions.create — " +
         "all AI calls use the resolved model value."
     );
   });

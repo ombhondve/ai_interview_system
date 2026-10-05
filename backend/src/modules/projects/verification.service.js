@@ -499,7 +499,7 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
         );
       }
       // An invalid URL means no repository could be fetched and therefore no
-      // evidence exists -> manual review, never an automatic REJECTED.
+      // evidence exists -> REJECTED (verified-or-rejected; no admin-review state).
       return {
         status: VERIFICATION_STATUS.REJECTED,
         verificationStatus: VERIFICATION_STATUS.REJECTED,
@@ -564,7 +564,7 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
             "Assigned project not found in database."
           );
         }
-        // No project/evidence available -> manual review, never automatic REJECTED.
+        // No project/evidence available -> REJECTED (verified-or-rejected contract).
         return {
           status: VERIFICATION_STATUS.REJECTED,
           verificationStatus: VERIFICATION_STATUS.REJECTED,
@@ -670,14 +670,13 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     
     if (!repoContent.success) {
       // -----------------------------------------------------------------
-      // A repository FETCH FAILURE is NOT a rejection.
+      // A repository FETCH FAILURE yields REJECTED under the
+      // verified-or-rejected contract (there is no admin-review state).
       //
       // A timeout, network error, GitHub API outage, 5xx, rate limit, 404,
       // empty repo, etc. means we could not obtain enough evidence to run
-      // automated verification. Such failures MUST be routed to manual
-      // admin review. REJECTED is reserved for the case where the repo WAS
-      // fetched successfully AND the AI/static evidence actually shows the
-      // required project requirements are missing or failed (see Step 5).
+      // automated verification, so the outcome is REJECTED with a summary
+      // that records the real cause for the student.
       //
       // The AI verification stage is intentionally NOT called here, so the
       // model is never fed empty/incomplete content produced by a failure.
@@ -775,7 +774,9 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     );
 
     if (filesWithContent === 0) {
-      logger.warn("No file content available for AI analysis - requiring admin review");
+      logger.warn(
+        "No file content available for AI analysis - classifying as REJECTED"
+      );
 
       if (submissionId) {
         await markStageFailed(
