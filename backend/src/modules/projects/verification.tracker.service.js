@@ -249,40 +249,10 @@ class VerificationTracker {
 
         logger.info(`Verification attempt ${attempt} for candidate ${candidateId}`);
 
-<<<<<<< Updated upstream
-        const setProgress = async (progress) => {
-          verificationData.progress = {
-            ...verificationData.progress,
-            ...progress,
-            updatedAt: new Date().toISOString()
-          };
-          // Persist every stage because Vercel polling can hit another
-          // serverless invocation where the in-memory tracker Map is absent.
-          await updateVerificationProgress(candidateId, submissionId, verificationData.progress);
-          this.notifyStatusChange(candidateId, "VERIFICATION_PROGRESS", verificationData.progress);
-        };
-
-        // Execute verification with live stage reporting.
-        const result = await verifyProjectSubmission(
-          candidateId,
-          projectId,
-          repositoryUrl,
-          setProgress
-        );
-
-        setProgress({
-          stage: "finalizing",
-          label: "Finalizing results",
-          status: "active",
-          completed: false,
-          failed: false,
-          message: "Preparing the verification outcome..."
-        });
-=======
         // Execute verification. The submissionId is passed so every stage transition
         // is persisted against THIS submission and can be replayed by the UI.
         const result = await verifyProjectSubmission(candidateId, projectId, repositoryUrl, submissionId);
->>>>>>> Stashed changes
+
 
         // Store result
         const storageResult = await storeVerificationResult(
