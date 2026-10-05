@@ -111,6 +111,7 @@ router.get(
       
       // Import verification storage service to get PERSISTED result
       const { getVerificationResult } = await import("../candidate/verification.storage.service.js");
+      const { verificationTracker } = await import("../projects/verification.tracker.service.js");
       
       const verificationData = await getVerificationResult(candidate._id);
       
@@ -150,6 +151,8 @@ router.get(
         }
       });
 
+      const liveStatus = await verificationTracker.getVerificationStatus(candidate._id);
+
       const response = {
         success: true,
         data: {
@@ -159,7 +162,8 @@ router.get(
 
           // Student-facing state (label/description/terminal flag)
           verification,
-          
+          progress: liveStatus.progress || liveStatus.activeInfo?.progress || null,
+
           // Persisted AI verification result (what student should see)
           verificationResult: verificationData.verificationResult ? {
             verificationStatus: verificationData.verificationResult.verificationStatus,
