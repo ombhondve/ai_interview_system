@@ -47,6 +47,16 @@ type VerificationState = {
   interviewEligible?: boolean;
 };
 
+type VerificationProgress = {
+  stage: string;
+  label: string;
+  status: "active" | "completed" | "failed";
+  completed?: boolean;
+  failed?: boolean;
+  message?: string;
+  updatedAt?: string;
+};
+
 type Candidate = {
   id: string;
   name?: string;
@@ -96,9 +106,11 @@ type ProjectApiResponse = {
  */
 function VerificationResultView({
   verification,
+  progress,
   onScheduleInterview,
 }: {
   verification: VerificationState;
+  progress: VerificationProgress | null;
   onScheduleInterview: () => void;
 }) {
   const state = verification.state;
@@ -162,29 +174,59 @@ function VerificationResultView({
     );
   }
 
+  const steps = [
+    { key: "validating", label: "Validating repository" },
+    { key: "project_requirements", label: "Loading project requirements" },
+    { key: "repository", label: "Fetching repository" },
+    { key: "analyzing", label: "Analyzing code and files" },
+    { key: "requirements", label: "Checking project requirements" },
+    { key: "ai", label: "AI verification in progress" },
+    { key: "finalizing", label: "Finalizing results" },
+  ];
+
+  const currentIndex = Math.max(0, steps.findIndex((step) => step.key === progress?.stage));
+
   return (
     <Card className="border-blue-200 bg-blue-50/60">
       <CardContent className="p-8">
         <div className="mx-auto max-w-2xl text-center">
           <div className="mx-auto h-14 w-14 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
-          <h2 className="mt-5 text-xl font-semibold text-slate-950">
-            Verifying your project
-          </h2>
+          <h2 className="mt-5 text-xl font-semibold text-slate-950">Verifying your project</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Please wait while we analyze your repository and compare it with the assigned requirements.
+            {progress?.message || "Please wait while we analyze your submission."}
           </p>
-
           <div className="mx-auto mt-7 max-w-md space-y-4 text-left">
-            <VerificationStep label="Fetching repository" active={false} complete />
-            <VerificationStep label="Analyzing code and files" active={false} complete />
-            <VerificationStep label="Checking project requirements" active />
-            <VerificationStep label="AI verification in progress" />
-            <VerificationStep label="Finalizing results" />
+            {steps.map((step, index) => {
+              const isFailed = progress?.status === "failed" && progress.stage === step.key;
+              const isActive = progress?.status === "active" && progress.stage === step.key;
+              const isComplete =
+                progress?.status === "completed" && progress.stage === step.key
+                  ? true
+                  : index < currentIndex;
+              return (
+                <VerificationStep
+                  key={step.key}
+                  label={step.label}
+                  message={progress?.stage === step.key ? progress.message : isComplete ? "Completed successfully." : undefined}
+                  active={isActive}
+                  complete={!isFailed && isComplete}
+                  failed={isFailed}
+                />
+              );
+            })}
           </div>
-
-          <div className="mt-7 rounded-xl border border-blue-200 bg-white/70 p-3 text-left text-sm text-blue-800">
-            This may take a few minutes. Please do not close this page.
-          </div>
+          {progress?.status === "failed" ? (
+            <div className="mt-7 rounded-xl border border-red-200 bg-red-50 p-4 text-left">
+              <p className="text-sm font-semibold text-red-900">Verification stopped</p>
+              <p className="mt-1 text-sm leading-6 text-red-700">
+                {progress.message || "This verification step failed."}
+              </p>
+            </div>
+          ) : (
+            <div className="mt-7 rounded-xl border border-blue-200 bg-white/70 p-3 text-left text-sm text-blue-800">
+              This may take a few minutes. Please do not close this page.
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -193,33 +235,44 @@ function VerificationResultView({
 
 function VerificationStep({
   label,
+  message,
   active = false,
   complete = false,
+  failed = false,
 }: {
   label: string;
+  message?: string;
   active?: boolean;
   complete?: boolean;
+  failed?: boolean;
 }) {
+  const indicatorClass =
+    failed
+      ? "bg-red-600 text-white"
+      : complete
+        ? "bg-emerald-600 text-white"
+        : active
+          ? "bg-blue-600 text-white animate-pulse"
+          : "bg-slate-200 text-slate-500";
+
+  const labelClass =
+    failed
+      ? "font-semibold text-red-800"
+      : active
+        ? "font-semibold text-blue-800"
+        : complete
+          ? "text-slate-800"
+          : "text-slate-500";
+
   return (
-    <div className="flex items-center gap-3">
-      <span
-        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-          complete
-            ? "bg-emerald-600 text-white"
-            : active
-              ? "bg-blue-600 text-white"
-              : "bg-slate-200 text-slate-500"
-        }`}
-      >
-        {complete ? "✓" : active ? "•" : ""}
+    <div className="relative flex items-start gap-3">
+      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all duration-500 ${indicatorClass}`}>
+        {failed ? "×" : complete ? "✓" : active ? "•" : ""}
       </span>
-      <span
-        className={`text-sm ${
-          active ? "font-semibold text-blue-800" : complete ? "text-slate-800" : "text-slate-500"
-        }`}
-      >
-        {label}
-      </span>
+      <div className="min-w-0">
+        <span className={`text-sm ${labelClass}`}>{label}</span>
+        {message && <p className="mt-0.5 text-xs leading-5 text-slate-500">{message}</p>}
+      </div>
     </div>
   );
 }
@@ -259,6 +312,9 @@ export default function Project() {
    */
   const [verification, setVerification] =
     useState<VerificationState | null>(null);
+
+  const [verificationProgress, setVerificationProgress] =
+    useState<VerificationProgress | null>(null);
 
   /**
    * ============================================
@@ -312,6 +368,9 @@ export default function Project() {
         setProject(data.project || null);
         setVerification(
           data.candidate.verification ?? null
+        );
+        setVerificationProgress(
+          (data as ProjectApiResponse & { progress?: VerificationProgress }).progress ?? null
         );
 
         /**
@@ -397,6 +456,8 @@ export default function Project() {
 
         const next =
           data?.data?.verification ?? null;
+
+        setVerificationProgress(data?.data?.progress ?? null);
 
         if (cancelled || !next) {
           return;
@@ -602,6 +663,12 @@ export default function Project() {
           "Your project has been submitted and is currently being verified.",
         isTerminal: false,
       });
+      setVerificationProgress({
+        stage: "validating",
+        label: "Validating repository",
+        status: "active",
+        message: "Checking the submitted project URL..."
+      });
 
       /**
        * Refresh the persisted candidate state. The same page will now render
@@ -742,6 +809,7 @@ export default function Project() {
         ) : verification?.state === "in_progress" || verification?.state === "accepted" || verification?.state === "rejected" ? (
           <VerificationResultView
             verification={verification}
+            progress={verificationProgress}
             onScheduleInterview={() => router.push("/student/interview-scheduling")}
           />
         ) : (
