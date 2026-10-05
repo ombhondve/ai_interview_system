@@ -406,6 +406,86 @@ const candidateSchema = new mongoose.Schema(
                 default: 0
             },
 
+            /**
+             * CURRENT verification stage pointer.
+             *
+             * The student UI used to infer progress by polling status, which
+             * skipped stages because verification completes faster than the poll
+             * interval. The real stage progression is persisted here (and in
+             * verificationProgressHistory below) so the UI can replay what
+             * actually happened instead of guessing.
+             *
+             * Always belongs to projectSubmission.submissionId.
+             */
+            verificationProgress: {
+                stage: {
+                    type: String,
+                    trim: true
+                },
+                label: {
+                    type: String,
+                    trim: true
+                },
+                status: {
+                    type: String,
+                    enum: ["active", "completed", "failed"],
+                    default: "active"
+                },
+                message: {
+                    type: String,
+                    trim: true
+                },
+                failed: {
+                    type: Boolean,
+                    default: false
+                },
+                startedAt: {
+                    type: Date
+                },
+                completedAt: {
+                    type: Date
+                },
+                updatedAt: {
+                    type: Date
+                }
+            },
+
+            /**
+             * Append-only record of every stage that ACTUALLY occurred for the
+             * current submission. A new submission resets this.
+             */
+            verificationProgressHistory: [
+                {
+                    stage: {
+                        type: String,
+                        trim: true
+                    },
+                    label: {
+                        type: String,
+                        trim: true
+                    },
+                    status: {
+                        type: String,
+                        enum: ["active", "completed", "failed"],
+                        default: "completed"
+                    },
+                    message: {
+                        type: String,
+                        trim: true
+                    },
+                    failed: {
+                        type: Boolean,
+                        default: false
+                    },
+                    startedAt: {
+                        type: Date
+                    },
+                    completedAt: {
+                        type: Date
+                    }
+                }
+            ],
+
             // Verification statistics for reporting
             verificationStats: {
                 filesAnalyzed: {

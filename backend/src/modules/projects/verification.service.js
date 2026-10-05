@@ -10,10 +10,15 @@ import {
   getRepositoryBudgetChars
 } from "./aiPayloadBudget.js";
 import logger from "../../utils/logger.js";
+import {
+  markStageActive,
+  markStageCompleted,
+  markStageFailed
+} from "./verificationProgress.service.js";
 
 /**
  * Project Verification Service
- * 
+ *
  * Handles AI-powered verification of student project submissions
  * against project requirements with safety-first approach.
  */
@@ -24,6 +29,48 @@ const VERIFICATION_STATUS = {
   PENDING: "PENDING",
   ERROR: "ERROR"
 };
+
+/**
+ * Run a verification stage, recording its REAL start/completion.
+ *
+ * The stage writer is fire-and-forget and never throws, so this cannot fail a
+ * verification. It does NOT add any artificial delay to the backend.
+ *
+ * @param {string} candidateId
+ * @param {string} submissionId
+ * @param {string} stage
+ * @param {Function} work
+ */
+async function runStage(candidateId, submissionId, stage, work) {
+  await markStageActive(candidateId, submissionId, stage);
+
+  try {
+    const result = await work();
+
+    // A stage that returns an early-exit verdict is NOT a successful stage:
+    // it failed, and the persisted message carries the real reason.
+    if (result && result.__earlyExit) {
+      await markStageFailed(
+        candidateId,
+        submissionId,
+        stage,
+        result.summary || "Verification could not continue."
+      );
+      return result;
+    }
+
+    await markStageCompleted(candidateId, submissionId, stage);
+    return result;
+  } catch (error) {
+    await markStageFailed(
+      candidateId,
+      submissionId,
+      stage,
+      error?.message || "Stage failed."
+    );
+    throw error;
+  }
+}
 
 /**
  * Structure repository content for AI analysis
@@ -422,6 +469,7 @@ function validateVerificationResult(result) {
 /**
  * Main verification function
  */
+<<<<<<< Updated upstream
 export async function verifyProjectSubmission(candidateId, projectId, repositoryUrl, onProgress = null) {
   const startTime = Date.now();
 
@@ -433,9 +481,19 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     }
   };
   
+=======
+export async function verifyProjectSubmission(candidateId, projectId, repositoryUrl, submissionId) {
+  const startTime = Date.now();
+
+  // Progress tracking is scoped to this submission and never throws, so a
+  // legacy caller without a submissionId simply records nothing extra.
+  const track = (stage, work) =>
+    submissionId ? runStage(candidateId, submissionId, stage, work) : work();
+
+>>>>>>> Stashed changes
   try {
     logger.info(`Starting verification for candidate ${candidateId}, project ${projectId}`);
-    
+
     // Step 1: Validate repository URL
     await reportProgress({
       stage: "validating",
@@ -444,9 +502,21 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       message: "Checking the submitted project URL..."
     });
     logger.debug("Validating repository URL");
-    const urlValidation = validateRepositoryUrl(repositoryUrl);
+    const urlValidation = await track("validating", async () =>
+      validateRepositoryUrl(repositoryUrl)
+    );
     if (!urlValidation.valid) {
       logger.warn(`Invalid repository URL: ${urlValidation.error}`);
+      // An invalid URL means no repository could be fetched and therefore no
+      // evidence exists -> the validating stage is recorded as FAILED.
+      if (submissionId) {
+        await markStageFailed(
+          candidateId,
+          submissionId,
+          "validating",
+          `Invalid repository URL: ${urlValidation.error}`
+        );
+      }
       // An invalid URL means no repository could be fetched and therefore no
       // evidence exists -> manual review, never an automatic REJECTED.
       return {
@@ -496,7 +566,11 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     // Step 2: Fetch ACTUAL project data from MongoDB
     logger.debug(`Fetching actual project ${projectId} from database`);
     let actualProject = null;
-    
+
+    if (submissionId) {
+      await markStageActive(candidateId, submissionId, "project_requirements");
+    }
+
     try {
       // Import Project model dynamically to avoid circular dependencies
       const Project = (await import("./project.model.js")).default;
@@ -508,6 +582,14 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       
       if (!actualProject) {
         logger.warn(`Project ${projectId} not found in database`);
+        if (submissionId) {
+          await markStageFailed(
+            candidateId,
+            submissionId,
+            "project_requirements",
+            "Assigned project not found in database."
+          );
+        }
         // No project/evidence available -> manual review, never automatic REJECTED.
         return {
           status: VERIFICATION_STATUS.REJECTED,
@@ -547,9 +629,24 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       }
       
       logger.info(`Loaded actual project: ${actualProject.title} (${actualProject.difficulty})`);
+      if (submissionId) {
+        await markStageCompleted(
+          candidateId,
+          submissionId,
+          "project_requirements"
+        );
+      }
       
     } catch (projectError) {
       logger.error(`Failed to fetch project ${projectId}:`, projectError);
+      if (submissionId) {
+        await markStageFailed(
+          candidateId,
+          submissionId,
+          "project_requirements",
+          `Project data access failed: ${projectError.message}`
+        );
+      }
       // System/data error, not evidence of missing requirements -> manual review.
       return {
         status: VERIFICATION_STATUS.REJECTED,
@@ -599,6 +696,9 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
 
     // Step 3: Fetch repository content safely
     logger.info("Fetching repository content for verification");
+    if (submissionId) {
+      await markStageActive(candidateId, submissionId, "repository");
+    }
     const repoContent = await fetchRepositoryContent(repositoryUrl);
     
     if (!repoContent.success) {
@@ -623,6 +723,7 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
         `Failed to fetch repository (${errorType}): ${repoContent.error}`
       );
 
+<<<<<<< Updated upstream
       await reportProgress({
         stage: "repository",
         label: "Fetching repository",
@@ -630,6 +731,16 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
         failed: true,
         message: repoContent.error || "Repository could not be fetched."
       });
+=======
+      if (submissionId) {
+        await markStageFailed(
+          candidateId,
+          submissionId,
+          "repository",
+          repoContent.error || "Unable to access repository."
+        );
+      }
+>>>>>>> Stashed changes
 
       return {
         status: VERIFICATION_STATUS.REJECTED,
@@ -678,8 +789,13 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     });
 
     // Step 4: Structure data for AI analysis
+    if (submissionId) {
+      await markStageCompleted(candidateId, submissionId, "repository");
+      await markStageActive(candidateId, submissionId, "analyzing");
+    }
     const structuredRepoContent = structureRepositoryContent(repoContent.data);
 
+<<<<<<< Updated upstream
     await reportProgress({
       stage: "requirements",
       label: "Checking project requirements",
@@ -687,8 +803,14 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       message: "Comparing the project evidence with the assigned requirements..."
     });
 
+=======
+>>>>>>> Stashed changes
     // Step 5: Prepare and call AI for verification
     logger.debug("Preparing AI verification request");
+    if (submissionId) {
+      await markStageCompleted(candidateId, submissionId, "analyzing");
+      await markStageActive(candidateId, submissionId, "requirements");
+    }
     const messages = prepareVerificationMessages(projectRequirements, structuredRepoContent);
     
     // Check we have enough file content for meaningful analysis.
@@ -712,6 +834,15 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
 
     if (filesWithContent === 0) {
       logger.warn("No file content available for AI analysis - requiring admin review");
+
+      if (submissionId) {
+        await markStageFailed(
+          candidateId,
+          submissionId,
+          "requirements",
+          "No actual file content was available to analyse."
+        );
+      }
       
       // Directly return REJECTED when insufficient content for evidence-based verification
       return {
@@ -762,6 +893,14 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     // incomplete content caused by a repository fetch failure.
     if (!repoContent.success || filesWithContent === 0) {
       logger.warn("Skipping AI verification - repository content unavailable/insufficient");
+      if (submissionId) {
+        await markStageFailed(
+          candidateId,
+          submissionId,
+          "requirements",
+          "Repository content was unavailable at the AI verification stage."
+        );
+      }
       return {
         status: VERIFICATION_STATUS.REJECTED,
         verificationStatus: VERIFICATION_STATUS.REJECTED,
@@ -810,11 +949,17 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     logger.info("Calling AI for project verification");
     let aiResult;
     try {
+      if (submissionId) {
+        await markStageCompleted(candidateId, submissionId, "requirements");
+        await markStageActive(candidateId, submissionId, "ai");
+      }
+
       aiResult = await generateStructuredAI(messages);
-      
+
       // Step 6: Validate and process AI result
       validateVerificationResult(aiResult);
 
+<<<<<<< Updated upstream
       await reportProgress({
         stage: "ai",
         label: "AI verification in progress",
@@ -833,6 +978,24 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
         failed: true,
         message: aiError.message || "AI verification failed."
       });
+=======
+      if (submissionId) {
+        await markStageCompleted(candidateId, submissionId, "ai");
+        await markStageActive(candidateId, submissionId, "finalizing");
+      }
+
+    } catch (aiError) {
+      logger.error("AI verification failed:", aiError);
+
+      if (submissionId) {
+        await markStageFailed(
+          candidateId,
+          submissionId,
+          "ai",
+          aiError.message || "AI verification failed."
+        );
+      }
+>>>>>>> Stashed changes
       
       // Handle AI failure gracefully
       return {
@@ -903,12 +1066,25 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
         repoMetadata: repoContent.data.metadata
       }
     };
-    
+
+    if (submissionId) {
+      await markStageCompleted(candidateId, submissionId, "finalizing");
+    }
+
     return finalResult;
-    
+
   } catch (error) {
     const verificationTime = Date.now() - startTime;
     logger.error(`Verification failed after ${verificationTime}ms:`, error);
+
+    if (submissionId) {
+      await markStageFailed(
+        candidateId,
+        submissionId,
+        "finalizing",
+        error.message || "Verification failed."
+      );
+    }
     
     return {
       status: VERIFICATION_STATUS.ERROR,

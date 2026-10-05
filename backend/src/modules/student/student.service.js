@@ -11,6 +11,7 @@ import {
 
 import { keepInvocationAlive } from "../../utils/vercelBackground.js";
 import { createSubmissionId, deriveVerificationState } from "../projects/verificationState.js";
+import { startVerificationProgress } from "../projects/verificationProgress.service.js";
 
 /**
  * ============================================
@@ -570,6 +571,11 @@ export async function createProjectSubmission(candidateId, url) {
       updateOperation,
       { new: true }
     ).populate('assignedProjectId', 'title');
+
+    // Reset the persisted verification progress history for this NEW submission
+    // so the student never sees the previous submission's stages replayed.
+    // Guarded by submissionId, exactly like every later progress write.
+    await startVerificationProgress(candidateId, submissionId);
     
     // Start verification process asynchronously with correct project ID
     // candidate.assignedProjectId is already the ObjectId or string, not an object with _id
