@@ -72,6 +72,13 @@ export default function InterviewSchedulingPage() {
         setSelectedDate(data.availableDates[0]);
       }
     } catch (error) {
+      // A 401 means the session cookie was not sent or has expired. Send the
+      // student back to identity verification instead of showing a dead end.
+      if (error instanceof InterviewApiError && error.status === 401) {
+        router.replace("/student/verify");
+        return;
+      }
+
       setView({
         kind: "error",
         message:
@@ -80,7 +87,7 @@ export default function InterviewSchedulingPage() {
             : "Unable to load your interview eligibility.",
       });
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     loadConfig();

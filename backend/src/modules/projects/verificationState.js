@@ -66,7 +66,7 @@ export function isInterviewEligible(candidate) {
 }
 
 /**
- * The real, persisted reason a student is not eligible (for REJECTED).
+ * The persisted reason a student is not eligible (for REJECTED).
  */
 export function getPersistedRejectionReason(candidate) {
   return (
@@ -76,6 +76,46 @@ export function getPersistedRejectionReason(candidate) {
     candidate?.projectSubmission?.aiVerificationResult?.summary ||
     null
   );
+}
+
+/**
+ * The persisted reason a submission was routed to admin review.
+ *
+ * NEEDS_ADMIN_REVIEW has several distinct causes:
+ *   - the repository could not be fetched (rate limit / timeout / private)
+ *   - the repository had no file content to analyse
+ *   - the AI genuinely could not decide
+ *
+ * The student must be able to tell which one actually happened, otherwise every
+ * case collapses into the same unhelpful "Under Review" message. This returns
+ * the PERSISTED summary; it never invents a cause.
+ */
+export function getPersistedReviewReason(candidate) {
+  return (
+    candidate?.projectSubmission?.aiVerificationResult?.summary ||
+    candidate?.projectSubmission?.aiVerificationResult?.detailedAnalysis
+      ?.overallAssessment ||
+    null
+  );
+}
+
+/**
+ * Classify WHY a submission needs admin review, for student-facing messaging.
+ *
+ * Derived entirely from the persisted verification result, so it can never
+ * claim a cause that did not actually occur.
+ *
+ * @returns {"repository_fetch_failed"|"insufficient_content"|"ai_uncertainty"|null}
+ */
+export function getReviewCause(candidate) {
+  const metadata =
+    candidate?.projectSubmission?.aiVerificationResult?.verificationMetadata ||
+    {};
+
+  if (metadata.repositoryFetchFailed) return "repository_fetch_failed";
+  if (metadata.insufficientContent) return "insufficient_content";
+
+  return "ai_uncertainty";
 }
 
 /**
@@ -101,6 +141,8 @@ export function deriveVerificationState(candidate) {
   ).toUpperCase();
 
   const rejectionReason = getPersistedRejectionReason(candidate);
+  const reviewReason = getPersistedReviewReason(candidate);
+  const reviewCause = getReviewCause(candidate);
 
   // VERIFIED => immediately interview eligible. Never "Under Review".
   const interviewEligible = isInterviewEligible(candidate);
@@ -113,6 +155,10 @@ export function deriveVerificationState(candidate) {
     interviewEligible,
     // Only surface a reason for a genuinely rejected candidate.
     rejectionReason: s === "rejected" ? rejectionReason : null,
+    // Surface the REAL persisted reason for admin review, so a rate-limited
+    // fetch is never displayed identically to genuine AI uncertainty.
+    reviewReason: s === "under_review" ? reviewReason : null,
+    reviewCause: s === "under_review" ? reviewCause : null,
   });
 
   // --- No submission at all ---

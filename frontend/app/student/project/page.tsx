@@ -43,6 +43,20 @@ type VerificationState = {
   label: string;
   description: string;
   isTerminal: boolean;
+  /** Actual persisted reason, surfaced for rejected submissions. */
+  rejectionReason?: string | null;
+  /** Actual persisted reason, surfaced for admin-review submissions. */
+  reviewReason?: string | null;
+  /**
+   * Why admin review was required, derived server-side from the persisted
+   * verification metadata. Lets the UI distinguish an infrastructure failure
+   * (rate limit / timeout) from genuine AI uncertainty.
+   */
+  reviewCause?:
+    | "repository_fetch_failed"
+    | "insufficient_content"
+    | "ai_uncertainty"
+    | null;
 };
 
 type Candidate = {
@@ -162,6 +176,30 @@ function VerificationStatusCard({
 
   const isRunning = state === "in_progress";
 
+  /**
+   * Show the ACTUAL persisted reason whenever one exists.
+   *
+   * Without this, a repository that could not be fetched (GitHub rate limit,
+   * timeout, private repo) displayed the identical generic "Your project
+   * requires additional review." as genuine AI uncertainty, which made an
+   * infrastructure outage indistinguishable from a modelling decision.
+   */
+  const detail =
+    state === "rejected"
+      ? verification?.rejectionReason
+      : state === "under_review"
+        ? verification?.reviewReason
+        : null;
+
+  const cause = state === "under_review" ? verification?.reviewCause : null;
+
+  const causeNotice =
+    cause === "repository_fetch_failed"
+      ? "We could not read your repository from GitHub, so automated verification could not run. This is usually a temporary service or rate-limit issue, not a problem with your project."
+      : cause === "insufficient_content"
+        ? "Your repository was reachable, but it did not contain enough file content for automated verification. This can happen when the default branch is empty or the project files are not committed."
+        : null;
+
   return (
     <div
       className={`mt-4 rounded-xl border p-4 ${styles.border} ${styles.panel}`}
@@ -188,6 +226,23 @@ function VerificationStatusCard({
             >
               {description}
             </p>
+
+            {detail && (
+              <p
+                className={`mt-2 text-sm ${styles.sub}`}
+              >
+                <span className="font-medium">Details: </span>
+                {detail}
+              </p>
+            )}
+
+            {causeNotice && (
+              <p
+                className={`mt-2 rounded-lg bg-white/70 p-2 text-xs ${styles.sub}`}
+              >
+                {causeNotice}
+              </p>
+            )}
           </div>
         </div>
 

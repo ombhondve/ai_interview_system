@@ -362,7 +362,7 @@ describe("POST /api/student/interview/book", () => {
       (s) => new Date(s.startAt).getTime() === target.getTime()
     );
 
-    console.log("BODY", availability.status, JSON.stringify(availability.body).slice(0,300)); expect(slot.status).toBe("already_taken");
+    expect(slot.status).toBe("already_taken");
   });
 
   test("TEST 6: a second student taking the same time gets a controlled 409", async () => {

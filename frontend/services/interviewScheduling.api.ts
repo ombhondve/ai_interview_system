@@ -12,7 +12,7 @@
  * Nothing here is trusted by the server - these calls are only for display.
  */
 
-import { apiUrl } from "@/lib/client";
+import { backendApiUrl } from "@/lib/client";
 
 export type InterviewSlotStatus =
   | "available"
@@ -82,7 +82,9 @@ export interface BookInterviewResponse {
   booking: InterviewBooking;
 }
 
-/** Business error carrying the HTTP status and backend error code. */
+/**
+ * Business error carrying the HTTP status and backend error code.
+ */
 export class InterviewApiError extends Error {
   status: number;
   code: string;
@@ -95,9 +97,60 @@ export class InterviewApiError extends Error {
   }
 }
 
+/**
+ * Turn a failed response into a message that is actually useful to a student.
+ *
+ * A 401 is NOT the same thing as a 403, and neither is the same as a 409.
+ * Showing "Authentication required." for every failure was actively misleading:
+ * it told an already-authenticated student that their session had expired when
+ * in fact their project simply was not verified yet.
+ */
+function toApiError(status: number, data: Record<string, unknown>): InterviewApiError {
+  const code = typeof data?.code === "string" ? data.code : "UNKNOWN";
+  const serverMessage =
+    typeof data?.message === "string" ? data.message : "";
+
+  // 409: someone else took the time between our check and our submit.
+  if (status === 409) {
+    return new InterviewApiError(
+      409,
+      code === "INTERVIEW_ALREADY_BOOKED"
+        ? "You already have an active interview scheduled."
+        : "This interview time was just booked. Please select another time.",
+      code
+    );
+  }
+
+  // 401 / 403: the session is missing or invalid -> genuinely re-authenticate.
+  if (status === 401 || (status === 403 && code === "UNAUTHORIZED")) {
+    return new InterviewApiError(
+      status,
+      "Your session has expired. Please sign in again.",
+      code
+    );
+  }
+
+  // 403: authenticated, but not eligible. This is NOT an auth problem.
+  if (status === 403) {
+    return new InterviewApiError(
+      403,
+      serverMessage ||
+        "Your project must be verified before scheduling an interview.",
+      code
+    );
+  }
+
+  return new InterviewApiError(
+    status,
+    serverMessage || "Unable to complete the request.",
+    code
+  );
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(apiUrl(path), {
+  const response = await fetch(backendApiUrl(path), {
     ...init,
+    // Required for the HttpOnly candidate_session cookie to be sent.
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     cache: "no-store",
@@ -106,11 +159,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new InterviewApiError(
-      response.status,
-      data?.message || `Request failed (${response.status})`,
-      data?.code || "UNKNOWN"
-    );
+    throw toApiError(response.status, data);
   }
 
   return data as T;

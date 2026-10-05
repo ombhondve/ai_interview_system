@@ -35,6 +35,8 @@ const {
   isInterviewEligible,
   deriveVerificationState,
   getPersistedRejectionReason,
+  getPersistedReviewReason,
+  getReviewCause,
 } = require("../../projects/verificationState.js");
 
 const InterviewBooking = require("../interviewBooking.model.js").default;
@@ -484,6 +486,97 @@ describe("interview eligibility (persisted verification state)", () => {
 
     test("getPersistedRejectionReason returns null when there is none", () => {
       expect(getPersistedRejectionReason(VERIFIED_CANDIDATE)).toBeNull();
+    });
+  });
+
+  /**
+   * These tests lock in the ROOT CAUSE of the production "Under Review"
+   * incident: a GitHub fetch failure (rate limit / timeout) is routed to
+   * NEEDS_ADMIN_REVIEW and must be clearly distinguishable from genuine AI
+   * uncertainty, both in the persisted data and in what the student sees.
+   */
+  describe("review cause reporting", () => {
+    const repositoryFetchFailure = {
+      status: "approved",
+      projectSubmissionStatus: "needs_admin_review",
+      projectSubmission: {
+        url: "https://github.com/student/repo",
+        aiVerificationStatus: "needs_admin_review",
+        aiVerificationResult: {
+          verificationStatus: "NEEDS_ADMIN_REVIEW",
+          confidence: 0.3,
+          summary:
+            "Repository could not be fetched, so automated verification could not obtain sufficient evidence. (GitHub API rate limit exceeded)",
+          verificationMetadata: {
+            repositoryFetchFailed: true,
+            errorType: "rate_limit",
+            filesAnalyzed: 0,
+          },
+        },
+      },
+    };
+
+    test("a fetch failure is reported as repository_fetch_failed", () => {
+      expect(getReviewCause(repositoryFetchFailure)).toBe(
+        "repository_fetch_failed"
+      );
+    });
+
+    test("insufficient content is reported separately", () => {
+      expect(
+        getReviewCause({
+          projectSubmissionStatus: "needs_admin_review",
+          projectSubmission: {
+            aiVerificationResult: {
+              verificationStatus: "NEEDS_ADMIN_REVIEW",
+              verificationMetadata: { insufficientContent: true },
+            },
+          },
+        })
+      ).toBe("insufficient_content");
+    });
+
+    test("genuine AI uncertainty is the fallback cause", () => {
+      expect(
+        getReviewCause({
+          projectSubmissionStatus: "needs_admin_review",
+          projectSubmission: {
+            aiVerificationResult: {
+              verificationStatus: "NEEDS_ADMIN_REVIEW",
+              verificationMetadata: { filesAnalyzed: 12 },
+            },
+          },
+        })
+      ).toBe("ai_uncertainty");
+    });
+
+    test("the PERSISTED summary is surfaced as the review reason", () => {
+      expect(getPersistedReviewReason(repositoryFetchFailure)).toContain(
+        "rate limit exceeded"
+      );
+    });
+
+    test("deriveVerificationState exposes reason + cause for under_review", () => {
+      const state = deriveVerificationState(repositoryFetchFailure);
+
+      expect(state.state).toBe("under_review");
+      expect(state.reviewCause).toBe("repository_fetch_failed");
+      expect(state.reviewReason).toContain("rate limit exceeded");
+    });
+
+    test("a fetch failure never grants interview eligibility", () => {
+      expect(
+        deriveVerificationState(repositoryFetchFailure).interviewEligible
+      ).toBe(false);
+      expect(canBookInterviewSlot(repositoryFetchFailure).eligible).toBe(false);
+    });
+
+    test("a VERIFIED candidate never reports a review reason", () => {
+      const state = deriveVerificationState(VERIFIED_CANDIDATE);
+
+      expect(state.reviewReason).toBeNull();
+      expect(state.reviewCause).toBeNull();
+      expect(state.interviewEligible).toBe(true);
     });
   });
 });
