@@ -57,7 +57,7 @@ type VerificationProgress = {
   updatedAt?: string;
 };
 
-type VerificationStage = VerificationProgress & {
+type VerificationStage = Omit<VerificationProgress, "status"> & {
   status: "active" | "completed" | "failed" | "pending";
   startedAt?: string | null;
   completedAt?: string | null;
