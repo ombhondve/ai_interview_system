@@ -97,6 +97,8 @@ type ProjectApiResponse = {
     reason: string;
     message: string;
   };
+  progress?: VerificationProgress | null;
+  progressHistory?: VerificationStage[];
   message?: string;
 };
 
@@ -117,6 +119,8 @@ function VerificationResultView({
 }: {
   verification: VerificationState;
   progress: VerificationProgress | null;
+  progressHistory?: VerificationStage[];
+  displayIndex?: number;
   onScheduleInterview: () => void;
 }) {
   const state = verification.state;
