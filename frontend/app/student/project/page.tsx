@@ -115,6 +115,8 @@ type ProjectApiResponse = {
 function VerificationResultView({
   verification,
   progress,
+  progressHistory = [],
+  displayIndex,
   onScheduleInterview,
 }: {
   verification: VerificationState;
