@@ -1,7 +1,8 @@
 import { verifyProjectSubmission, VERIFICATION_STATUS } from "./verification.service.js";
 import { 
   storeVerificationResult, 
-  setVerificationProcessing, 
+  setVerificationProcessing,
+  updateVerificationProgress, 
   getVerificationResult,
   getCandidatesNeedingAdminReview,
   updateAdminReview,
@@ -254,6 +255,9 @@ class VerificationTracker {
             ...progress,
             updatedAt: new Date().toISOString()
           };
+          // Persist every stage because Vercel polling can hit another
+          // serverless invocation where the in-memory tracker Map is absent.
+          void updateVerificationProgress(candidateId, submissionId, verificationData.progress);
           this.notifyStatusChange(candidateId, "VERIFICATION_PROGRESS", verificationData.progress);
         };
 
