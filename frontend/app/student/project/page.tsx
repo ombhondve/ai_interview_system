@@ -877,8 +877,6 @@ export default function Project() {
           </>
         )}
       </div>
-
-      </div>
     </StudentShell>
   );
 }
