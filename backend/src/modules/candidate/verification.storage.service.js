@@ -1,5 +1,5 @@
 import Candidate from "./candidate.model.js";
-import { processVerificationForStorage, requiresAdminReview, isVerificationApproved, getVerificationStatistics } from "../projects/verification.service.js";
+import { processVerificationForStorage, isVerificationApproved, getVerificationStatistics } from "../projects/verification.service.js";
 import { buildSubmissionGuard } from "../projects/verificationState.js";
 import logger from "../../utils/logger.js";
 
@@ -45,9 +45,6 @@ export async function storeVerificationResult(candidateId, verificationResult, s
     if (verificationResult.status === "ERROR") {
       nextSubmissionStatus = "ai_verification_failed";
       nextAiVerificationStatus = "error";
-    } else if (requiresAdminReview(verificationResult)) {
-      nextSubmissionStatus = "needs_admin_review";
-      nextAiVerificationStatus = "needs_admin_review";
     } else if (isVerificationApproved(verificationResult)) {
       nextSubmissionStatus = "verified";
       nextAiVerificationStatus = "verified";
@@ -93,7 +90,7 @@ export async function storeVerificationResult(candidateId, verificationResult, s
     };
     
     // If needs admin review, initialize admin review section
-    if (requiresAdminReview(verificationResult)) {
+    if (false) {
       updateData["projectSubmission.adminReview"] = {
         status: "pending",
         reviewedBy: null,
@@ -138,7 +135,7 @@ export async function storeVerificationResult(candidateId, verificationResult, s
         success: true,
         candidate: null,
         verificationStatus: verificationResult.status,
-        requiresAdminReview: requiresAdminReview(verificationResult),
+        requiresAdminReview: false,
         stats: processedData,
         stale: true
       };
@@ -150,7 +147,7 @@ export async function storeVerificationResult(candidateId, verificationResult, s
       success: true,
       candidate: updatedCandidate,
       verificationStatus: verificationResult.status,
-      requiresAdminReview: requiresAdminReview(verificationResult),
+      requiresAdminReview: false,
       stats: processedData
     };
     
