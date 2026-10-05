@@ -1106,9 +1106,12 @@ async function fetchFileContentSafely(owner, repo, path, branch = 'main') {
  * 
  * IMPORTANT SECURITY: Never execute untrusted code
  */
-export async function getKeyRepositoryFiles(url) {
+export async function getKeyRepositoryFiles(url, preloadedStructure = null) {
   try {
-    const structure = await getRepositoryStructure(url);
+    // Reuse the already-fetched repository structure when the caller has it.
+    // The previous implementation fetched the entire repository metadata/tree
+    // a second time, multiplying GitHub API calls and rate-limit/timeout risk.
+    const structure = preloadedStructure || await getRepositoryStructure(url);
     
     if (!structure.accessible || !structure.structure) {
       return {
@@ -1238,93 +1241,103 @@ export async function getKeyRepositoryFiles(url) {
     // Sort by priority (package files first, then source, then docs)
     keyFiles.sort((a, b) => a.priority - b.priority);
     
-    // Fetch content for top files only
+    // Fetch content for top files only.
+    //
+    // IMPORTANT: Fetch in small concurrent batches instead of sequentially.
+    // The old implementation could spend 10-30 seconds on EACH file, so a
+    // seven-file repository could consume most/all of the overall timeout and
+    // end up with a structure but zero usable content.
     const filesToFetch = keyFiles.slice(0, MAX_FILES_TO_FETCH);
     const filesWithContent = [];
-    
-    for (const file of filesToFetch) {
-      // Skip if we've already reached total size limit
-      if (totalSize >= MAX_TOTAL_SIZE) {
-        filesWithContent.push({
-          ...file,
-          content: null,
-          fetchStatus: 'skipped',
-          reason: 'Total size limit reached'
-        });
-        continue;
-      }
-      
-      // Skip dangerous/sensitive files
+    const MAX_CONCURRENT_CONTENT_FETCHES = 5;
+
+    const fetchOneFile = async (file) => {
+      // Skip dangerous/sensitive files before making a GitHub request.
       const dangerousExtensions = ['.exe', '.dll', '.so', '.dylib', '.bin', '.o', '.obj'];
-      const ext = file.extension.toLowerCase();
+      const ext = (file.extension || '').toLowerCase();
+
       if (dangerousExtensions.includes(`.${ext}`)) {
-        filesWithContent.push({
-          ...file,
-          content: null,
-          fetchStatus: 'skipped',
-          reason: 'Dangerous file type'
-        });
-        continue;
+        return { ...file, content: null, fetchStatus: 'skipped', reason: 'Dangerous file type' };
       }
-      
-      // Skip .env files and secrets
-      if (file.path.toLowerCase().includes('.env') || 
-          file.path.toLowerCase().includes('secret') ||
-          file.path.toLowerCase().includes('key') ||
-          file.path.toLowerCase().includes('credential')) {
-        filesWithContent.push({
-          ...file,
-          content: null,
-          fetchStatus: 'skipped',
-          reason: 'Sensitive file type'
-        });
-        continue;
+
+      if (
+        file.path.toLowerCase().includes('.env') ||
+        file.path.toLowerCase().includes('secret') ||
+        file.path.toLowerCase().includes('key') ||
+        file.path.toLowerCase().includes('credential')
+      ) {
+        return { ...file, content: null, fetchStatus: 'skipped', reason: 'Sensitive file type' };
       }
-      
-      // Skip binary files
-      const textExtensions = ['.js', '.ts', '.jsx', '.tsx', '.py', '.java', '.html', '.css', '.json', '.yml', '.yaml', '.md', '.txt', '.xml'];
-      const isTextFile = textExtensions.includes(`.${ext}`) || 
-                        file.path.toLowerCase().includes('dockerfile') ||
-                        file.path.toLowerCase().includes('makefile');
-      
+
+      const textExtensions = [
+        '.js', '.ts', '.jsx', '.tsx', '.py', '.java', '.html', '.css',
+        '.json', '.yml', '.yaml', '.md', '.txt', '.xml'
+      ];
+      const isTextFile =
+        textExtensions.includes(`.${ext}`) ||
+        file.path.toLowerCase().includes('dockerfile') ||
+        file.path.toLowerCase().includes('makefile');
+
       if (!isTextFile) {
-        filesWithContent.push({
-          ...file,
-          content: null,
-          fetchStatus: 'skipped',
-          reason: 'Non-text file type'
-        });
-        continue;
+        return { ...file, content: null, fetchStatus: 'skipped', reason: 'Non-text file type' };
       }
-      
+
       try {
-        // Fetch actual file content
-        const contentResult = await fetchFileContentSafely(owner, repo, file.path, branch);
-        
-        if (contentResult.available && contentResult.content) {
-          totalSize += contentResult.size || 0;
-          filesWithContent.push({
+        const contentResult = await fetchFileContentSafely(
+          owner,
+          repo,
+          file.path,
+          branch
+        );
+
+        if (contentResult.available && typeof contentResult.content === 'string') {
+          return {
             ...file,
             content: contentResult.content,
             truncated: contentResult.truncated || false,
             fetchStatus: 'fetched',
             size: contentResult.size || file.size
-          });
-        } else {
-          filesWithContent.push({
-            ...file,
-            content: null,
-            fetchStatus: 'failed',
-            reason: contentResult.reason || 'Unknown error'
-          });
+          };
         }
+
+        return {
+          ...file,
+          content: null,
+          fetchStatus: 'failed',
+          reason: contentResult.reason || 'Unknown error'
+        };
       } catch (fetchError) {
-        filesWithContent.push({
+        return {
           ...file,
           content: null,
           fetchStatus: 'error',
           reason: fetchError.message
-        });
+        };
+      }
+    };
+
+    for (let i = 0; i < filesToFetch.length; i += MAX_CONCURRENT_CONTENT_FETCHES) {
+      const batch = filesToFetch.slice(i, i + MAX_CONCURRENT_CONTENT_FETCHES);
+      const batchResults = await Promise.all(batch.map(fetchOneFile));
+
+      for (const result of batchResults) {
+        if (result.fetchStatus === 'fetched') {
+          const nextSize = totalSize + (result.size || 0);
+
+          if (nextSize > MAX_TOTAL_SIZE) {
+            filesWithContent.push({
+              ...result,
+              content: null,
+              fetchStatus: 'skipped',
+              reason: 'Total size limit reached'
+            });
+            continue;
+          }
+
+          totalSize = nextSize;
+        }
+
+        filesWithContent.push(result);
       }
     }
     
@@ -1740,16 +1753,12 @@ export async function fetchRepositoryContent(url) {
     
     // Execute repository fetching with timeout
     const fetchOperation = async () => {
-      const [repoStructure, keyFilesResult, readmeInfo] = await Promise.all([
-        getRepositoryStructure(url),
-        getKeyRepositoryFiles(url),
-        getReadmeContent(url)
-      ]);
-      
-      // Store references for use in outer scope
-      keyFilesResultRef = keyFilesResult;
-      
-      // Handle empty or inaccessible repository
+      // Fetch repository structure ONCE and reuse it for key-file selection.
+      // Previously getKeyRepositoryFiles() fetched the same structure again,
+      // multiplying GitHub API calls and making rate limits/timeouts much more
+      // likely on Vercel.
+      const repoStructure = await getRepositoryStructure(url);
+
       if (!repoStructure.accessible) {
         return {
           success: false,
@@ -1761,6 +1770,14 @@ export async function fetchRepositoryContent(url) {
           }
         };
       }
+
+      const [keyFilesResult, readmeInfo] = await Promise.all([
+        getKeyRepositoryFiles(url, repoStructure),
+        getReadmeContent(url)
+      ]);
+      
+      // Store references for use in outer scope
+      keyFilesResultRef = keyFilesResult;
       
       // Handle empty repository (no files)
       if (repoStructure.structure && 
