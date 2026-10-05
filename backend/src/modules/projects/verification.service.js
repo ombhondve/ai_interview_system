@@ -469,19 +469,6 @@ function validateVerificationResult(result) {
 /**
  * Main verification function
  */
-<<<<<<< Updated upstream
-export async function verifyProjectSubmission(candidateId, projectId, repositoryUrl, onProgress = null) {
-  const startTime = Date.now();
-
-  const reportProgress = async (progress) => {
-    try {
-      if (typeof onProgress === "function") await onProgress(progress);
-    } catch (progressError) {
-      logger.warn("Unable to report verification progress:", progressError);
-    }
-  };
-  
-=======
 export async function verifyProjectSubmission(candidateId, projectId, repositoryUrl, submissionId) {
   const startTime = Date.now();
 
@@ -490,7 +477,7 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
   const track = (stage, work) =>
     submissionId ? runStage(candidateId, submissionId, stage, work) : work();
 
->>>>>>> Stashed changes
+
   try {
     logger.info(`Starting verification for candidate ${candidateId}, project ${projectId}`);
 
@@ -723,15 +710,6 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
         `Failed to fetch repository (${errorType}): ${repoContent.error}`
       );
 
-<<<<<<< Updated upstream
-      await reportProgress({
-        stage: "repository",
-        label: "Fetching repository",
-        status: "failed",
-        failed: true,
-        message: repoContent.error || "Repository could not be fetched."
-      });
-=======
       if (submissionId) {
         await markStageFailed(
           candidateId,
@@ -740,7 +718,7 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
           repoContent.error || "Unable to access repository."
         );
       }
->>>>>>> Stashed changes
+
 
       return {
         status: VERIFICATION_STATUS.REJECTED,
@@ -795,16 +773,7 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     }
     const structuredRepoContent = structureRepositoryContent(repoContent.data);
 
-<<<<<<< Updated upstream
-    await reportProgress({
-      stage: "requirements",
-      label: "Checking project requirements",
-      status: "active",
-      message: "Comparing the project evidence with the assigned requirements..."
-    });
 
-=======
->>>>>>> Stashed changes
     // Step 5: Prepare and call AI for verification
     logger.debug("Preparing AI verification request");
     if (submissionId) {
@@ -959,26 +928,6 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       // Step 6: Validate and process AI result
       validateVerificationResult(aiResult);
 
-<<<<<<< Updated upstream
-      await reportProgress({
-        stage: "ai",
-        label: "AI verification in progress",
-        status: "completed",
-        completed: true,
-        message: "AI analysis completed successfully."
-      });
-      
-    } catch (aiError) {
-      logger.error("AI verification failed:", aiError);
-
-      await reportProgress({
-        stage: "ai",
-        label: "AI verification in progress",
-        status: "failed",
-        failed: true,
-        message: aiError.message || "AI verification failed."
-      });
-=======
       if (submissionId) {
         await markStageCompleted(candidateId, submissionId, "ai");
         await markStageActive(candidateId, submissionId, "finalizing");
@@ -995,7 +944,7 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
           aiError.message || "AI verification failed."
         );
       }
->>>>>>> Stashed changes
+
       
       // Handle AI failure gracefully
       return {
