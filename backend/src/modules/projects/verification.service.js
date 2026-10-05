@@ -482,12 +482,6 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     logger.info(`Starting verification for candidate ${candidateId}, project ${projectId}`);
 
     // Step 1: Validate repository URL
-    await reportProgress({
-      stage: "validating",
-      label: "Validating repository",
-      status: "active",
-      message: "Checking the submitted project URL..."
-    });
     logger.debug("Validating repository URL");
     const urlValidation = await track("validating", async () =>
       validateRepositoryUrl(repositoryUrl)
@@ -543,13 +537,6 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       };
     }
     
-    await reportProgress({
-      stage: "project_requirements",
-      label: "Loading project requirements",
-      status: "active",
-      message: "Loading the assigned project requirements..."
-    });
-
     // Step 2: Fetch ACTUAL project data from MongoDB
     logger.debug(`Fetching actual project ${projectId} from database`);
     let actualProject = null;
@@ -674,13 +661,6 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     
     const projectRequirements = prepareProjectRequirements(actualProject);
 
-    await reportProgress({
-      stage: "repository",
-      label: "Fetching repository",
-      status: "active",
-      message: "Connecting to GitHub and downloading project files..."
-    });
-
     // Step 3: Fetch repository content safely
     logger.info("Fetching repository content for verification");
     if (submissionId) {
@@ -759,13 +739,6 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       };
     }
     
-    await reportProgress({
-      stage: "analyzing",
-      label: "Analyzing code and files",
-      status: "active",
-      message: "Reading the downloaded project files..."
-    });
-
     // Step 4: Structure data for AI analysis
     if (submissionId) {
       await markStageCompleted(candidateId, submissionId, "repository");
@@ -907,13 +880,6 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
         rawData: null
       };
     }
-
-    await reportProgress({
-      stage: "ai",
-      label: "AI verification in progress",
-      status: "active",
-      message: "AI is evaluating the project against the requirements..."
-    });
 
     logger.info("Calling AI for project verification");
     let aiResult;
