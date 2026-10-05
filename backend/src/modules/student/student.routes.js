@@ -162,7 +162,11 @@ router.get(
 
           // Student-facing state (label/description/terminal flag)
           verification,
-          progress: liveStatus.progress || liveStatus.activeInfo?.progress || null,
+          progress:
+            liveStatus.progress ||
+            liveStatus.activeInfo?.progress ||
+            verificationData.progress ||
+            null,
 
           // Persisted AI verification result (what student should see)
           verificationResult: verificationData.verificationResult ? {
