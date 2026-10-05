@@ -227,6 +227,43 @@ export async function setVerificationProcessing(candidateId, submissionId) {
 }
 
 /**
+ * Persist the live verification progress for the current submission.
+ * MongoDB persistence is required because polling may hit another Vercel
+ * serverless invocation where the in-memory tracker is not available.
+ */
+export async function updateVerificationProgress(candidateId, submissionId, progress) {
+  try {
+    const query = buildSubmissionGuard(candidateId, submissionId);
+    const updatedCandidate = await Candidate.findOneAndUpdate(
+      query,
+      {
+        $set: {
+          "projectSubmission.verificationProgress": {
+            stage: progress.stage,
+            label: progress.label,
+            status: progress.status,
+            completed: Boolean(progress.completed),
+            failed: Boolean(progress.failed),
+            message: progress.message || "",
+            updatedAt: new Date()
+          }
+        }
+      },
+      { new: true }
+    ).lean();
+
+    if (!updatedCandidate) {
+      return { success: false, stale: true, error: "Submission is no longer current" };
+    }
+
+    return { success: true };
+  } catch (error) {
+    logger.error("Failed to update verification progress for candidate " + candidateId + ":", error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Get verification result for a candidate
  */
 export async function getVerificationResult(candidateId) {
@@ -245,6 +282,7 @@ export async function getVerificationResult(candidateId) {
       status: candidate.projectSubmission?.aiVerificationStatus,
       submissionStatus: candidate.projectSubmissionStatus,
       stats: candidate.projectSubmission?.verificationStats,
+      progress: candidate.projectSubmission?.verificationProgress || null,
       adminReview: candidate.projectSubmission?.adminReview
     };
     
