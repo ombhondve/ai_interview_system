@@ -195,7 +195,7 @@ function VerificationResultView({
   );
   const currentIndex = Math.max(
     0,
-    steps.findIndex((step) => step.key === progress?.stage)
+    displayIndex ?? steps.findIndex((step) => step.key === progress?.stage)
   );
 
   return (
@@ -941,6 +941,7 @@ export default function Project() {
             verification={verification}
             progress={verificationProgress}
             progressHistory={verificationHistory}
+            displayIndex={replayIndex}
             onScheduleInterview={() => router.push("/student/interview-scheduling")}
           />
         ) : (
