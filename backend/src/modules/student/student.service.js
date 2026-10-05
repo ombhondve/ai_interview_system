@@ -514,9 +514,18 @@ export async function createProjectSubmission(candidateId, url) {
       "projectSubmission.submittedAt": now,
       "projectSubmission.submissionId": submissionId,
       "projectSubmission.validationStatus": "pending",
-      "projectSubmission.aiVerificationStatus": "pending",
-      "projectSubmission.aiVerificationStartedAt": null,
+      "projectSubmission.aiVerificationStatus": "processing",
+      "projectSubmission.aiVerificationStartedAt": now,
       "projectSubmission.aiVerificationCompletedAt": null,
+      "projectSubmission.verificationProgress": {
+        stage: "validating",
+        label: "Validating repository",
+        status: "active",
+        completed: false,
+        failed: false,
+        message: "Checking the submitted project URL...",
+        updatedAt: now
+      },
       "projectSubmission.verificationStats": null,
       "projectSubmission.adminReview": null
     };
@@ -533,7 +542,7 @@ export async function createProjectSubmission(candidateId, url) {
     let updateOperation = {
       $set: {
         ...submissionData,
-        projectSubmissionStatus: "submitted"
+        projectSubmissionStatus: "verification_processing"
       },
 
       // Explicitly remove the previous verification's result and stored
