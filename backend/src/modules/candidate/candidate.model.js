@@ -378,6 +378,16 @@ const candidateSchema = new mongoose.Schema(
                 }
             },
 
+            verificationProgress: {
+                stage: { type: String, trim: true },
+                label: { type: String, trim: true },
+                status: { type: String, enum: ["active", "completed", "failed"] },
+                completed: { type: Boolean, default: false },
+                failed: { type: Boolean, default: false },
+                message: { type: String, trim: true },
+                updatedAt: { type: Date }
+            },
+
             aiVerificationStartedAt: {
                 type: Date
             },
