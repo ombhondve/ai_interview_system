@@ -1,6 +1,7 @@
 import Candidate from "./candidate.model.js";
 import { processVerificationForStorage, isVerificationApproved, getVerificationStatistics } from "../projects/verification.service.js";
 import { buildSubmissionGuard } from "../projects/verificationState.js";
+import { toProgressPayload } from "../projects/verificationProgress.service.js";
 import logger from "../../utils/logger.js";
 
 /**
@@ -282,7 +283,7 @@ export async function getVerificationResult(candidateId) {
       status: candidate.projectSubmission?.aiVerificationStatus,
       submissionStatus: candidate.projectSubmissionStatus,
       stats: candidate.projectSubmission?.verificationStats,
-      progress: candidate.projectSubmission?.verificationProgress || null,
+      ...toProgressPayload(candidate.projectSubmission),
       adminReview: candidate.projectSubmission?.adminReview
     };
     
