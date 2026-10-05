@@ -138,47 +138,124 @@ export function canSubmit(candidate) {
 }
 
 /**
+ * Submission statuses that mean the project's AI verification reached the
+ * VERIFIED verdict. A candidate in any other state is NOT interview eligible.
+ */
+const VERIFIED_SUBMISSION_STATUSES = ["verified"];
+
+/**
+ * Has the candidate's project reached a persisted VERIFIED verdict?
+ *
+ * This is the single authority for interview eligibility. The frontend must
+ * never be trusted to decide this.
+ */
+export function isProjectVerified(candidate) {
+  if (!candidate) return false;
+
+  if (
+    VERIFIED_SUBMISSION_STATUSES.includes(candidate.projectSubmissionStatus)
+  ) {
+    return true;
+  }
+
+  const submission = candidate.projectSubmission || {};
+
+  return (
+    String(submission.aiVerificationStatus || "").toLowerCase() ===
+      "verified" ||
+    String(
+      submission.aiVerificationResult?.verificationStatus || ""
+    ).toUpperCase() === "VERIFIED"
+  );
+}
+
+/**
+ * The persisted reason a candidate is not eligible, when one exists.
+ *
+ * @returns {string|null}
+ */
+export function getIneligibilityReason(candidate) {
+  if (!candidate) return "Candidate record not found.";
+
+  // A rejection always wins: the student should see the real, persisted reason.
+  if (candidate.rejectionReason) {
+    return candidate.rejectionReason;
+  }
+
+  const submission = candidate.projectSubmission || {};
+
+  const aiReason =
+    submission.aiVerificationResult?.detailedAnalysis?.reviewReasons?.[0] ||
+    submission.aiVerificationResult?.summary;
+
+  if (aiReason) {
+    return aiReason;
+  }
+
+  return null;
+}
+
+/**
  * Check if candidate is eligible for interview slot booking
- * 
- * @param {Object} candidate - Candidate document
+ *
+ * Eligibility is derived from the PERSISTED verification state on the
+ * candidate document:
+ *   - the project must have a persisted VERIFIED verdict
+ *   - no active booking may already exist
+ *   - the candidate must still be active (not rejected / deadline expired)
+ *
+ * @param {Object} candidate - Candidate document with deadline fields
  * @returns {Object} Eligibility info
  */
 export function canBookInterviewSlot(candidate) {
-  // Check project submission status
-  const allowedStatuses = [
-    "verified",
-    "ai_verification",
-    "needs_admin_review"
-  ];
-  
-  if (!allowedStatuses.includes(candidate.projectSubmissionStatus)) {
+  if (!candidate) {
+    return {
+      eligible: false,
+      reason: "candidate_not_found",
+      message: "Candidate not found.",
+    };
+  }
+
+  // Already rejected or auto-rejected by deadline.
+  if (
+    candidate.projectSubmissionStatus === "deadline_expired" ||
+    candidate.status === "rejected" ||
+    candidate.projectSubmissionStatus === "rejected"
+  ) {
     return {
       eligible: false,
       reason: "project_not_verified",
-      message: "Project must be verified before booking interview."
+      message:
+        getIneligibilityReason(candidate) ||
+        "Your project was not verified, so an interview cannot be scheduled.",
     };
   }
-  
-  // Check if already has a booking
+
+  // The project must carry a persisted VERIFIED verdict. There is no
+  // admin-review fallback for a verified candidate.
+  if (!isProjectVerified(candidate)) {
+    return {
+      eligible: false,
+      reason: "project_not_verified",
+      message:
+        getIneligibilityReason(candidate) ||
+        "Your project must be verified before you can schedule an interview.",
+    };
+  }
+
+  // Check if already has a booking.
   if (candidate.bookedSlotId) {
     return {
       eligible: false,
       reason: "already_booked",
-      message: "You already have an interview slot booked."
+      message: "You already have an interview scheduled.",
     };
   }
-  
-  // Check if deadline expired (auto-rejected)
-  if (candidate.projectSubmissionStatus === "deadline_expired" || candidate.status === "rejected") {
-    return {
-      eligible: false,
-      reason: "deadline_expired",
-      message: "Cannot book interview: deadline expired."
-    };
-  }
-  
+
   return {
-    eligible: true
+    eligible: true,
+    reason: null,
+    message: "You are eligible to schedule your interview.",
   };
 }
 

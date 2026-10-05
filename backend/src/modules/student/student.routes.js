@@ -121,14 +121,32 @@ router.get(
         });
       }
       
-      // Format response with PERSISTED AI verification result
+      // Format response with PERSISTED AI verification result.
+      //
+      // Eligibility is derived from the FULL persisted candidate document, so a
+      // VERIFIED student is never shown "Under Review".
       const { deriveVerificationState } = await import("../projects/verificationState.js");
+
       const verification = deriveVerificationState({
-        projectSubmissionStatus: verificationData.submissionStatus,
+        status: candidate.status,
+        rejectionReason: candidate.rejectionReason,
+        assignedProjectId: candidate.assignedProjectId,
+        bookedSlotId: candidate.bookedSlotId,
+        interviewStatus: candidate.interviewStatus,
+        interviewDate: candidate.interviewDate,
+        projectSubmissionStatus:
+          verificationData.submissionStatus ||
+          candidate.projectSubmissionStatus,
         projectSubmission: {
-          url: verificationData.verificationResult?.verificationMetadata?.repositoryUrl,
-          aiVerificationStatus: verificationData.status,
-          aiVerificationResult: verificationData.verificationResult
+          url:
+            candidate.projectSubmission?.url ||
+            verificationData.verificationResult?.verificationMetadata?.repositoryUrl,
+          aiVerificationStatus:
+            candidate.projectSubmission?.aiVerificationStatus ||
+            verificationData.status,
+          aiVerificationResult:
+            candidate.projectSubmission?.aiVerificationResult ||
+            verificationData.verificationResult
         }
       });
 

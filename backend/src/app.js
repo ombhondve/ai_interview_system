@@ -301,8 +301,10 @@ app.use(
 
 import slotRoutes from "./modules/scheduling/slot.routes.js";
 import enhancedSlotRoutes from "./modules/scheduling/enhancedSlot.routes.js";
+import interviewBookingRoutes from "./modules/scheduling/interviewBooking.routes.js";
 import enhancedBookingRoutes from "./modules/interview/enhancedBooking.routes.js";
 
+// Legacy slot endpoints -> controlled 410 (superseded by the interview API).
 app.use(
   "/api",
   slotRoutes
@@ -311,6 +313,14 @@ app.use(
 app.use(
   "/api",
   enhancedSlotRoutes
+);
+
+// The single interview scheduling API.
+//   - /api/student/interview/*  (student, verified session required)
+//   - /api/admin/interviews/schedule (admin only, read-only)
+app.use(
+  "/api",
+  interviewBookingRoutes
 );
 
 app.use(

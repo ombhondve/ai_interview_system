@@ -38,6 +38,47 @@ const ADMIN_REVIEW_VERIFICATION_STATUSES = new Set([
 const ERROR_VERIFICATION_STATUSES = new Set(["error"]);
 
 /**
+ * Can this candidate schedule an interview?
+ *
+ * Derived from the PERSISTED verification state. A VERIFIED project makes the
+ * student immediately eligible: there is no admin-review step blocking a
+ * successfully verified student.
+ */
+export function isInterviewEligible(candidate) {
+  const submission = candidate?.projectSubmission || {};
+  const submissionStatus = candidate?.projectSubmissionStatus || "";
+  const verificationStatus = String(
+    submission.aiVerificationStatus || ""
+  ).toLowerCase();
+  const resultStatus = String(
+    submission.aiVerificationResult?.verificationStatus || ""
+  ).toUpperCase();
+
+  if (submissionStatus === "rejected" || submissionStatus === "deadline_expired") {
+    return false;
+  }
+
+  return (
+    submissionStatus === "verified" ||
+    verificationStatus === "verified" ||
+    resultStatus === "VERIFIED"
+  );
+}
+
+/**
+ * The real, persisted reason a student is not eligible (for REJECTED).
+ */
+export function getPersistedRejectionReason(candidate) {
+  return (
+    candidate?.rejectionReason ||
+    candidate?.projectSubmission?.aiVerificationResult?.detailedAnalysis
+      ?.reviewReasons?.[0] ||
+    candidate?.projectSubmission?.aiVerificationResult?.summary ||
+    null
+  );
+}
+
+/**
  * Derive the student-facing verification state from a candidate document.
  *
  * @param {object} candidate candidate (or projection) containing
@@ -46,7 +87,9 @@ const ERROR_VERIFICATION_STATUSES = new Set(["error"]);
  *   state: "not_submitted"|"in_progress"|"accepted"|"rejected"|"under_review",
  *   label: string,
  *   description: string,
- *   isTerminal: boolean
+ *   isTerminal: boolean,
+ *   interviewEligible: boolean,
+ *   rejectionReason: string|null
  * }}
  */
 export function deriveVerificationState(candidate) {
@@ -57,11 +100,19 @@ export function deriveVerificationState(candidate) {
     submission.aiVerificationResult?.verificationStatus || ""
   ).toUpperCase();
 
+  const rejectionReason = getPersistedRejectionReason(candidate);
+
+  // VERIFIED => immediately interview eligible. Never "Under Review".
+  const interviewEligible = isInterviewEligible(candidate);
+
   const state = (s, label, description, isTerminal) => ({
     state: s,
     label,
     description,
-    isTerminal
+    isTerminal,
+    interviewEligible,
+    // Only surface a reason for a genuinely rejected candidate.
+    rejectionReason: s === "rejected" ? rejectionReason : null,
   });
 
   // --- No submission at all ---

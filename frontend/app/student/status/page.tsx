@@ -18,6 +18,16 @@ interface Candidate {
   role?: string;
   status?: string;
 
+  /**
+   * Interview scheduling state, derived from the PERSISTED verification
+   * result on the server. The frontend never decides eligibility itself.
+   */
+  projectSubmissionStatus?: string;
+  interviewEligible?: boolean;
+  interviewEligibilityReason?: string | null;
+  interviewEligibilityMessage?: string;
+  rejectionReason?: string | null;
+
   interview?: {
     date?: string;
     time?: string;
@@ -462,6 +472,57 @@ export default function Status() {
             </div>
           </CardContent>
         </Card>
+
+        {/* ====================================== */}
+        {/* PROJECT VERIFICATION / INTERVIEW */}
+        {/* ====================================== */}
+
+        {candidate.interviewEligible && !hasInterview && (
+          <Card className="overflow-hidden border-emerald-200 bg-emerald-50/50">
+            <CardContent className="p-5 sm:p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-base font-semibold text-emerald-900">
+                    <span aria-hidden>✓</span> Project Verified
+                  </p>
+
+                  <p className="mt-1 text-sm leading-6 text-emerald-900/80">
+                    Your project has been successfully verified. You are
+                    eligible to schedule your interview.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    router.push("/student/interview-scheduling")
+                  }
+                  className="shrink-0 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
+                >
+                  Schedule Interview
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {candidate.rejectionReason && (
+          <Card className="overflow-hidden border-red-200 bg-red-50/50">
+            <CardContent className="p-5 sm:p-6">
+              <p className="text-base font-semibold text-red-900">
+                <span aria-hidden>✕</span> Project Not Verified
+              </p>
+
+              <p className="mt-2 text-sm leading-6 text-red-900/80">
+                {candidate.rejectionReason}
+              </p>
+
+              <p className="mt-2 text-sm text-red-900/70">
+                An interview cannot be scheduled until your project is verified.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* ====================================== */}
         {/* INTERVIEW SECTION */}

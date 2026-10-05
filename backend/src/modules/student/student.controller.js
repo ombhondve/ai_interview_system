@@ -168,6 +168,17 @@ export async function getCurrentStudentController(
      * ==========================================
      */
 
+    /**
+     * Eligibility is computed from the PERSISTED candidate document.
+     * The frontend renders what this says, but the booking API re-checks it
+     * server-side regardless.
+     */
+    const { canBookInterviewSlot } = await import(
+      "../projects/deadline.service.js"
+    );
+
+    const eligibility = canBookInterviewSlot(candidate);
+
     return res.status(200).json({
       candidate: {
         id: candidate._id,
@@ -184,6 +195,16 @@ export async function getCurrentStudentController(
         jdMatchScore: candidate.jdMatchScore,
 
         interview: candidate.interview || null,
+
+        // --- Interview scheduling ---
+        assignedProjectId: candidate.assignedProjectId,
+        projectSubmissionStatus: candidate.projectSubmissionStatus,
+        interviewStatus: candidate.interviewStatus,
+        interviewDate: candidate.interviewDate,
+        interviewEligible: eligibility.eligible,
+        interviewEligibilityReason: eligibility.reason,
+        interviewEligibilityMessage: eligibility.message,
+        rejectionReason: candidate.rejectionReason || null,
       },
     });
   } catch (error) {

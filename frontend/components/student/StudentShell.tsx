@@ -48,8 +48,8 @@ const navItems: NavItem[] = [
     icon: LayoutDashboard,
   },
   {
-    href: "/student/guide/book-slot",
-    label: "Book slot",
+    href: "/student/interview-scheduling",
+    label: "Schedule interview",
     icon: CalendarDays,
   },
   {
