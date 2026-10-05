@@ -6,7 +6,8 @@ import {
   enforcePayloadBudget,
   estimateTokens,
   getMaxInputTokens,
-  getUserPayloadBudgetChars
+  getUserPayloadBudgetChars,
+  getRepositoryBudgetChars
 } from "./aiPayloadBudget.js";
 import logger from "../../utils/logger.js";
 
@@ -324,9 +325,11 @@ function prepareVerificationMessages(projectRequirements, repositoryContent) {
     2
   ).length;
   const requirementsChars = JSON.stringify(projectRequirements, null, 2).length;
-  const repoBudget = Math.max(
-    1200,
-    userBudget - requirementsChars - wrapperOverhead - 200
+  const repoBudget = getRepositoryBudgetChars(requirementsChars, wrapperOverhead);
+
+  logger.info(
+    `Verification evidence budget: user=${getUserPayloadBudgetChars(systemPrompt.length)} ` +
+      `requirements=${requirementsChars} repository=${repoBudget} chars`
   );
 
   // Compact evidence only - never the whole repository.
@@ -361,6 +364,15 @@ function prepareVerificationMessages(projectRequirements, repositoryContent) {
       `${estimateTokens(systemPrompt) + estimateTokens(enforced.content)} tokens ` +
       `(repo section ${enforced.stats.finalChars} chars, budget ${userBudget}; ` +
       `files ${compact.stats.filesIncluded}/${compact.stats.filesConsidered} included)`
+  );
+
+  // SAFE DIAGNOSTICS: counts and sizes only, never file contents.
+  logger.info(
+    `AI input evidence: filesIncluded=${compact.stats.filesIncluded} ` +
+      `filesExcluded=${compact.stats.filesExcludedByRules} ` +
+      `filesDroppedForBudget=${compact.stats.filesDroppedByBudget} ` +
+      `truncatedFiles=${compact.stats.truncatedFiles} ` +
+      `payloadChars=${enforced.stats.finalChars}`
   );
 
   return [
@@ -630,8 +642,25 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     logger.debug("Preparing AI verification request");
     const messages = prepareVerificationMessages(projectRequirements, structuredRepoContent);
     
-    // Check if we have enough file content for meaningful analysis
-    const filesWithContent = Object.keys(structuredRepoContent.keyFiles || {}).length;
+    // Check we have enough file content for meaningful analysis.
+    //
+    // Count files that ACTUALLY carry content, not just keys. Counting keys
+    // reported "7 files" even when every one had `content: null` after a
+    // failed fetch, which sent the model a payload with no evidence while the
+    // log claimed content was present.
+    const keyFiles = structuredRepoContent.keyFiles || {};
+    const filesWithContent = Object.values(keyFiles).filter(
+      (file) =>
+        file &&
+        typeof file.content === "string" &&
+        file.content.trim().length > 0
+    ).length;
+
+    logger.info(
+      `Repository evidence: keyFiles=${Object.keys(keyFiles).length} ` +
+        `filesWithActualContent=${filesWithContent}`
+    );
+
     if (filesWithContent === 0) {
       logger.warn("No file content available for AI analysis - requiring admin review");
       

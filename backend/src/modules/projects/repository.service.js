@@ -988,6 +988,19 @@ async function fetchFileContentSafely(owner, repo, path, branch = 'main') {
     if (response.status === 200) {
       const fileData = response.data;
       
+      // The Contents API returns base64 in `content`, EXCEPT for files above
+      // 1MB where it returns an empty string and requires the raw/blob
+      // endpoint instead. Treating that empty string as "decoded fine" would
+      // silently yield an empty file that looks like a successful fetch.
+      if (typeof fileData?.content !== "string" || !fileData.content) {
+        return {
+          available: false,
+          reason: 'GitHub returned no content field (file may exceed 1MB)',
+          content: null,
+          size: fileData?.size || 0
+        };
+      }
+      
       // Check size
       if (fileData.size > MAX_FILE_SIZE) {
         return {
@@ -1189,7 +1202,19 @@ export async function getKeyRepositoryFiles(url) {
       };
     }
     const { owner, repo } = parsed;
-    const branch = structure.repository?.default_branch || 'main';
+
+    // CANONICAL BRANCH PROPERTY
+    //
+    // getRepositoryStructure() normalises GitHub's `default_branch` into
+    // `defaultBranch`. Reading `default_branch` here always yielded undefined,
+    // so every content fetch silently fell back to 'main'. That fallback only
+    // happens to work for repositories whose default branch is literally
+    // `main`; for any repository using `master` or another name, every single
+    // file-content request 404s and verification degrades to "no content
+    // available".
+    const branch =
+      structure.repository?.defaultBranch ||
+      'main';
     
     // First pass: identify key files
     if (structure.structure.files && Array.isArray(structure.structure.files)) {
@@ -1303,13 +1328,44 @@ export async function getKeyRepositoryFiles(url) {
       }
     }
     
+    const fetched = filesWithContent.filter(f => f.fetchStatus === 'fetched');
+    const failed = filesWithContent.filter(f => f.fetchStatus === 'failed');
+    const errored = filesWithContent.filter(f => f.fetchStatus === 'error');
+
+    // SAFE DIAGNOSTICS
+    //
+    // Counts only - never file contents, tokens or secrets. Without this, a
+    // repository whose branch resolution silently defaulted to the wrong ref
+    // produced an identical "no content" symptom with no way to tell it apart
+    // from a genuinely empty repository.
+    console.log(
+      `[repository] repositoryContentFetched=${fetched.length > 0} ` +
+        `branch=${branch} filesFound=${keyFiles.length} ` +
+        `filesWithContent=${fetched.length} ` +
+        `filesFailed=${failed.length} filesErrored=${errored.length} ` +
+        `filesSkipped=${filesWithContent.filter(f => f.fetchStatus === 'skipped').length} ` +
+        `totalBytes=${totalSize}`
+    );
+
+    if (failed.length > 0 || errored.length > 0) {
+      console.warn(
+        `[repository] file content fetch problems: ` +
+          [...failed, ...errored]
+            .slice(0, 10)
+            .map(f => `${f.path} (${f.fetchStatus}: ${f.reason || 'unknown'})`)
+            .join(', ')
+      );
+    }
+
     return {
       available: true,
       files: filesWithContent,
       totalKeyFiles: keyFiles.length,
-      filesFetched: filesWithContent.filter(f => f.fetchStatus === 'fetched').length,
+      filesFetched: fetched.length,
+      filesFailed: failed.length + errored.length,
       filesSkipped: filesWithContent.filter(f => f.fetchStatus === 'skipped').length,
       totalSize,
+      branch,
       repositoryInfo: structure.repository || null,
       securityNote: 'Only text files fetched via GitHub API. No code execution.'
     };

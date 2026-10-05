@@ -26,11 +26,37 @@
 const CHARS_PER_TOKEN = 4;
 
 // Default ceiling for the whole verification request (system + user).
+//
 // Kept under the 8000 TPM limit with headroom for the completion.
+//
+// HISTORY / BUG THIS FIXES
+// ------------------------
+// This was 3000 tokens. The verification system prompt alone is ~16.5k chars
+// (~4.1k tokens), so `getUserPayloadBudgetChars()` returned only ~9.1k chars
+// for the USER payload, and after subtracting the (never-trimmed) project
+// requirements the repository evidence collapsed to the 1200-char floor.
+//
+// In practice the model received ~4 files truncated to ~500 chars each and was
+// then asked to judge functional implementation and code quality. It correctly,
+// honestly reported "all core files are present, but lack of file content
+// prevents confirming functional implementation and code quality" - because
+// that was literally all the evidence it had.
+//
+// 6500 keeps the request under the TPM ceiling while giving the repository a
+// real share of the context window.
 const DEFAULT_MAX_INPUT_TOKENS = 6500;
 
 // Extra room reserved for JSON scaffolding and the request wrapper.
 const SAFETY_MARGIN_CHARS = 400;
+
+/**
+ * Floor for the repository evidence section.
+ *
+ * Requirements are essential and are never trimmed, but they must not be
+ * allowed to starve the repository of context entirely: a verification request
+ * with no source code cannot produce an evidence-based decision at all.
+ */
+const MIN_REPOSITORY_BUDGET_CHARS = 12000;
 
 const TRUNCATION_MARKER = "\n[truncated]";
 
@@ -68,6 +94,29 @@ export function getUserPayloadBudgetChars(systemPromptChars = 0) {
   const reserve = Math.max(0, Number(systemPromptChars) || 0) + SAFETY_MARGIN_CHARS;
   const remaining = getMaxInputChars() - reserve;
   return Math.max(1200, remaining);
+}
+
+/**
+ * Character budget for the repository evidence section.
+ *
+ * The project requirements are essential evidence and are never trimmed, so
+ * their size is measured and subtracted FIRST. What remains belongs to the
+ * repository - because a verification request with no source code cannot
+ * produce an evidence-based decision at all.
+ *
+ * MIN_REPOSITORY_BUDGET_CHARS guarantees the repository always receives real
+ * context, even when a large requirement list would otherwise consume
+ * everything.
+ */
+export function getRepositoryBudgetChars(requirementsChars = 0, wrapperOverhead = 0) {
+  const userBudget = getUserPayloadBudgetChars(0);
+  const requirements = Math.max(0, Number(requirementsChars) || 0);
+  const wrapper = Math.max(0, Number(wrapperOverhead) || 0);
+
+  return Math.max(
+    MIN_REPOSITORY_BUDGET_CHARS,
+    userBudget - requirements - wrapper - 200
+  );
 }
 
 // ---------------------------------------------------------------------------
