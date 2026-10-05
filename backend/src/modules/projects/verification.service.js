@@ -422,13 +422,27 @@ function validateVerificationResult(result) {
 /**
  * Main verification function
  */
-export async function verifyProjectSubmission(candidateId, projectId, repositoryUrl) {
+export async function verifyProjectSubmission(candidateId, projectId, repositoryUrl, onProgress = null) {
   const startTime = Date.now();
+
+  const reportProgress = (progress) => {
+    try {
+      if (typeof onProgress === "function") onProgress(progress);
+    } catch (progressError) {
+      logger.warn("Unable to report verification progress:", progressError);
+    }
+  };
   
   try {
     logger.info(`Starting verification for candidate ${candidateId}, project ${projectId}`);
     
     // Step 1: Validate repository URL
+    reportProgress({
+      stage: "validating",
+      label: "Validating repository",
+      status: "active",
+      message: "Checking the submitted project URL..."
+    });
     logger.debug("Validating repository URL");
     const urlValidation = validateRepositoryUrl(repositoryUrl);
     if (!urlValidation.valid) {
@@ -472,6 +486,13 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       };
     }
     
+    reportProgress({
+      stage: "project_requirements",
+      label: "Loading project requirements",
+      status: "active",
+      message: "Loading the assigned project requirements..."
+    });
+
     // Step 2: Fetch ACTUAL project data from MongoDB
     logger.debug(`Fetching actual project ${projectId} from database`);
     let actualProject = null;
@@ -568,7 +589,14 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     }
     
     const projectRequirements = prepareProjectRequirements(actualProject);
-    
+
+    reportProgress({
+      stage: "repository",
+      label: "Fetching repository",
+      status: "active",
+      message: "Connecting to GitHub and downloading project files..."
+    });
+
     // Step 3: Fetch repository content safely
     logger.info("Fetching repository content for verification");
     const repoContent = await fetchRepositoryContent(repositoryUrl);
@@ -594,6 +622,14 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       logger.warn(
         `Failed to fetch repository (${errorType}): ${repoContent.error}`
       );
+
+      reportProgress({
+        stage: "repository",
+        label: "Fetching repository",
+        status: "failed",
+        failed: true,
+        message: repoContent.error || "Repository could not be fetched."
+      });
 
       return {
         status: VERIFICATION_STATUS.REJECTED,
@@ -634,9 +670,23 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       };
     }
     
+    reportProgress({
+      stage: "analyzing",
+      label: "Analyzing code and files",
+      status: "active",
+      message: "Reading the downloaded project files..."
+    });
+
     // Step 4: Structure data for AI analysis
     const structuredRepoContent = structureRepositoryContent(repoContent.data);
-    
+
+    reportProgress({
+      stage: "requirements",
+      label: "Checking project requirements",
+      status: "active",
+      message: "Comparing the project evidence with the assigned requirements..."
+    });
+
     // Step 5: Prepare and call AI for verification
     logger.debug("Preparing AI verification request");
     const messages = prepareVerificationMessages(projectRequirements, structuredRepoContent);
@@ -750,6 +800,13 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       };
     }
 
+    reportProgress({
+      stage: "ai",
+      label: "AI verification in progress",
+      status: "active",
+      message: "AI is evaluating the project against the requirements..."
+    });
+
     logger.info("Calling AI for project verification");
     let aiResult;
     try {
@@ -757,9 +814,25 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       
       // Step 6: Validate and process AI result
       validateVerificationResult(aiResult);
+
+      reportProgress({
+        stage: "ai",
+        label: "AI verification in progress",
+        status: "completed",
+        completed: true,
+        message: "AI analysis completed successfully."
+      });
       
     } catch (aiError) {
       logger.error("AI verification failed:", aiError);
+
+      reportProgress({
+        stage: "ai",
+        label: "AI verification in progress",
+        status: "failed",
+        failed: true,
+        message: aiError.message || "AI verification failed."
+      });
       
       // Handle AI failure gracefully
       return {
