@@ -77,11 +77,18 @@ function sanitizeAiQuestion(raw, askedQuestions) {
     ? raw.difficulty
     : "MEDIUM";
   const text = raw.question.trim().slice(0, 800);
-  // Duplicate prevention: exact or near-duplicate of an asked question.
-  const normalized = text.toLowerCase();
+  // Normalize punctuation and stop words so common paraphrases do not repeat
+  // the same underlying wording. This remains deliberately provider-free.
+  const normalize = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((word) => word && !["the", "a", "an", "is", "are", "did", "do", "you", "your", "how", "what", "can", "could", "please", "explain", "describe", "tell", "about", "in", "for", "to", "of", "and"].includes(word));
+  const normalizedTokens = normalize(text);
+  const normalized = normalizedTokens.join(" ");
   const dup = (askedQuestions || []).some((q) => {
-    const prev = String(q?.question || q || "").toLowerCase();
-    return prev && (prev === normalized || (normalized.length > 20 && prev.includes(normalized.slice(0, 40))));
+    const previousTokens = normalize(q?.question || q || "");
+    if (!previousTokens.length || !normalizedTokens.length) return false;
+    const previous = previousTokens.join(" ");
+    if (previous === normalized) return true;
+    const common = normalizedTokens.filter((token) => previousTokens.includes(token)).length;
+    return common >= 6 && common / Math.max(normalizedTokens.length, previousTokens.length) >= 0.78;
   });
   if (dup) return null;
   return {
@@ -98,9 +105,11 @@ function pickFallback(phase, askedQuestions) {
   const asked = new Set((askedQuestions || []).map((q) => String(q?.question || q || "").toLowerCase()));
   const available = pool.find((q) => !asked.has(q.question.toLowerCase()));
   if (available) return available;
-  if (phase === "PROJECT_WALKTHROUGH") return FALLBACK_QUESTIONS.CLOSING[0];
+  if (phase === "PROJECT_WALKTHROUGH") {
+    return { category: "PROJECT_WALKTHROUGH", question: "Which code or feature did you personally implement, and what technical trade-offs did you consider?", difficulty: "MEDIUM" };
+  }
   if (phase === "CLOSING") return { category: "CLOSING", question: "Is there anything else about your implementation you would like the recruitment team to know?", difficulty: "EASY" };
-  return { category: "FOLLOW_UP", question: "Could you explain another technical decision you made in your project?", difficulty: "MEDIUM" };
+  return { category: "FOLLOW_UP", question: "Can you give a specific example from your project that supports your answer?", difficulty: "MEDIUM" };
 }
 
 /**
@@ -112,7 +121,7 @@ function pickFallback(phase, askedQuestions) {
  * @param {Array} params.transcript transcript entries so far
  * @param {string} params.phase QUESTIONING | PROJECT_WALKTHROUGH | CLOSING
  */
-export async function generateNextQuestion({ context, askedQuestions = [], transcript = [], phase = "QUESTIONING" }) {
+export async function generateNextQuestion({ context, askedQuestions = [], transcript = [], answersSoFar = [], coveredTopics = [], answerAssessment = null, phase = "QUESTIONING" }) {
   const forced = PHASE_CATEGORY[phase];
   if (forced === "PROJECT_WALKTHROUGH" || forced === "CLOSING") {
     // Phase-forced questions still come from fallback pool deterministically
@@ -122,7 +131,7 @@ export async function generateNextQuestion({ context, askedQuestions = [], trans
         candidate: context.candidate,
         project: context.project,
         verification: context.verification,
-        history: { questions: askedQuestions, transcript, phase },
+        history: { questions: askedQuestions, transcript, answersSoFar, coveredTopics, answerAssessment, phase },
       });
       const raw = await generateStructuredAI([
         { role: "system", content: "You are a professional technical interviewer. Return JSON only." },
@@ -146,7 +155,7 @@ export async function generateNextQuestion({ context, askedQuestions = [], trans
       candidate: context.candidate,
       project: context.project,
       verification: context.verification,
-      history: { questions: askedQuestions, transcript, phase },
+      history: { questions: askedQuestions, transcript, answersSoFar, coveredTopics, answerAssessment, phase },
     });
     const raw = await generateStructuredAI([
       { role: "system", content: "You are a professional technical interviewer. Return JSON only." },

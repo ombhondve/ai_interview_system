@@ -10,15 +10,6 @@ function getSecret() {
   return secret;
 }
 
-function getAdmin() {
-  return {
-    id: process.env.DEMO_ADMIN_ID || "env-admin",
-    name: process.env.DEMO_ADMIN_NAME || "Admin User",
-    email: (process.env.DEMO_ADMIN_EMAIL || "admin@example.com").trim().toLowerCase(),
-    role: process.env.DEMO_ADMIN_ROLE || "superadmin",
-    active: true,
-  };
-}
 
 /**
  * Middleware to require authentication
@@ -45,6 +36,11 @@ export const requireAuth = (req, res, next) => {
     }
 
     // Add user info to request object
+    const allowedRoles = ["superadmin", "recruiter", "admin"];
+    if (!allowedRoles.includes(payload.role)) {
+      return res.status(403).json({ success: false, message: "Insufficient permissions." });
+    }
+
     req.user = {
       id: payload.adminId,
       email: payload.email,
@@ -109,7 +105,8 @@ export const optionalAuth = (req, res, next) => {
     if (token) {
       const payload = jwt.verify(token, getSecret());
       
-      if (payload && typeof payload === "object" && payload.adminId) {
+      const allowedRoles = ["superadmin", "recruiter", "admin"];
+      if (payload && typeof payload === "object" && payload.adminId && allowedRoles.includes(payload.role)) {
         req.user = {
           id: payload.adminId,
           email: payload.email,

@@ -15,6 +15,7 @@ import verificationRoutes from "./modules/verification/verification.routes.js";
 import authRoutes from "./modules/auth/auth.routes.js";
 import calendarRoutes from "./modules/calendar/calendar.routes.js";
 import interviewSessionRoutes from "./modules/interview/interview.routes.js";
+import interviewVoiceRoutes from "./modules/interview/interview.voice.routes.js";
 import cookieParser from "./middleware/cookieParser.middleware.js";
 import { initializeGoogleOAuth } from "./config/googleOAuth.js";
 import connectDatabase from "./config/database.js";
@@ -97,6 +98,7 @@ app.use((req, res, next) => {
 // BODY PARSER
 // =====================================================
 
+app.use("/api/ai-interviews", express.raw({ type: "audio/*", limit: "8mb" }));
 app.use(
   express.json({
     limit: "15mb",
@@ -331,6 +333,7 @@ app.use(
 
 // AI interview sessions, transcripts, reports, and human admin decisions.
 app.use("/api/ai-interviews", interviewSessionRoutes);
+app.use("/api/ai-interviews", express.raw({ type: "audio/*", limit: "8mb" }), interviewVoiceRoutes);
 
 // =====================================================
 // VERIFICATION

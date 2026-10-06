@@ -7,6 +7,7 @@ import AiInterview from "./interview.model.js";
 import { isValidObjectId, validateAnswerInput, validateDecisionInput } from "./interview.validation.js";
 import { buildInterviewContext, publicSessionContext } from "./interview.context.service.js";
 import logger from "../../utils/logger.js";
+import { analyzeAndPersist } from "./interview.analysis.persistence.js";
 import { isProjectVerified } from "../projects/deadline.service.js";
 
 const router = express.Router();
@@ -30,18 +31,30 @@ function validInterviewId(req, res, next) {
 
 router.get("/admin/reports", requireAuth, requireRole("superadmin", "recruiter", "admin"), async (_req, res) => {
   try {
-    const interviews = await AiInterview.find({ status: { $in: ["COMPLETED", "ANALYSIS_PENDING", "ANALYZED"] } }).sort({ scheduledAt: -1 }).limit(200).populate("candidateId", "name email role").populate("projectId", "title");
+    const interviews = await AiInterview.find({ status: { $in: ["COMPLETED", "ANALYSIS_PENDING", "ANALYZED", "FAILED"] } }).sort({ scheduledAt: -1 }).limit(200).populate("candidateId", "name email role").populate("projectId", "title");
     return res.json({ success: true, interviews });
   } catch (error) { return handleError(res, error); }
 });
 
 router.get("/mine", requireVerifiedSession, async (req, res) => {
   try {
-    const doc = await AiInterview.findOne({ candidateId: req.candidate._id, status: { $nin: ["CANCELLED", "FAILED"] } }).sort({ scheduledAt: -1 });
+    const doc = await AiInterview.findOne({ candidateId: req.candidate._id, status: { $nin: ["CANCELLED"] } }).sort({ scheduledAt: -1 });
     if (!doc) return res.json({ success: true, interview: null });
     if (!isProjectVerified(req.candidate)) return res.status(403).json({ success: false, message: "The assigned project must be verified before interview access." });
     const context = await buildInterviewContext({ candidateId: doc.candidateId, projectId: doc.projectId, bookingId: doc.bookingId });
     return res.json({ success: true, interview: doc, context: publicSessionContext(context) });
+  } catch (error) { return handleError(res, error); }
+});
+
+router.post("/:interviewId/retry-analysis", requireAuth, requireRole("superadmin", "recruiter", "admin"), validInterviewId, async (req, res) => {
+  try {
+    const interview = await AiInterview.findById(req.params.interviewId);
+    if (!interview) return res.status(404).json({ success: false, message: "Interview not found." });
+    if (!interview.endedAt || !["FAILED", "ANALYSIS_PENDING", "COMPLETED", "COMPLETING"].includes(interview.status)) {
+      return res.status(409).json({ success: false, message: "Only ended interviews can be re-analyzed." });
+    }
+    const updated = await analyzeAndPersist(interview._id);
+    return res.json({ success: true, interview: updated });
   } catch (error) { return handleError(res, error); }
 });
 

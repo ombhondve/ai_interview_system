@@ -49,40 +49,24 @@ function logGitHubConfiguration() {
 }
 
 async function initializeDefaultAdmin() {
-  try {
-    const defaultAdminEmail = "admin@gmail.com";
-    const defaultAdminPassword = "admin@123";
-    
-    // Check if admin already exists
-    const existingAdmin = await Admin.findOne({ email: defaultAdminEmail });
-    
-    if (existingAdmin) {
-      console.log(`✅ Default admin account already exists: ${defaultAdminEmail}`);
-      return;
-    }
-    
-    // Hash the password
-    const saltRounds = 10;
-    const passwordHash = await bcrypt.hash(defaultAdminPassword, saltRounds);
-    
-    // Create default admin
-    const defaultAdmin = new Admin({
-      name: "System Administrator",
-      email: defaultAdminEmail,
-      passwordHash: passwordHash,
-      role: "superadmin"
-    });
-    
-    await defaultAdmin.save();
-    console.log(`✅ Default admin account created successfully`);
-    console.log(`   Email: ${defaultAdminEmail}`);
-    console.log(`   Password: ${defaultAdminPassword}`);
-    console.log(`   Role: superadmin`);
-    
-  } catch (error) {
-    console.error("❌ Failed to create default admin account:", error.message);
-    console.log("⚠️  You may need to create admin account manually");
+  const email = process.env.DEMO_ADMIN_EMAIL?.trim().toLowerCase();
+  const password = process.env.DEMO_ADMIN_PASSWORD;
+  if (!email || !password) {
+    console.warn("Admin seed skipped: DEMO_ADMIN_EMAIL and DEMO_ADMIN_PASSWORD must be configured.");
+    return;
   }
+
+  const existingAdmin = await Admin.findOne({ email });
+  if (existingAdmin) return;
+
+  const passwordHash = await bcrypt.hash(password, 12);
+  await Admin.create({
+    name: process.env.DEMO_ADMIN_NAME || "System Administrator",
+    email,
+    passwordHash,
+    role: process.env.DEMO_ADMIN_ROLE === "recruiter" ? "recruiter" : "superadmin",
+  });
+  console.log("Configured admin account created.");
 }
 
 async function startServer() {

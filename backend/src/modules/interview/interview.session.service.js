@@ -7,16 +7,16 @@ import { isProjectVerified } from "../projects/deadline.service.js";
 import Candidate from "../candidate/candidate.model.js";
 import logger from "../../utils/logger.js";
 
-export const SESSION_TRANSITIONS = { SCHEDULED: ["READY", "CANCELLED"], READY: ["IN_PROGRESS", "CANCELLED"], IN_PROGRESS: ["COMPLETED", "CANCELLED", "FAILED"], COMPLETED: ["ANALYSIS_PENDING"], ANALYSIS_PENDING: ["ANALYZED", "FAILED"], ANALYZED: [], CANCELLED: [], FAILED: [] };
+export const SESSION_TRANSITIONS = { SCHEDULED: ["READY", "CANCELLED"], READY: ["IN_PROGRESS", "CANCELLED"], IN_PROGRESS: ["COMPLETING", "CANCELLED", "FAILED"], COMPLETING: ["ANALYSIS_PENDING", "FAILED"], COMPLETED: ["ANALYSIS_PENDING"], ANALYSIS_PENDING: ["ANALYZED", "FAILED"], ANALYZED: [], CANCELLED: [], FAILED: ["ANALYSIS_PENDING"] };
 export const canTransition = (from, to) => (SESSION_TRANSITIONS[from] || []).includes(to);
 
-export async function ensureSessionForBooking({ candidateId, projectId, bookingId, scheduledAt, meetLink } = {}) {
+export async function ensureSessionForBooking({ candidateId, projectId, bookingId, scheduledAt, meetLink, calendarEventId } = {}) {
   if (!candidateId || !bookingId || !scheduledAt) { const e = new Error("A valid candidate, booking, and scheduled time are required."); e.status = 400; throw e; }
   const existing = await AiInterview.findOne({ bookingId }); if (existing) return existing;
   const booking = await InterviewBooking.findById(bookingId);
   if (!booking || String(booking.candidateId) !== String(candidateId)) { const e = new Error("Scheduled booking not found."); e.status = 404; throw e; }
   try {
-    const doc = await AiInterview.create({ candidateId, projectId: projectId || booking.projectId || null, bookingId, scheduledAt, meetLink: meetLink || booking.meetLink || null, status: "READY", questions: [], transcript: [] });
+    const doc = await AiInterview.create({ candidateId, projectId: projectId || booking.projectId || null, bookingId, scheduledAt, meetLink: meetLink || booking.meetLink || null, calendarEventId: calendarEventId || booking.calendarEventId || null, status: "READY", questions: [], transcript: [] });
     logger.info(`Interview created ${doc._id}`); return doc;
   } catch (error) { if (error.code === 11000) return AiInterview.findOne({ bookingId }); throw error; }
 }
@@ -39,7 +39,12 @@ export async function startInterview(interviewId, candidateId) {
     doc.questions.push({ ...question, questionId: "0", askedAt: new Date() });
     doc.transcript.push({ speaker: "AI", text: question.question, timestamp: new Date(), questionId: "0", category: question.category, section: "QUESTIONING" });
   }
-  doc.status = "IN_PROGRESS"; doc.startedAt = doc.startedAt || new Date(); await doc.save();
+  if (doc.status !== "IN_PROGRESS") {
+    doc.status = "IN_PROGRESS";
+    doc.startedAt = doc.startedAt || new Date();
+  }
+  doc.transcript.forEach((entry, index) => { if (entry.sequence == null) entry.sequence = index; });
+  await doc.save();
   logger.info(`Interview started ${doc._id}`); logger.info(`Question generated ${doc._id}`); return doc;
 }
 export default { ensureSessionForBooking, startInterview, canTransition };

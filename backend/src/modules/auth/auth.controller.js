@@ -9,10 +9,12 @@ const cookieOptions = {
 };
 
 function getCredentials() {
-  return {
-    email: (process.env.DEMO_ADMIN_EMAIL || "admin@example.com").trim().toLowerCase(),
-    password: process.env.DEMO_ADMIN_PASSWORD || "Admin@123",
-  };
+  const email = process.env.DEMO_ADMIN_EMAIL;
+  const password = process.env.DEMO_ADMIN_PASSWORD;
+  if (!email || !password) {
+    throw new Error("Admin login credentials are not configured.");
+  }
+  return { email: email.trim().toLowerCase(), password };
 }
 
 function getSecret() {

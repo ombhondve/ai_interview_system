@@ -40,6 +40,7 @@ export const INTERVIEW_STATUSES = [
   "SCHEDULED",
   "READY",
   "IN_PROGRESS",
+  "COMPLETING",
   "COMPLETED",
   "CANCELLED",
   "FAILED",
@@ -57,13 +58,18 @@ export function buildQuestionPrompt({ candidate, project, verification, history 
     .slice(-10)
     .map((t) => `${t.speaker}: ${t.text}`)
     .join("\n");
+  const coveredTopics = [...new Set(history?.coveredTopics || [])];
+  const answers = (history?.answersSoFar || []).slice(-5).join("\n- ");
+  const answerAssessment = history?.answerAssessment || null;
 
   return `Act as a professional technical interviewer conducting a live conversational interview.
 
 RULES (must follow):
 - Ask ONE question at a time. Never ask multiple questions in one response.
 - Use the candidate's ACTUAL project below. Prefer project-specific questions over generic ones.
-- Ask follow-up questions when the candidate's last answer is vague, short, or mentions something worth probing.
+- Use the candidate's most recent answer explicitly. Classify it as STRONG, INCOMPLETE, VAGUE, or WEAK before choosing the next question.
+- Ask a focused follow-up for vague, weak, or incomplete answers; probe a strong answer more deeply when that reveals a specific implementation detail, otherwise move to an uncovered topic.
+- Use covered topics to avoid asking the same category repeatedly unless a follow-up is warranted.
 - Do NOT repeat any previously asked question (list below). Paraphrases of asked questions are also forbidden.
 - Increase difficulty when answers are strong; decrease when the candidate struggles.
 - Do NOT trick the candidate. Do NOT ask irrelevant or off-role questions.
@@ -95,6 +101,15 @@ Missing: ${(verification?.missingRequirements || []).join?.(", ") || ""}
 PHASE: ${history?.phase || "QUESTIONING"}
 QUESTIONS ALREADY ASKED (do not repeat):
 ${asked || "(none yet)"}
+
+COVERED TOPICS:
+${coveredTopics.join(", ") || "(none)"}
+
+RECENT CANDIDATE ANSWERS:
+- ${answers || "(none yet)"}
+
+ANSWER ASSESSMENT (derive from the actual last answer; this is guidance, not a score):
+${answerAssessment ? JSON.stringify(answerAssessment) : "No prior answer assessment supplied; infer quality from the transcript."}
 
 RECENT TRANSCRIPT:
 ${turns || "(interview just started)"}
@@ -132,6 +147,7 @@ Return JSON ONLY:
   "projectWalkthrough": {"score": 0-100, "summary": "..."},
   "strengths": ["..."],
   "areasForImprovement": ["..."],
+  "evidence": ["short transcript-grounded evidence quotes or observations"],
   "overallScore": 0-100,
   "recommendation": "STRONG|ADMIN_REVIEW|WEAK",
   "summary": "..."

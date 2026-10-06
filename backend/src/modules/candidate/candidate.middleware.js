@@ -21,11 +21,8 @@ export const requireCandidateAccess = async (req, res, next) => {
       });
     }
 
-    // If no user is authenticated, check if this is a public endpoint
     if (!userId) {
-      // For now, allow access - actual authorization should be implemented
-      // based on your business logic (e.g., session tokens, invitation links)
-      return next();
+      return res.status(401).json({ success: false, message: "Authentication required." });
     }
 
     // Check if the candidate exists

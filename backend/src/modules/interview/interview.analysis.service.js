@@ -40,6 +40,7 @@ export function sanitizeAnalysis(raw) {
       areasForImprovement: Array.isArray(raw.areasForImprovement)
         ? raw.areasForImprovement.filter((s) => typeof s === "string").slice(0, 10)
         : [],
+      evidence: Array.isArray(raw.evidence) ? raw.evidence.filter((s) => typeof s === "string").slice(0, 20) : [],
       overallScore: overall,
       recommendation: rec,
       summary: typeof raw.summary === "string" ? raw.summary.slice(0, 3000) : "",
@@ -72,6 +73,7 @@ export function fallbackAnalysis({ transcriptLength = 0 } = {}) {
     projectWalkthrough: { score: 0, summary: "AI analysis unavailable — insufficient evidence to score." },
     strengths: [],
     areasForImprovement: ["Interview transcript could not be analysed automatically; please review manually."],
+    evidence: [],
     overallScore: 0,
     recommendation: "ADMIN_REVIEW",
     summary: `Automatic analysis unavailable (transcript turns: ${transcriptLength}). Requires manual admin review.`,

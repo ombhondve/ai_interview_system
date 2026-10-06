@@ -14,26 +14,16 @@ import {
 } from "./verification.controller.js";
 
 import { setupVerificationEventHandlers } from "./verification.events.service.js";
+import { requireVerifiedSession } from "../../middleware/requireVerifiedSession.js";
+import { requireAuth, requireRole } from "../auth/auth.middleware.js";
+
 
 const router = express.Router();
 
 /**
  * Middleware for admin authentication
  */
-const requireAdmin = (req, res, next) => {
-  // In production, this would check JWT token or session
-  const adminId = req.headers['x-admin-id'] || req.user?.id;
-  
-  if (!adminId) {
-    return res.status(401).json({
-      success: false,
-      error: "Admin authentication required"
-    });
-  }
-  
-  req.adminId = adminId;
-  next();
-};
+const requireAdmin = [requireAuth, requireRole("superadmin", "recruiter", "admin")];
 
 /**
  * Public endpoints
@@ -43,42 +33,58 @@ const requireAdmin = (req, res, next) => {
 router.get("/health", verificationHealth);
 
 // Get verification status (public for candidates to check their own status)
-router.get("/status/:candidateId", getVerificationStatus);
+router.get("/status/:candidateId", requireVerifiedSession, (req, res, next) => {
+  if (String(req.candidate._id) !== String(req.params.candidateId)) {
+    return res.status(403).json({ success: false, message: "You cannot access this candidate's verification." });
+  }
+  next();
+}, getVerificationStatus);
 
 /**
  * Candidate endpoints (require candidate authentication)
  */
 
 // Start verification (requires candidate auth)
-router.post("/start", startVerification);
+router.post("/start", requireVerifiedSession, (req, res, next) => {
+  req.body.candidateId = req.candidate._id.toString();
+  req.body.projectId = req.candidate.assignedProjectId?.toString();
+  req.body.repositoryUrl = req.candidate.projectSubmission?.url;
+  if (!req.body.projectId || !req.body.repositoryUrl) return res.status(400).json({ success: false, message: "No current project submission is available." });
+  next();
+}, startVerification);
 
 // Cancel verification (requires candidate auth)
-router.post("/cancel/:candidateId", cancelVerification);
+router.post("/cancel/:candidateId", requireVerifiedSession, (req, res, next) => {
+  if (String(req.candidate._id) !== String(req.params.candidateId)) {
+    return res.status(403).json({ success: false, message: "You cannot cancel another candidate's verification." });
+  }
+  next();
+}, cancelVerification);
 
 /**
  * Admin endpoints (require admin authentication)
  */
 
 // Get active verifications
-router.get("/admin/active", requireAdmin, getActiveVerifications);
+router.get("/admin/active", ...requireAdmin, getActiveVerifications);
 
 // Get verification statistics
-router.get("/admin/statistics", requireAdmin, getVerificationStatistics);
+router.get("/admin/statistics", ...requireAdmin, getVerificationStatistics);
 
 // Get candidates needing admin review
-router.get("/admin/needs-review", requireAdmin, getCandidatesNeedingReview);
+router.get("/admin/needs-review", ...requireAdmin, getCandidatesNeedingReview);
 
 // Process admin review
-router.post("/admin/review/:candidateId", requireAdmin, processAdminReview);
+router.post("/admin/review/:candidateId", ...requireAdmin, processAdminReview);
 
 // Manual verification (admin override)
-router.post("/admin/manual-verify", requireAdmin, manualVerification);
+router.post("/admin/manual-verify", ...requireAdmin, manualVerification);
 
 // Reset verification (admin only)
-router.post("/admin/reset/:candidateId", requireAdmin, resetVerification);
+router.post("/admin/reset/:candidateId", ...requireAdmin, resetVerification);
 
 // Get all verification data for a candidate
-router.get("/admin/candidate/:candidateId", requireAdmin, getVerificationStatus);
+router.get("/admin/candidate/:candidateId", ...requireAdmin, getVerificationStatus);
 
 /**
  * WebSocket setup (called from main app)

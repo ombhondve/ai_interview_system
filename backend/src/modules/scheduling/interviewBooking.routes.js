@@ -22,6 +22,10 @@ import {
 import { canBookInterviewSlot } from "../projects/deadline.service.js";
 import { ensureSessionForBooking } from "../interview/interview.session.service.js";
 import InterviewBooking from "./interviewBooking.model.js";
+import Candidate from "../candidate/candidate.model.js";
+import AiInterview from "../interview/interview.model.js";
+import { createInterviewMeeting, deleteInterviewMeeting } from "../interview/interview.booking.integration.js";
+import logger from "../../utils/logger.js";
 
 const router = express.Router();
 
@@ -188,26 +192,43 @@ router.post(
         candidate: req.candidate,
         startAt,
       });
+
       let interviewSession;
+      let meeting;
       try {
-        const bookingDocument = await InterviewBooking.findById(booking.id);
+        let bookingDocument = await InterviewBooking.findById(booking.id);
         interviewSession = await ensureSessionForBooking({
           candidateId: req.candidate._id,
           projectId: bookingDocument?.projectId || req.candidate.assignedProjectId,
           bookingId: booking.id,
           scheduledAt: booking.startAt,
-          meetLink: booking.meetLink,
+          meetLink: bookingDocument?.meetLink,
+          calendarEventId: bookingDocument?.calendarEventId,
         });
-      } catch (sessionError) {
-        console.error("Unable to initialize AI interview session", sessionError.message);
-      }
+        const candidate = await Candidate.findById(req.candidate._id);
+        meeting = await createInterviewMeeting({ session: interviewSession, booking: bookingDocument, candidate });
+        bookingDocument.meetLink = meeting.meetLink;
+        bookingDocument.calendarEventId = meeting.eventId;
+        await bookingDocument.save();
+        interviewSession.meetLink = meeting.meetLink;
+        interviewSession.calendarEventId = meeting.eventId;
+        await interviewSession.save();
 
-      return res.status(201).json({
-        success: true,
-        message: "Interview scheduled successfully.",
-        booking: { ...booking, interviewId: interviewSession?._id?.toString() || null },
-        interviewId: interviewSession?._id?.toString() || null,
-      });
+        return res.status(201).json({
+          success: true,
+          message: "Interview scheduled and Google Meet created.",
+          booking: { ...booking, meetLink: meeting.meetLink, calendarEventId: meeting.eventId, interviewId: interviewSession._id.toString() },
+          interviewId: interviewSession._id.toString(),
+        });
+      } catch (integrationError) {
+        logger.error("Interview booking integration failed", { bookingId: booking.id, code: integrationError?.code || "INTEGRATION_FAILURE" });
+        if (meeting?.eventId) await deleteInterviewMeeting(meeting.eventId, interviewSession?._id).catch(() => {});
+        if (interviewSession) await AiInterview.deleteOne({ _id: interviewSession._id }).catch(() => {});
+        await InterviewBooking.findOneAndDelete({ _id: booking.id, candidateId: req.candidate._id }).catch(() => {});
+        await Candidate.findByIdAndUpdate(req.candidate._id, { $set: { interviewStatus: "pending" }, $unset: { interviewDate: "", interviewBookedAt: "" } }).catch(() => {});
+        const status = integrationError?.status || 503;
+        return res.status(status).json({ success: false, code: integrationError?.code || "INTERVIEW_SETUP_FAILED", message: integrationError?.safeMessage || "Unable to set up the interview meeting. Please try booking again." });
+      }
     } catch (error) {
       if (error instanceof BookingError) {
         return res.status(error.status).json({

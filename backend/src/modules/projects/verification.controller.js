@@ -19,12 +19,16 @@ export const startVerification = async (req, res) => {
     if (!candidateId || !projectId || !repositoryUrl) {
       return res.status(400).json({
         success: false,
-        error: "Missing required fields: candidateId, projectId, repositoryUrl"
+        error: "No current project submission is available for verification."
       });
     }
 
     logger.info(`Starting verification for candidate ${candidateId}, project ${projectId}`);
 
+    const candidate = req.candidate;
+    if (candidate && (String(candidate._id) !== String(candidateId) || String(candidate.assignedProjectId) !== String(projectId) || candidate.projectSubmission?.url !== repositoryUrl)) {
+      return res.status(403).json({ success: false, message: "Verification must use the authenticated candidate's current submission." });
+    }
     const result = await verificationTracker.startVerification(candidateId, projectId, repositoryUrl);
 
     if (!result.success) {
@@ -192,7 +196,7 @@ export const processAdminReview = async (req, res) => {
   try {
     const { candidateId } = req.params;
     const { status, reviewerNotes, finalDecision, decisionReason } = req.body;
-    const adminId = req.user?.id || req.headers['x-admin-id'];
+    const adminId = req.user?.id;
 
     if (!adminId) {
       return res.status(401).json({
@@ -313,6 +317,7 @@ export const resetVerification = async (req, res) => {
 export const manualVerification = async (req, res) => {
   try {
     const { candidateId, projectId, repositoryUrl } = req.body;
+    if (!candidateId || !projectId || !repositoryUrl) return res.status(400).json({ success: false, message: "Candidate, project, and repository are required." });
 
     if (!candidateId || !projectId || !repositoryUrl) {
       return res.status(400).json({

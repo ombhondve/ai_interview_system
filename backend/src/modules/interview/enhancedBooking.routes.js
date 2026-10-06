@@ -1,7 +1,12 @@
 import express from "express";
-import enhancedBookingController from "./enhancedBooking.controller.js";
-import { requireAuth } from "../auth/auth.middleware.js";
-import { requireCandidateAccess } from "../candidate/candidate.middleware.js";
+
+// This legacy booking API uses candidate IDs in the URL instead of the secure
+// candidate session. Keep reads/old preparation handlers out of candidate use;
+// all new bookings are made through /api/student/interview/*.
+const retiredLegacyRoute = (_req, res) => res.status(410).json({
+  success: false,
+  message: "This legacy interview endpoint is retired. Use the current student interview scheduling flow.",
+});
 
 const router = express.Router();
 
@@ -24,12 +29,7 @@ const router = express.Router();
  *   }
  * }
  */
-router.post(
-  "/:candidateId/book/:slotId",
-  requireAuth,
-  requireCandidateAccess,
-  enhancedBookingController.bookInterview.bind(enhancedBookingController)
-);
+router.post("/:candidateId/book/:slotId", retiredLegacyRoute);
 
 // ====================================================
 // INTERVIEW PREPARATION WORKFLOW
@@ -40,12 +40,7 @@ router.post(
  * 
  * Start interview preparation workflow
  */
-router.post(
-  "/:interviewId/candidate/:candidateId/preparation/start",
-  requireAuth,
-  requireCandidateAccess,
-  enhancedBookingController.startPreparation.bind(enhancedBookingController)
-);
+router.post("/:interviewId/candidate/:candidateId/preparation/start", retiredLegacyRoute);
 
 /**
  * PUT /api/interviews/:interviewId/candidate/:candidateId/preparation
@@ -61,24 +56,14 @@ router.post(
  *   "notes": "Ready for interview"
  * }
  */
-router.put(
-  "/:interviewId/candidate/:candidateId/preparation",
-  requireAuth,
-  requireCandidateAccess,
-  enhancedBookingController.updatePreparation.bind(enhancedBookingController)
-);
+router.put("/:interviewId/candidate/:candidateId/preparation", retiredLegacyRoute);
 
 /**
  * POST /api/interviews/:interviewId/candidate/:candidateId/preparation/confirm
  * 
  * Confirm interview readiness
  */
-router.post(
-  "/:interviewId/candidate/:candidateId/preparation/confirm",
-  requireAuth,
-  requireCandidateAccess,
-  enhancedBookingController.confirmReadiness.bind(enhancedBookingController)
-);
+router.post("/:interviewId/candidate/:candidateId/preparation/confirm", retiredLegacyRoute);
 
 // ====================================================
 // INTERVIEW MANAGEMENT
@@ -95,12 +80,7 @@ router.post(
  *   "reason": "Schedule conflict"
  * }
  */
-router.post(
-  "/:interviewId/candidate/:candidateId/reschedule",
-  requireAuth,
-  requireCandidateAccess,
-  enhancedBookingController.rescheduleInterview.bind(enhancedBookingController)
-);
+router.post("/:interviewId/candidate/:candidateId/reschedule", retiredLegacyRoute);
 
 /**
  * POST /api/interviews/:interviewId/candidate/:candidateId/cancel
@@ -112,12 +92,7 @@ router.post(
  *   "reason": "Unexpected emergency"
  * }
  */
-router.post(
-  "/:interviewId/candidate/:candidateId/cancel",
-  requireAuth,
-  requireCandidateAccess,
-  enhancedBookingController.cancelInterview.bind(enhancedBookingController)
-);
+router.post("/:interviewId/candidate/:candidateId/cancel", retiredLegacyRoute);
 
 // ====================================================
 // INTERVIEW STATUS AND HISTORY
@@ -128,12 +103,7 @@ router.post(
  * 
  * Get interview status and next steps
  */
-router.get(
-  "/:interviewId/candidate/:candidateId/status",
-  requireAuth,
-  requireCandidateAccess,
-  enhancedBookingController.getInterviewStatus.bind(enhancedBookingController)
-);
+router.get("/:interviewId/candidate/:candidateId/status", retiredLegacyRoute);
 
 /**
  * GET /api/interviews/candidate/:candidateId/history
@@ -146,24 +116,14 @@ router.get(
  * - offset: pagination offset (default: 0)
  * - sortBy: sort field (default: -bookingMetadata.bookedAt)
  */
-router.get(
-  "/candidate/:candidateId/history",
-  requireAuth,
-  requireCandidateAccess,
-  enhancedBookingController.getCandidateInterviewHistory.bind(enhancedBookingController)
-);
+router.get("/candidate/:candidateId/history", retiredLegacyRoute);
 
 /**
  * GET /api/interviews/candidate/:candidateId/statistics
  * 
  * Get interview statistics for candidate
  */
-router.get(
-  "/candidate/:candidateId/statistics",
-  requireAuth,
-  requireCandidateAccess,
-  enhancedBookingController.getInterviewStatistics.bind(enhancedBookingController)
-);
+router.get("/candidate/:candidateId/statistics", retiredLegacyRoute);
 
 // ====================================================
 // PUBLIC ENDPOINTS (for status pages, etc.)
@@ -175,9 +135,6 @@ router.get(
  * Get public interview status (no auth required)
  * Limited information only
  */
-router.get(
-  "/:interviewId/status/public",
-  enhancedBookingController.getInterviewStatus.bind(enhancedBookingController)
-);
+router.get("/:interviewId/status/public", retiredLegacyRoute);
 
 export default router;

@@ -8,16 +8,16 @@ const questionSchema = new mongoose.Schema({
   followUpExpected: { type: Boolean, default: false }, askedAt: { type: Date, default: Date.now },
 }, { _id: false });
 const transcriptSchema = new mongoose.Schema({
-  speaker: { type: String, enum: ["AI", "CANDIDATE", "SYSTEM"], required: true }, text: { type: String, required: true, trim: true, maxlength: 8000 },
+  sequence: { type: Number, min: 0, default: 0 }, speaker: { type: String, enum: ["AI", "CANDIDATE", "SYSTEM"], required: true }, text: { type: String, required: true, trim: true, maxlength: 8000 },
   timestamp: { type: Date, default: Date.now }, questionId: { type: String, default: null }, requestId: { type: String, trim: true, default: null },
-  answerProcessed: { type: Boolean, default: false }, category: { type: String, enum: INTERVIEW_CATEGORIES, default: null },
+  answerProcessed: { type: Boolean, default: false }, answerQuality: { type: String, enum: ["WEAK", "INCOMPLETE", "POTENTIALLY_DETAILED"], default: null }, category: { type: String, enum: INTERVIEW_CATEGORIES, default: null },
   section: { type: String, enum: ["QUESTIONING", "PROJECT_WALKTHROUGH", "CLOSING", "SYSTEM"], default: "QUESTIONING" },
 }, { _id: false });
 const scoreBlock = new mongoose.Schema({ score: { type: Number, min: 0, max: 100, required: true }, summary: { type: String, trim: true, default: "" } }, { _id: false });
 const analysisSchema = new mongoose.Schema({
   technicalKnowledge: { type: scoreBlock, required: true }, projectUnderstanding: { type: scoreBlock, required: true }, problemSolving: { type: scoreBlock, required: true },
   communication: { type: scoreBlock, required: true }, projectWalkthrough: { type: scoreBlock, required: true }, strengths: { type: [String], default: [] },
-  areasForImprovement: { type: [String], default: [] }, overallScore: { type: Number, min: 0, max: 100, required: true },
+  areasForImprovement: { type: [String], default: [] }, evidence: { type: [String], default: [] }, overallScore: { type: Number, min: 0, max: 100, required: true },
   recommendation: { type: String, enum: ["STRONG", "ADMIN_REVIEW", "WEAK"], required: true }, summary: { type: String, trim: true, default: "" }, analyzedAt: { type: Date, default: Date.now }, source: { type: String, enum: ["ai", "fallback"], default: "ai" },
 }, { _id: false });
 
@@ -27,6 +27,9 @@ const aiInterviewSchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: "Project", default: null },
   scheduledAt: { type: Date, required: true }, meetLink: { type: String, trim: true, default: null }, calendarEventId: { type: String, trim: true, default: null },
   status: { type: String, enum: INTERVIEW_STATUSES, default: "SCHEDULED", index: true },
+  analysisError: { type: String, trim: true, default: null },
+  analysisAttempts: { type: Number, min: 0, default: 0 },
+  analysisUpdatedAt: { type: Date, default: null },
   phase: { type: String, enum: ["QUESTIONING", "PROJECT_WALKTHROUGH", "CLOSING"], default: "QUESTIONING" },
   currentQuestionIndex: { type: Number, default: 0, min: 0 }, questions: { type: [questionSchema], default: [] }, transcript: { type: [transcriptSchema], default: [] },
   startedAt: { type: Date, default: null }, endedAt: { type: Date, default: null }, analysis: { type: analysisSchema, default: null },

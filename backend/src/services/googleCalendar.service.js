@@ -15,6 +15,14 @@ class GoogleCalendarService {
     this.calendarId = process.env.GOOGLE_CALENDAR_CALENDAR_ID || 'primary';
   }
 
+  async getCalendarEvent(eventId) {
+    if (!this.initialized || !this.calendar) {
+      throw new Error('Google Calendar service not initialized');
+    }
+    const response = await this.calendar.events.get({ calendarId: this.calendarId, eventId });
+    return response.data;
+  }
+
   /**
    * Initialize Google Calendar API with OAuth2 credentials
    */
@@ -70,25 +78,42 @@ class GoogleCalendarService {
       const response = await this.calendar.events.insert({
         calendarId: this.calendarId,
         resource: event,
-        sendUpdates: 'all', // Send notifications to all attendees
-        conferenceDataVersion: 1, // Enable Google Meet integration
+        sendUpdates: 'all',
+        conferenceDataVersion: 1,
       });
 
-      logger.info(`Calendar event created for interview ${interview._id}`);
-      logger.debug(`Event ID: ${response.data.id}`);
+      let eventData = response.data;
+      const eventId = eventData.id;
+      let meetLink = eventData.conferenceData?.entryPoints?.find((entry) => entry.entryPointType === "video")?.uri || eventData.hangoutLink || null;
+      const conferenceStatus = eventData.conferenceData?.createRequest?.status;
+      if (!meetLink && eventId && conferenceStatus === "pending") {
+        for (let attempt = 0; attempt < 4 && !meetLink; attempt += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+          eventData = await this.getCalendarEvent(eventId);
+          meetLink = eventData.conferenceData?.entryPoints?.find((entry) => entry.entryPointType === "video")?.uri || eventData.hangoutLink || null;
+        }
+      }
 
+      if (!meetLink) {
+        const error = new Error("Google Calendar did not provide a Meet conference URL.");
+        error.code = "MEET_LINK_UNAVAILABLE";
+        if (eventId) await this.deleteInterviewEvent(eventId, interview._id, "Meet conference URL unavailable").catch(() => {});
+        throw error;
+      }
+
+      logger.info(`Calendar event created for interview ${interview._id}`);
       return {
         success: true,
-        eventId: response.data.id,
-        eventLink: response.data.htmlLink,
-        hangoutLink: response.data.hangoutLink,
-        meetLink: response.data.conferenceData?.entryPoints?.find((entry) => entry.entryPointType === "video")?.uri || response.data.hangoutLink || null,
-        eventData: response.data
+        eventId,
+        eventLink: eventData.htmlLink,
+        hangoutLink: eventData.hangoutLink,
+        meetLink,
+        eventData,
       };
 
     } catch (error) {
-      logger.error(`❌ Failed to create calendar event for interview ${interview._id}:`, error.message);
-      throw new Error(`Failed to create calendar event: ${error.message}`);
+      logger.error(`Failed to create calendar event for interview ${interview._id}:`, error.code || error.message);
+      throw error;
     }
   }
 
@@ -231,11 +256,11 @@ class GoogleCalendarService {
         timeZone: slot.timezone || 'UTC',
       },
       attendees: [
-        {
+        ...(candidate.email ? [{
           email: candidate.email,
           displayName: candidate.name || candidate.email,
           responseStatus: 'needsAction',
-        },
+        }] : []),
         // Add interviewer email if available
         ...(interview.interviewerEmail ? [{
           email: interview.interviewerEmail,
@@ -254,7 +279,7 @@ class GoogleCalendarService {
       },
       conferenceData: {
         createRequest: {
-          requestId: `interview_${interview._id}`, 
+          requestId: `interview_${interview._id}_${Date.now()}`,
           conferenceSolutionKey: { type: 'hangoutsMeet' },
         },
       },
@@ -348,12 +373,6 @@ This event was created by AI Interview System
   }
 }
 
-// Create singleton instance
-const googleCalendarService = new GoogleCalendarService();
-
-// Auto-initialize (but don't block)
-googleCalendarService.initialize().catch(error => {
-  logger.error('Failed to auto-initialize Google Calendar service:', error);
-});
-
+// One backend-only singleton shared by the legacy integration and active booking flow.
+export const googleCalendarService = new GoogleCalendarService();
 export default googleCalendarService;

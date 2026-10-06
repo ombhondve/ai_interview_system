@@ -124,6 +124,7 @@ export function toStudentBooking(booking, config) {
     mode: booking.mode,
     location: config.location,
     meetLink: booking.meetLink || null,
+    calendarEventId: booking.calendarEventId || null,
     bookedAt: booking.bookedAt,
   };
 }

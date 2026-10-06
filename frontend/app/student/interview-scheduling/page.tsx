@@ -297,6 +297,12 @@ export default function InterviewSchedulingPage() {
                 </p>
               )}
 
+              {bookingResult.meetLink && (
+                <p className="mt-4 rounded-lg bg-indigo-50 p-3 text-sm text-indigo-900">
+                  Google Meet is the scheduled human meeting link. The AI interview runs separately in the authenticated interview room.
+                </p>
+              )}
+
               <p className="mt-6 rounded-lg bg-white/70 p-3 text-sm text-slate-600">
                 You already have an active interview scheduled, so no further
                 booking is possible.

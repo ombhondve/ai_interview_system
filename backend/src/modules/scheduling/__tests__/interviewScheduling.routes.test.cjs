@@ -123,6 +123,12 @@ jest.mock("../interviewBooking.model.js", () => {
         store.push(row);
         return { ...row, toObject: () => row };
       },
+      findOneAndDelete: async (query) => {
+        const index = store.findIndex((row) => row._id === query._id && row.candidateId === query.candidateId);
+        if (index === -1) return null;
+        return store.splice(index, 1)[0];
+      },
+      findById: async (id) => store.find((row) => row._id === id) || null,
       findOne: (query) => {
         const row = store.find(
           (r) =>
