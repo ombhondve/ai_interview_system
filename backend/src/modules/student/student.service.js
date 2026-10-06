@@ -12,6 +12,23 @@ import {
 import { keepInvocationAlive } from "../../utils/vercelBackground.js";
 import { createSubmissionId, deriveVerificationState } from "../projects/verificationState.js";
 import { startVerificationProgress } from "../projects/verificationProgress.service.js";
+import { preflightRepositoryFetch } from "../projects/repository.service.js";
+
+/**
+ * Student-safe messages for repository fetch failures during submission.
+ *
+ * ONLY these pre-approved strings are ever returned to the client. Internal
+ * fetch details (network/API errors, stack traces) are logged server-side
+ * and never attached to the error that reaches the controller response.
+ */
+const REPOSITORY_FETCH_MESSAGES = {
+  default:
+    "Unable to fetch the repository. Please check the URL and submit again.",
+  timeout:
+    "The repository took too long to respond. Please try again.",
+  empty_repository:
+    "The repository appears to be empty. Please add your project files and submit again."
+};
 
 /**
  * ============================================
@@ -506,6 +523,52 @@ export async function createProjectSubmission(candidateId, url) {
     if (!['http:', 'https:'].includes(urlObj.protocol)) {
       throw new Error("URL must use HTTP or HTTPS protocol");
     }
+
+    // ---------------------------------------------------------------
+    // Repository fetch pre-flight — BEFORE any database write.
+    //
+    // The submission must never enter the verification pipeline unless the
+    // submitted repository can actually be fetched. Because this runs before
+    // the submission is persisted, a failed fetch leaves the student in the
+    // "not submitted" state, so the controller can return a fetch-specific
+    // non-success response and the student stays on the Submit URL page to
+    // correct the URL and retry.
+    //
+    // Existing validation errors (deadline, no project, invalid URL, ...)
+    // are checked ABOVE and still take precedence — they are NOT reported
+    // as repository-fetch failures.
+    // ---------------------------------------------------------------
+    let repositoryPreflight;
+    try {
+      repositoryPreflight = await preflightRepositoryFetch(url);
+    } catch (fetchError) {
+      // Defensive: preflightRepositoryFetch is not supposed to throw, but an
+      // unexpected throw must still fail safe as a fetch failure (never as a
+      // success, and never by leaking internals to the client).
+      repositoryPreflight = {
+        fetchable: false,
+        errorType: "unexpected",
+        reason: fetchError?.message
+      };
+    }
+
+    if (!repositoryPreflight?.fetchable) {
+      // Internal detail stays in server logs only.
+      console.error("Repository fetch pre-flight failed:", {
+        candidateId,
+        url,
+        errorType: repositoryPreflight?.errorType,
+        reason: repositoryPreflight?.reason
+      });
+
+      const fetchError = new Error(
+        REPOSITORY_FETCH_MESSAGES[repositoryPreflight?.errorType] ||
+          REPOSITORY_FETCH_MESSAGES.default
+      );
+      fetchError.code = "REPOSITORY_FETCH_FAILED";
+      throw fetchError;
+    }
+
     // Identify this specific submission so an older background verification
     // can never overwrite the result of this newer one.
     const submissionId = createSubmissionId();

@@ -683,6 +683,11 @@ export default function Project() {
   async function submitProject() {
     const cleanUrl = url.trim();
 
+    // Never allow two submissions while a request is already in progress.
+    if (submitting) {
+      return;
+    }
+
     setError("");
     setSuccess("");
 
@@ -726,8 +731,20 @@ export default function Project() {
         }
       );
 
-      const data =
-        await response.json();
+      /**
+       * Error responses are not guaranteed to carry JSON (e.g. a proxy or
+       * 5xx page), so parsing must never break the error path.
+       */
+      let data: {
+        message?: string;
+        code?: string;
+      } | null = null;
+
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
 
       /**
        * Session expired.
@@ -740,8 +757,33 @@ export default function Project() {
       }
 
       if (!response.ok) {
+        /**
+         * The backend could not fetch/validate the submitted repository, so
+         * the submission was never started. Return the student to the Submit
+         * URL page (the form stays rendered with the entered URL intact) and
+         * show the safe, user-friendly message so they can correct the URL
+         * and submit again — without refreshing the browser.
+         */
+        if (data?.code === "repository_fetch_failed") {
+          // Make sure the page is not left on a verification/result view if
+          // the flow had already moved away from the Submit URL page.
+          setVerification(null);
+          setVerificationProgress(null);
+          setVerificationHistory([]);
+          setReplayIndex(0);
+          setPendingTerminalVerification(null);
+          setShowTerminalResult(false);
+
+          setError(
+            data.message ||
+              "Unable to fetch the repository. Please check the URL and submit again."
+          );
+          return;
+        }
+
+        // Any other existing error type keeps its current behaviour.
         throw new Error(
-          data.message ||
+          data?.message ||
             "Unable to submit your project."
         );
       }

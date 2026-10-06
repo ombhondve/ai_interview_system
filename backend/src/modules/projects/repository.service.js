@@ -1947,6 +1947,112 @@ export async function fetchRepositoryContent(url) {
 }
 
 /**
+ * Pre-flight repository fetch for the SUBMISSION flow.
+ *
+ * Answers exactly one question, read-only, before a submission is persisted:
+ * "Can this submitted URL actually be fetched right now?"
+ *
+ * It reuses the SAME validation + structure-fetch logic the background
+ * verification uses (validateRepositoryUrl + getRepositoryStructure), but
+ * deliberately does NOT download file contents, so the submit request stays
+ * fast and does not duplicate the content traffic the verification flow
+ * performs anyway.
+ *
+ * Failure coverage (matches fetchRepositoryContent's failure conditions):
+ *   - invalid URL format / non-http(s) protocol / file-like URLs -> invalid_url
+ *   - repository does not exist / private / inaccessible / 4xx / 5xx
+ *     / network error / API timeout                                -> not_accessible
+ *   - GitHub repository with an empty file tree                    -> empty_repository
+ *   - overall pre-flight exceeded the budget                       -> timeout
+ *   - anything else thrown                                         -> unexpected
+ *
+ * SAFETY: this never throws and never returns user-facing internals.
+ * `reason` is intended for SERVER-SIDE LOGS ONLY - callers must not send it
+ * to clients.
+ *
+ * @param {string} url - submitted project/repository URL
+ * @param {{timeoutMs?: number}} [options] override the overall budget
+ *   (default REPO_PREFLIGHT_TIMEOUT_MS env var, else 30000 ms). The budget
+ *   must stay well below the serverless function maxDuration (60s on Vercel)
+ *   so a slow fetch fails the request gracefully instead of hanging it.
+ * @returns {Promise<{fetchable: boolean, errorType?: string, reason?: string}>}
+ */
+export async function preflightRepositoryFetch(url, options = {}) {
+  try {
+    // 1) URL validation — identical to the check fetchRepositoryContent runs.
+    const validation = validateRepositoryUrl(url);
+    if (!validation.valid) {
+      return {
+        fetchable: false,
+        errorType: "invalid_url",
+        reason: validation.error
+      };
+    }
+
+    // 2) Overall timeout budget so the submit request can never hang.
+    const configured = Number(process.env.REPO_PREFLIGHT_TIMEOUT_MS);
+    const timeoutMs = Number(options.timeoutMs) > 0
+      ? Math.floor(Number(options.timeoutMs))
+      : (Number.isFinite(configured) && configured > 0
+          ? Math.floor(configured)
+          : 30000);
+
+    let timeoutHandle = null;
+    const timeoutPromise = new Promise((_, reject) => {
+      timeoutHandle = setTimeout(
+        () => reject(new Error(`Repository pre-flight timeout (${timeoutMs}ms)`)),
+        timeoutMs
+      );
+    });
+
+    let structure;
+    try {
+      structure = await Promise.race([getRepositoryStructure(url), timeoutPromise]);
+    } finally {
+      if (timeoutHandle) clearTimeout(timeoutHandle);
+    }
+
+    // 3) Accessibility — covers not-found, private repos, network errors,
+    //    API timeouts and 4xx/5xx responses (getRepositoryStructure reports
+    //    every one of them as accessible: false with a log-safe reason).
+    if (!structure || !structure.accessible) {
+      return {
+        fetchable: false,
+        errorType: "not_accessible",
+        reason: structure?.error || "Repository not accessible"
+      };
+    }
+
+    // 4) Empty/unusable content — for GitHub the file tree is known, and an
+    //    empty tree is exactly what fetchRepositoryContent later rejects as
+    //    "Repository appears to be empty".
+    if (structure.platform === "github") {
+      const files = structure.structure?.files;
+      if (Array.isArray(files) && files.length === 0) {
+        return {
+          fetchable: false,
+          errorType: "empty_repository",
+          reason: "Repository contains no files"
+        };
+      }
+    }
+
+    return { fetchable: true };
+  } catch (error) {
+    const message = error?.message || String(error);
+    const timedOut =
+      message.toLowerCase().includes("timeout") ||
+      message.toLowerCase().includes("timed out");
+
+    return {
+      fetchable: false,
+      errorType: timedOut ? "timeout" : "unexpected",
+      reason: message
+    };
+  }
+}
+
+/**
  * Extract dependencies from package files
  */
 function extractDependencies(keyFiles) {

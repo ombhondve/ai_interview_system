@@ -435,6 +435,26 @@ export async function submitProjectController(req, res) {
       stack: error?.stack
     });
     
+    // ---------------------------------------------------------------
+    // Repository fetch failure.
+    //
+    // The service throws this BEFORE persisting anything, so no submission
+    // was created and no verification was started. Return a dedicated
+    // non-success response so the frontend stops loading and returns the
+    // student to the Submit URL page with a safe, user-friendly message.
+    //
+    // error.message is a pre-approved student-safe string (see
+    // REPOSITORY_FETCH_MESSAGES in student.service.js); no internal details
+    // (stack, API/network errors, paths) are included.
+    // ---------------------------------------------------------------
+    if (error?.code === "REPOSITORY_FETCH_FAILED") {
+      return res.status(422).json({
+        success: false,
+        code: "repository_fetch_failed",
+        message: error.message
+      });
+    }
+    
     // Handle specific errors
     const errorMessages = {
       "Candidate not found": "Candidate not found.",
