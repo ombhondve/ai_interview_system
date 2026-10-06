@@ -69,25 +69,110 @@ router.get("/callback", async (req, res) => {
   }
 
   try {
-    const grant = await exchangeCalendarCode(req.query.code, grantOwner.adminId);
-    const refreshToken = decryptGoogleToken(grant.encryptedRefreshToken);
-    const calendarId = process.env.GOOGLE_CALENDAR_CALENDAR_ID || "primary";
-    const client = await googleCalendarService.initializeForRefreshToken(refreshToken, calendarId);
-
-    // Verify Calendar access: try events.list first, fall back to calendars.get if needed
+    logger.info("OAUTH_STEP: 1. exchangeCalendarCode START", { adminId: grantOwner.adminId });
+    let grant;
     try {
-      const validation = await client.events.list({ calendarId, maxResults: 1 });
-      if (!validation || typeof validation.data !== "object") {
-        throw new Error("Calendar validation returned an invalid response.");
-      }
-    } catch (eventsErr) {
-      logger.warn("Initial events list check warned, verifying primary calendar access", {
-        message: eventsErr?.message,
+      grant = await exchangeCalendarCode(req.query.code, grantOwner.adminId);
+      logger.info("OAUTH_STEP: 1. exchangeCalendarCode SUCCESS", {
+        adminId: grantOwner.adminId,
+        hasEmail: Boolean(grant?.email),
+        hasEncryptedToken: Boolean(grant?.encryptedRefreshToken),
       });
-      await client.calendars.get({ calendarId });
+    } catch (err) {
+      logger.error("OAUTH_STEP: 1. exchangeCalendarCode FAIL", {
+        adminId: grantOwner.adminId,
+        message: err?.message,
+        code: err?.code,
+        status: err?.status || err?.response?.status,
+      });
+      throw err;
     }
 
-    await persistCalendarConnection({ adminId: grantOwner.adminId, ...grant });
+    logger.info("OAUTH_STEP: 2. decryptGoogleToken START", { adminId: grantOwner.adminId });
+    let refreshToken;
+    try {
+      refreshToken = decryptGoogleToken(grant.encryptedRefreshToken);
+      logger.info("OAUTH_STEP: 2. decryptGoogleToken SUCCESS", {
+        adminId: grantOwner.adminId,
+        tokenLength: typeof refreshToken === "string" ? refreshToken.length : 0,
+      });
+    } catch (err) {
+      logger.error("OAUTH_STEP: 2. decryptGoogleToken FAIL", {
+        adminId: grantOwner.adminId,
+        message: err?.message,
+      });
+      throw err;
+    }
+
+    const calendarId = process.env.GOOGLE_CALENDAR_CALENDAR_ID || "primary";
+
+    logger.info("OAUTH_STEP: 3. initializeForRefreshToken START", { adminId: grantOwner.adminId, calendarId });
+    let client;
+    try {
+      client = await googleCalendarService.initializeForRefreshToken(refreshToken, calendarId);
+      logger.info("OAUTH_STEP: 3. initializeForRefreshToken SUCCESS", { adminId: grantOwner.adminId });
+    } catch (err) {
+      logger.error("OAUTH_STEP: 3. initializeForRefreshToken FAIL", {
+        adminId: grantOwner.adminId,
+        message: err?.message,
+        code: err?.code,
+        status: err?.status,
+      });
+      throw err;
+    }
+
+    // Verify Calendar access: try events.list first, fall back to calendars.get if needed
+    logger.info("OAUTH_STEP: 4. events.list START", { adminId: grantOwner.adminId, calendarId });
+    try {
+      const validation = await client.events.list({ calendarId, maxResults: 1 });
+      logger.info("OAUTH_STEP: 4. events.list SUCCESS", {
+        adminId: grantOwner.adminId,
+        dataType: typeof validation?.data,
+      });
+    } catch (eventsErr) {
+      logger.warn("OAUTH_STEP: 4. events.list FAIL", {
+        adminId: grantOwner.adminId,
+        message: eventsErr?.message,
+        code: eventsErr?.code,
+        status: eventsErr?.status || eventsErr?.response?.status,
+      });
+
+      logger.info("OAUTH_STEP: 5. calendars.get START", { adminId: grantOwner.adminId, calendarId });
+      try {
+        await client.calendars.get({ calendarId });
+        logger.info("OAUTH_STEP: 5. calendars.get SUCCESS", { adminId: grantOwner.adminId });
+      } catch (calErr) {
+        logger.error("OAUTH_STEP: 5. calendars.get FAIL", {
+          adminId: grantOwner.adminId,
+          message: calErr?.message,
+          code: calErr?.code,
+          status: calErr?.status || calErr?.response?.status,
+        });
+        throw calErr;
+      }
+    }
+
+    logger.info("OAUTH_STEP: 6. persistCalendarConnection START", {
+      adminId: grantOwner.adminId,
+      email: grant.email,
+    });
+    try {
+      const saved = await persistCalendarConnection({ adminId: grantOwner.adminId, ...grant });
+      logger.info("OAUTH_STEP: 7. persistCalendarConnection SUCCESS", {
+        adminId: grantOwner.adminId,
+        id: saved?._id ? String(saved._id) : null,
+        status: saved?.status,
+      });
+    } catch (saveErr) {
+      logger.error("OAUTH_STEP: 7. persistCalendarConnection FAIL", {
+        adminId: grantOwner.adminId,
+        message: saveErr?.message,
+        name: saveErr?.name,
+        errors: saveErr?.errors ? Object.keys(saveErr.errors) : null,
+      });
+      throw saveErr;
+    }
+
     googleCalendarService.clearConnectionCache(grantOwner.adminId);
     redirect.searchParams.set("calendar", "connected");
     logger.info("Google Calendar connected", { adminId: grantOwner.adminId, email: grant.email });
