@@ -77,6 +77,18 @@ jest.mock("../../candidate/candidate.model.js", () => ({
   __esModule: true,
   default: { findByIdAndUpdate: jest.fn(async () => ({})), findById: jest.fn() },
 }));
+jest.mock("../../interview/interview.session.service.js", () => ({
+  ensureSessionForBooking: jest.fn(async ({ bookingId, candidateId, scheduledAt }) => ({ _id: `session-${bookingId}`, bookingId, candidateId, scheduledAt, save: jest.fn(async function () { return this; }) })),
+}));
+jest.mock("../../interview/interview.booking.integration.js", () => ({
+  createInterviewMeeting: jest.fn(async () => ({ meetLink: "https://meet.google.com/test-link", eventId: "event-1" })),
+  deleteInterviewMeeting: jest.fn(async () => {}),
+}));
+jest.mock("../../interview/interview.model.js", () => ({
+  __esModule: true,
+  default: { deleteOne: jest.fn(async () => ({})) },
+}));
+
 
 jest.mock("../../verification/verificationSession.model.js", () => ({
   __esModule: true,
@@ -123,12 +135,15 @@ jest.mock("../interviewBooking.model.js", () => {
         store.push(row);
         return { ...row, toObject: () => row };
       },
+      findById: async (id) => {
+        const row = store.find((item) => item._id === id) || null;
+        return row ? { ...row, save: jest.fn(async function () { return this; }) } : null;
+      },
       findOneAndDelete: async (query) => {
         const index = store.findIndex((row) => row._id === query._id && row.candidateId === query.candidateId);
         if (index === -1) return null;
         return store.splice(index, 1)[0];
       },
-      findById: async (id) => store.find((row) => row._id === id) || null,
       findOne: (query) => {
         const row = store.find(
           (r) =>

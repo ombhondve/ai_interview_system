@@ -129,14 +129,22 @@ export default function InterviewPage() {
         try {
           const audioBlob = new Blob(audioChunks.current, { type: audioRecorder.mimeType || "audio/webm" });
           if (!audioBlob.size) { setMic("idle"); return; }
+          const voiceRequestId = `voice-${session?._id}-${turnId.current++}-${Date.now()}`;
           const response = await fetch(backendApiUrl(`/api/ai-interviews/${session?._id}/transcribe`), {
-            method: "POST", credentials: "include", headers: { "Content-Type": audioBlob.type }, body: audioBlob,
+            method: "POST", credentials: "include", headers: { "Content-Type": audioBlob.type, "X-Request-Id": voiceRequestId }, body: audioBlob,
           });
           const result = await response.json().catch(() => ({}));
           if (!response.ok) throw new Error(result.message || "Speech recognition failed.");
-          setAnswer((previous) => `${previous}${previous && result.text ? " " : ""}${result.text || ""}`.trim());
-          if (result.silence) setNotice("No speech detected. Try again or type your answer.");
-          setConnection("connected");
+          if (result.interview) {
+            setSession(result.interview);
+            setAnswer("");
+            setConnection("connected");
+            if (result.nextQuestion?.question) await say(result.nextQuestion.questionId, result.nextQuestion.question);
+          } else {
+            setAnswer((previous) => `${previous}${previous && result.text ? " " : ""}${result.text || ""}`.trim());
+            if (result.silence) setNotice("No speech detected. Try again or type your answer.");
+            setConnection("connected");
+          }
         } catch (error) {
           setConnection("error");
           setNotice(error instanceof Error ? `${error.message} Type your answer or retry recording.` : "Speech recognition failed. Type your answer instead.");

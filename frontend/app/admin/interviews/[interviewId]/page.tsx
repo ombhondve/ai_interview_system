@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 
 type InterviewReport = {
-  _id: string; candidateId: { name?: string; email?: string; role?: string; resumeData?: unknown; skills?: string[]; projectSubmission?: { url?: string; aiVerificationStatus?: string; aiVerificationResult?: { verificationStatus?: string; summary?: string; detailedAnalysis?: { verifiedFeatures?: string[]; requirementsAssessment?: Array<{ description: string; status: string }> } } } } | string;
+  _id: string; candidateId: { name?: string; email?: string; role?: string; resumeData?: unknown; skills?: string[]; projectSubmission?: { url?: string; aiVerificationStatus?: string; aiVerificationResult?: { verificationStatus?: string; summary?: string; detailedAnalysis?: { overallAssessment?: string; verifiedFeatures?: string[]; requirementsAssessment?: Array<{ description: string; status: string }> } } } } | string;
   projectId?: { title?: string; requirements?: string[]; technologies?: string[] } | string; scheduledAt: string; status: string; meetLink?: string; analysisError?: string;
   questions: Array<{ question: string; category: string; difficulty: string }>;
   transcript: Array<{ speaker: string; text: string; timestamp: string; section?: string }>;
