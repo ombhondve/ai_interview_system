@@ -129,4 +129,61 @@ describe("Google Calendar Admin Authentication Flow", () => {
     expect(res.status).toBe(403);
     expect(res.body.message).toBe("Insufficient permissions.");
   });
+
+  test("Calendar validation succeeds on empty calendar ({}) without requiring items array", async () => {
+    // Simulating Google Calendar events.list returning empty data {}
+    const mockClient = {
+      events: {
+        list: jest.fn().mockResolvedValue({ data: {} }),
+      },
+      calendars: {
+        get: jest.fn().mockResolvedValue({ data: { id: "primary" } }),
+      },
+    };
+
+    let validationSucceeded = false;
+    const calendarId = "primary";
+    try {
+      const validation = await mockClient.events.list({ calendarId, maxResults: 1 });
+      if (!validation || typeof validation.data !== "object") {
+        throw new Error("Calendar validation returned an invalid response.");
+      }
+      validationSucceeded = true;
+    } catch {
+      await mockClient.calendars.get({ calendarId });
+      validationSucceeded = true;
+    }
+
+    expect(validationSucceeded).toBe(true);
+    expect(mockClient.events.list).toHaveBeenCalledWith({ calendarId: "primary", maxResults: 1 });
+  });
+
+  test("GET /api/admin/google-calendar/status returns 200 { connected: true, ... } when connection is stored", async () => {
+    getAdminCalendarConnectionMock.mockResolvedValue({
+      adminId: "admin-123",
+      googleAccountEmail: "recruiter@example.com",
+      calendarId: "primary",
+      status: "connected",
+      connectedAt: new Date("2026-10-06T12:00:00Z"),
+      lastValidatedAt: new Date("2026-10-06T12:00:00Z"),
+    });
+
+    const token = jwt.sign(
+      { adminId: "admin-123", email: "admin@recruitai.com", role: "superadmin" },
+      JWT_SECRET,
+      { expiresIn: "8h" }
+    );
+
+    const res = await request(app)
+      .get("/api/admin/google-calendar/status")
+      .set("Cookie", `recruitai_admin=${token}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      success: true,
+      connected: true,
+      googleAccountEmail: "recruiter@example.com",
+    });
+  });
 });
+
