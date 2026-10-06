@@ -25,7 +25,7 @@ import {
   CalendarDays,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { backendApiUrl } from "@/lib/client";
+import { apiUrl } from "@/lib/client";
 
 type AdminRole = "Super Admin" | "Recruiter";
 
@@ -237,7 +237,7 @@ export default function SettingsPage() {
 
   const loadCalendarStatus = useCallback(async () => {
     try {
-      const response = await fetch(backendApiUrl("/api/admin/google-calendar/status"), { credentials: "include", cache: "no-store" });
+      const response = await fetch(apiUrl("/api/admin/google-calendar/status"), { credentials: "include", cache: "no-store" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message || "Unable to load Google Calendar status.");
       setCalendarStatus(data);
@@ -264,7 +264,7 @@ export default function SettingsPage() {
   const connectCalendar = async () => {
     setCalendarBusy(true); setCalendarNotice("");
     try {
-      const response = await fetch(backendApiUrl("/api/admin/google-calendar/connect"), { credentials: "include", cache: "no-store" });
+      const response = await fetch(apiUrl("/api/admin/google-calendar/connect"), { credentials: "include", cache: "no-store" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || !data.authorizationUrl) throw new Error(data.message || "Unable to start Google Calendar connection.");
       window.location.assign(data.authorizationUrl);
@@ -277,7 +277,7 @@ export default function SettingsPage() {
   const disconnectCalendar = async () => {
     setCalendarBusy(true); setCalendarNotice("");
     try {
-      const response = await fetch(backendApiUrl("/api/admin/google-calendar/disconnect"), { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" } });
+      const response = await fetch(apiUrl("/api/admin/google-calendar/disconnect"), { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" } });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.message || "Unable to disconnect Google Calendar.");
       setCalendarStatus({ connected: false });

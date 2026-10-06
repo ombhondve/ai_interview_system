@@ -1,9 +1,11 @@
 import jwt from "jsonwebtoken";
 
+const isProduction = process.env.NODE_ENV === "production";
+
 const cookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === "production",
-  sameSite: "lax",
+  secure: isProduction,
+  sameSite: isProduction ? "none" : "lax",
   path: "/",
   maxAge: 8 * 60 * 60 * 1000,
 };
@@ -82,8 +84,8 @@ export async function me(req, res) {
 export async function logout(req, res) {
   res.clearCookie("recruitai_admin", {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
     path: "/",
   });
   return res.status(200).json({ message: "Logged out successfully" });
@@ -113,15 +115,15 @@ export async function googleAuthCallback(req, res) {
     );
 
     // Set cookie (adjust cookie name as needed)
-    const cookieOptions = {
+    const userCookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      secure: isProduction,
+      sameSite: isProduction ? "none" : "lax",
       path: "/",
       maxAge: 8 * 60 * 60 * 1000, // 8 hours
     };
 
-    res.cookie("recruitai_user", token, cookieOptions);
+    res.cookie("recruitai_user", token, userCookieOptions);
 
     // Redirect to frontend or return JSON
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
