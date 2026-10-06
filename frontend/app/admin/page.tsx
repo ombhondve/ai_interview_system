@@ -8,11 +8,20 @@ import {
   Video,
   FileCheck2,
   ArrowUpRight,
+  CalendarDays,
+  Search,
 } from "lucide-react";
 import Link from "next/link";
 
 import { Card } from "@/components/ui/Card";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { getGreeting } from "@/lib/utils";
+import {
+  adminScheduleService,
+  AdminUpcomingInterview,
+} from "@/services/interviewScheduling.api";
 
 const stats = [
   {
@@ -36,7 +45,7 @@ const stats = [
     value: 5,
     description: "Scheduled interviews",
     icon: Video,
-    href: "/admin/interviews",
+    href: "/admin/schedule",
     tone: "info" as const,
   },
   {
@@ -110,6 +119,19 @@ function useCountUp(target: number, durationMs = 900, skip = false) {
   }, [target, durationMs, skip]);
 
   return value;
+}
+
+function Detail({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        {label}
+      </dt>
+      <dd className="mt-0.5 break-words text-sm text-slate-900 dark:text-slate-100">
+        {value || "—"}
+      </dd>
+    </div>
+  );
 }
 
 function StatCard({ stat, index }: { stat: (typeof stats)[number]; index: number }) {
@@ -199,6 +221,170 @@ function PipelineBar() {
 
 export default function AdminDashboardPage() {
   const greeting = useMemo(() => getGreeting(), []);
+  const [upcoming, setUpcoming] = useState<AdminUpcomingInterview[]>([]);
+  const [upcomingLoading, setUpcomingLoading] = useState(true);
+  const [upcomingError, setUpcomingError] = useState(false);
+  const [upcomingQuery, setUpcomingQuery] = useState("");
+
+  const loadUpcoming = async () => {
+    setUpcomingLoading(true);
+    setUpcomingError(false);
+    try {
+      const data = await adminScheduleService.getUpcoming(8);
+      setUpcoming(data.interviews ?? []);
+    } catch {
+      setUpcomingError(true);
+    } finally {
+      setUpcomingLoading(false);
+      {/* -------------------------------------------------------- */}
+      {/* SCHEDULED INTERVIEWS (READ-ONLY)                             */}
+      {/* -------------------------------------------------------- */}
+      {/* Visualised as booked slots: student slot cards only.         */}
+      {/* No create / edit / delete / reschedule controls exist here   */}
+      {/* (or anywhere in the admin app) — the admin can only VIEW.    */}
+      <Card className="p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <CalendarDays className="h-4 w-4 text-accent-600 dark:text-accent-400" />
+              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
+                Scheduled Interviews
+              </h2>
+            </div>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              Slots booked by students. Read-only — no changes possible here.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                value={upcomingQuery}
+                onChange={(event) => setUpcomingQuery(event.target.value)}
+                placeholder="Search candidate…"
+                aria-label="Search scheduled interviews"
+                className="w-52 rounded-md border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-sm text-slate-700 outline-none focus:border-accent-400 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+              />
+            </div>
+            <Link
+              href="/admin/schedule"
+              className="text-sm font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400"
+            >
+              View full schedule →
+            </Link>
+          </div>
+        </div>
+
+        <div className="mt-5">
+          {upcomingLoading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-20 w-full" />
+              ))}
+            </div>
+          ) : upcomingError ? (
+            <ErrorState
+              title="Unable to load scheduled interviews"
+              onRetry={loadUpcoming}
+            />
+          ) : filteredUpcoming.length === 0 ? (
+            <EmptyState
+              icon={Video}
+              title={
+                upcoming.length === 0
+                  ? "No interviews scheduled yet"
+                  : "No matches found"
+              }
+              description={
+                upcoming.length === 0
+                  ? "Booked slots will appear here as soon as students schedule their interviews."
+                  : "Try a different name, email, role or project."
+              }
+            />
+          ) : (
+            <ul className="space-y-3">
+              {filteredUpcoming.map((interview) => (
+                <li
+                  key={interview.id}
+                  className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50/60 p-4 sm:flex-row sm:items-start sm:justify-between dark:border-white/5 dark:bg-white/[0.02]"
+                >
+                  <div className="flex items-center gap-3 sm:w-44 sm:shrink-0">
+                    <span
+                      aria-hidden
+                      className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500"
+                    />
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                        {interview.time} – {interview.endTime}
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {interview.date}
+                      </p>
+                    </div>
+                  </div>
+
+                  <dl className="grid flex-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                    <Detail
+                      label="Candidate"
+                      value={interview.candidate.name}
+                    />
+                    <Detail label="Email" value={interview.candidate.email} />
+                    <Detail label="Phone" value={interview.candidate.phone} />
+                    <Detail label="Role" value={interview.candidate.role} />
+                    <Detail label="Project" value={interview.project} />
+                    <Detail
+                      label="Status"
+                      value={
+                        interview.status
+                          ? interview.status.charAt(0).toUpperCase() +
+                            interview.status.slice(1)
+                          : null
+                      }
+                    />
+                  </dl>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Card>
+
+    }
+  };
+
+  useEffect(() => {
+    loadUpcoming();
+  }, []);
+
+  const filteredUpcoming = useMemo(() => {
+    const needle = upcomingQuery.trim().toLowerCase();
+    if (!needle) return upcoming;
+    return upcoming.filter((interview) =>
+      [
+        interview.candidate.name,
+        interview.candidate.email,
+        interview.candidate.phone,
+        interview.candidate.role,
+        interview.project,
+        interview.date,
+        interview.time,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(needle))
+    );
+  }, [upcoming, upcomingQuery]);
+
+  const liveStats = useMemo(
+    () =>
+      stats.map((stat) =>
+        stat.title === "Upcoming Interviews" && !upcomingLoading
+          ? { ...stat, value: upcoming.length }
+          : stat
+      ),
+    [upcoming.length, upcomingLoading]
+  );
 
   return (
     <div className="space-y-8">
@@ -211,7 +397,7 @@ export default function AdminDashboardPage() {
       </motion.div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {stats.map((stat, index) => (
+        {liveStats.map((stat, index) => (
           <StatCard key={stat.title} stat={stat} index={index} />
         ))}
       </div>

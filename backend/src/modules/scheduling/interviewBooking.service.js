@@ -317,3 +317,80 @@ export async function getAdminSchedule(config, dateStr) {
     }),
   };
 }
+
+/**
+ * =====================================================
+ * UPCOMING INTERVIEWS (READ-ONLY)
+ * =====================================================
+ */
+
+/**
+ * Every ACTIVE booking from "now" into the future, soonest first.
+ *
+ * This powers the admin dashboard's "upcoming interviews" list: the admin
+ * sees WHO is scheduled and WHEN (candidate name/email/phone/role + project
+ * + time), and nothing else. Like getAdminSchedule this is a read path only
+ * — there is deliberately no create / update / delete / assign counterpart
+ * anywhere in the codebase.
+ *
+ * @param {object} config InterviewConfig document (used for timezone
+ *   formatting so every admin view renders times identically).
+ * @param {{limit?: number|string}} [options] cap on returned rows
+ *   (default 50, max 200).
+ * @returns {Promise<object>} { readOnly: true, timezone, interviews: [...] }
+ */
+export async function getUpcomingBookings(config, options = {}) {
+  const requested = Number(options?.limit);
+  const limit =
+    Number.isFinite(requested) && requested > 0
+      ? Math.min(Math.floor(requested), 200)
+      : 50;
+
+  const now = new Date();
+
+  const bookings = await InterviewBooking.find({
+    status: { $in: ACTIVE_BOOKING_STATUSES },
+    startAt: { $gte: now },
+  })
+    .populate("candidateId", "name email phone role")
+    .populate("projectId", "title")
+    .sort({ startAt: 1 })
+    .lean();
+
+  // Defensive re-sort so the display order is stable regardless of storage
+  // engine (and test doubles).
+  const ordered = [...bookings].sort(
+    (a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime()
+  );
+
+  return {
+    readOnly: true,
+    timezone: config.timezone,
+    interviewDurationMinutes: config.interviewDurationMinutes,
+    mode: config.mode,
+    location: config.location,
+    interviews: ordered.slice(0, limit).map((booking) => {
+      const candidate = booking.candidateId || {};
+
+      return {
+        id: booking._id.toString(),
+        status: booking.status,
+        startAt: booking.startAt.toISOString(),
+        endAt: booking.endAt.toISOString(),
+        date: formatDateInZone(booking.startAt, config.timezone),
+        time: formatTimeInZone(booking.startAt, config.timezone),
+        endTime: formatTimeInZone(booking.endAt, config.timezone),
+        bookedAt: booking.bookedAt,
+        candidate: {
+          id: candidate._id ? candidate._id.toString() : null,
+          name: candidate.name || null,
+          email: candidate.email || null,
+          phone: candidate.phone || null,
+          role: candidate.role || null,
+        },
+        project: booking.projectId?.title || null,
+        meetLink: booking.meetLink || null,
+      };
+    }),
+  };
+}

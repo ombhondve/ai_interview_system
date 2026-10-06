@@ -8,6 +8,7 @@ import {
   getStudentBooking,
   bookInterview,
   getAdminSchedule,
+  getUpcomingBookings,
 } from "./interviewBooking.service.js";
 import {
   getInterviewConfig,
@@ -270,6 +271,39 @@ router.get(
       return res
         .status(500)
         .json({ message: "Unable to load the interview schedule." });
+    }
+  }
+);
+
+/**
+ * GET /api/admin/interviews/upcoming?limit=50
+ *
+ * ADMIN ONLY, READ-ONLY. Every scheduled interview from now into the future
+ * (soonest first), with the booked student's details — the list rendered on
+ * the admin dashboard. There is deliberately no mutation counterpart: admin
+ * can look, students do the booking.
+ */
+router.get(
+  "/admin/interviews/upcoming",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const config = await getInterviewConfig();
+
+      const upcoming = await getUpcomingBookings(config, {
+        limit: req.query?.limit,
+      });
+
+      return res.status(200).json({
+        success: true,
+        ...upcoming,
+        serverTime: formatTimeInZone(new Date(), config.timezone),
+      });
+    } catch (error) {
+      console.error("Error loading upcoming interviews:", error);
+      return res
+        .status(500)
+        .json({ message: "Unable to load upcoming interviews." });
     }
   }
 );

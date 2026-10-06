@@ -141,12 +141,15 @@ jest.mock("../interviewBooking.model.js", () => {
       find: (query = {}) => {
         let rows = store.filter((r) => r.status === "scheduled");
 
-        if (query.startAt?.$gte) {
-          rows = rows.filter(
-            (r) =>
-              r.startAt.getTime() >= query.startAt.$gte.getTime() &&
-              r.startAt.getTime() < query.startAt.$lt.getTime()
-          );
+        // Mirror Mongo semantics: each bound is optional on its own.
+        const bounds = query.startAt || {};
+        if (bounds.$gte || bounds.$lt) {
+          rows = rows.filter((r) => {
+            const time = r.startAt.getTime();
+            if (bounds.$gte && time < bounds.$gte.getTime()) return false;
+            if (bounds.$lt && time >= bounds.$lt.getTime()) return false;
+            return true;
+          });
         }
 
         const populated = rows.map((row) => ({
@@ -584,7 +587,7 @@ describe("GET /api/admin/interviews/schedule", () => {
     expect(adminMutations).toEqual([]);
   });
 
-  test("TEST 11b: the only admin interview route is the read-only schedule", () => {
+  test("TEST 11b: the only admin interview routes are read-only GETs", () => {
     const adminRoutes = routes.stack
       .map((layer) => layer.route)
       .filter((route) => route && route.path.startsWith("/admin"))
@@ -592,6 +595,7 @@ describe("GET /api/admin/interviews/schedule", () => {
 
     expect(adminRoutes).toEqual([
       { path: "/admin/interviews/schedule", methods: ["get"] },
+      { path: "/admin/interviews/upcoming", methods: ["get"] },
     ]);
   });
 
@@ -632,6 +636,115 @@ describe("GET /api/admin/interviews/schedule", () => {
       .set("x-admin-token", "admin-jwt")
       .send({ startAt: futureSlot().toISOString() })
       .expect(404);
+  });
+});
+
+describe("GET /api/admin/interviews/upcoming", () => {
+  test("an admin sees future student bookings with candidate details (read-only)", async () => {
+    const target = futureSlot(11, 0);
+
+    await InterviewBookingModel.create({
+      candidateId: "student-upcoming",
+      candidateName: "Upcoming Student",
+      candidateEmail: "upcoming@example.com",
+      startAt: target,
+      endAt: new Date(target.getTime() + 30 * 60000),
+      status: "scheduled",
+      bookedAt: new Date(),
+    });
+
+    const response = await request(buildApp())
+      .get("/api/admin/interviews/upcoming")
+      .set("x-admin-token", "admin-jwt")
+      .expect(200);
+
+    expect(response.body.success).toBe(true);
+    expect(response.body.readOnly).toBe(true);
+    expect(response.body.timezone).toBe(TZ);
+    expect(response.body.interviews).toHaveLength(1);
+
+    const [interview] = response.body.interviews;
+    expect(interview.candidate.name).toBe("Upcoming Student");
+    expect(interview.candidate.email).toBe("upcoming@example.com");
+    expect(interview.candidate.phone).toBeTruthy();
+    expect(interview.date).toBeTruthy();
+    expect(interview.time).toBeTruthy();
+    expect(interview.startAt).toBe(target.toISOString());
+    expect(interview.status).toBe("scheduled");
+  });
+
+  test("bookings are returned soonest-first and past bookings are excluded", async () => {
+    const later = futureSlot(15, 0);
+    const sooner = futureSlot(12, 0);
+
+    await InterviewBookingModel.create({
+      candidateId: "student-later",
+      startAt: later,
+      endAt: new Date(later.getTime() + 30 * 60000),
+      status: "scheduled",
+    });
+    await InterviewBookingModel.create({
+      candidateId: "student-sooner",
+      startAt: sooner,
+      endAt: new Date(sooner.getTime() + 30 * 60000),
+      status: "scheduled",
+    });
+    // A booking in the past must never appear in "upcoming".
+    await InterviewBookingModel.create({
+      candidateId: "student-past",
+      startAt: new Date(Date.now() - 60 * 60000),
+      endAt: new Date(Date.now() - 30 * 60000),
+      status: "scheduled",
+    });
+
+    const response = await request(buildApp())
+      .get("/api/admin/interviews/upcoming")
+      .set("x-admin-token", "admin-jwt")
+      .expect(200);
+
+    expect(response.body.interviews).toHaveLength(2);
+    expect(response.body.interviews[0].startAt).toBe(sooner.toISOString());
+    expect(response.body.interviews[1].startAt).toBe(later.toISOString());
+  });
+
+  test("the limit option caps the returned list", async () => {
+    for (const hour of [10, 11, 12, 13]) {
+      const target = futureSlot(hour, 0);
+      await InterviewBookingModel.create({
+        candidateId: `student-${hour}`,
+        startAt: target,
+        endAt: new Date(target.getTime() + 30 * 60000),
+        status: "scheduled",
+      });
+    }
+
+    const response = await request(buildApp())
+      .get("/api/admin/interviews/upcoming?limit=2")
+      .set("x-admin-token", "admin-jwt")
+      .expect(200);
+
+    expect(response.body.interviews).toHaveLength(2);
+  });
+
+  test("an unauthenticated caller is rejected", async () => {
+    await request(buildApp())
+      .get("/api/admin/interviews/upcoming")
+      .expect(401);
+  });
+
+  test("there is no write verb on the upcoming endpoint", async () => {
+    const app = buildApp();
+
+    for (const method of ["post", "put", "patch", "delete"]) {
+      const response = await request(app)
+        [method]("/api/admin/interviews/upcoming")
+        .set("x-admin-token", "admin-jwt")
+        .send({});
+
+      expect([404, 405]).toContain(response.status);
+    }
+
+    expect(InterviewBookingModel.__store).toHaveLength(0);
   });
 });
 

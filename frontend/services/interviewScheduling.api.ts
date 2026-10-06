@@ -207,6 +207,37 @@ export const interviewSchedulingService = {
 // ADMIN (READ-ONLY)
 // =====================================================
 
+/**
+ * Admin requests are sent to the RELATIVE path on purpose.
+ *
+ * The `recruitai_admin` session cookie is set through the Next.js rewrite
+ * proxy (`/api/*` -> backend), so it lives on the FRONTEND origin with
+ * SameSite=Lax. An absolute cross-origin URL would drop the cookie and the
+ * request would fail with 401 in production. Every other admin client in this
+ * app (services/api.ts, lib/client request()) is relative for the same
+ * reason. Student calls stay absolute because `candidate_session` is set on
+ * the backend domain (see backendApiUrl).
+ */
+async function adminCall<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(path, {
+    ...init,
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    cache: "no-store",
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      (data as { message?: string })?.message ||
+        `Request failed (${response.status})`
+    );
+  }
+
+  return data as T;
+}
+
 export interface AdminScheduleEntry {
   startAt: string;
   endAt: string;
@@ -242,6 +273,41 @@ export interface AdminScheduleResponse {
   entries: AdminScheduleEntry[];
 }
 
+/**
+ * One scheduled interview on the admin dashboard's "upcoming" list — the
+ * booked student plus their schedule details. View-only by design.
+ */
+export interface AdminUpcomingInterview {
+  id: string;
+  status: string;
+  startAt: string;
+  endAt: string;
+  date: string;
+  time: string;
+  endTime: string;
+  bookedAt?: string;
+  candidate: {
+    id: string | null;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    role: string | null;
+  };
+  project: string | null;
+  meetLink: string | null;
+}
+
+export interface AdminUpcomingResponse {
+  success: boolean;
+  readOnly: true;
+  timezone: string;
+  interviewDurationMinutes: number;
+  mode: string;
+  location: string;
+  serverTime: string;
+  interviews: AdminUpcomingInterview[];
+}
+
 export const adminScheduleService = {
   /**
    * The generated schedule plus booking details for booked times.
@@ -250,8 +316,18 @@ export const adminScheduleService = {
    * this client: the admin schedule is read-only.
    */
   getSchedule(date: string): Promise<AdminScheduleResponse> {
-    return call<AdminScheduleResponse>(
+    return adminCall<AdminScheduleResponse>(
       `/api/admin/interviews/schedule?date=${encodeURIComponent(date)}`
+    );
+  },
+
+  /**
+   * Every scheduled interview from now into the future (soonest first),
+   * with the booked student's details. Read-only — no mutation counterpart.
+   */
+  getUpcoming(limit = 50): Promise<AdminUpcomingResponse> {
+    return adminCall<AdminUpcomingResponse>(
+      `/api/admin/interviews/upcoming?limit=${encodeURIComponent(String(limit))}`
     );
   },
 };
