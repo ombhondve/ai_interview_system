@@ -74,16 +74,15 @@ class GoogleCalendarService {
         conferenceDataVersion: 1, // Enable Google Meet integration
       });
 
-      logger.info(`✅ Calendar event created for interview ${interview._id}`);
+      logger.info(`Calendar event created for interview ${interview._id}`);
       logger.debug(`Event ID: ${response.data.id}`);
-      logger.debug(`Event Link: ${response.data.htmlLink}`);
 
       return {
         success: true,
         eventId: response.data.id,
         eventLink: response.data.htmlLink,
         hangoutLink: response.data.hangoutLink,
-        meetLink: response.data.conferenceData?.entryPoints?.[0]?.uri,
+        meetLink: response.data.conferenceData?.entryPoints?.find((entry) => entry.entryPointType === "video")?.uri || response.data.hangoutLink || null,
         eventData: response.data
       };
 
@@ -216,8 +215,8 @@ class GoogleCalendarService {
    * Build calendar event object
    */
   buildCalendarEvent(interview, slot, candidate) {
-    const startTime = new Date(slot.startTime);
-    const endTime = new Date(slot.endTime);
+    const startTime = new Date(slot.startTime || slot.startAt);
+    const endTime = new Date(slot.endTime || slot.endAt);
 
     const event = {
       summary: `AI Interview - ${candidate.name || candidate.email}`,
@@ -255,7 +254,7 @@ class GoogleCalendarService {
       },
       conferenceData: {
         createRequest: {
-          requestId: `interview_${interview._id}_${Date.now()}`,
+          requestId: `interview_${interview._id}`, 
           conferenceSolutionKey: { type: 'hangoutsMeet' },
         },
       },
@@ -283,14 +282,16 @@ class GoogleCalendarService {
    * Build event description
    */
   buildEventDescription(interview, slot, candidate) {
+    const startAt = slot.startTime || slot.startAt;
+    const duration = slot.duration || slot.durationMinutes || interview.aiConfig?.duration || 30;
     return `
 AI Interview Scheduled
 
 Candidate: ${candidate.name || candidate.email}
 Interview Type: ${interview.interviewType?.toUpperCase() || 'AI Interview'}
-Duration: ${slot.duration || 30} minutes
-Date: ${new Date(slot.startTime).toLocaleDateString()}
-Time: ${new Date(slot.startTime).toLocaleTimeString()}
+Duration: ${duration} minutes
+Date: ${new Date(startAt).toLocaleDateString()}
+Time: ${new Date(startAt).toLocaleTimeString()}
 Timezone: ${slot.timezone || 'UTC'}
 
 Preparation Required:

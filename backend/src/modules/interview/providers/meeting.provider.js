@@ -6,3 +6,4 @@ export class MeetingProvider {
   async stopAgent() { throw new Error("This meeting provider does not support an AI media agent"); }
   async getTranscript() { throw new Error("This meeting provider does not expose a transcript API"); }
 }
+export default MeetingProvider;

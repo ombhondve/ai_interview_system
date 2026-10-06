@@ -14,6 +14,7 @@ import studentRoutes from "./modules/student/student.routes.js";
 import verificationRoutes from "./modules/verification/verification.routes.js";
 import authRoutes from "./modules/auth/auth.routes.js";
 import calendarRoutes from "./modules/calendar/calendar.routes.js";
+import interviewSessionRoutes from "./modules/interview/interview.routes.js";
 import cookieParser from "./middleware/cookieParser.middleware.js";
 import { initializeGoogleOAuth } from "./config/googleOAuth.js";
 import connectDatabase from "./config/database.js";
@@ -327,6 +328,9 @@ app.use(
   "/api/interviews",
   enhancedBookingRoutes
 );
+
+// AI interview sessions, transcripts, reports, and human admin decisions.
+app.use("/api/ai-interviews", interviewSessionRoutes);
 
 // =====================================================
 // VERIFICATION

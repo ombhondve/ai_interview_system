@@ -99,6 +99,12 @@ export async function buildInterviewContext({ candidateId, projectId, bookingId 
 
   const submission = candidate.projectSubmission || {};
   const verificationResult = submission.aiVerificationResult || null;
+  const requirementSummary = (value) => {
+    if (Array.isArray(value)) return value.map((item) => typeof item === "string" ? item : item?.description || item?.name || JSON.stringify(item)).filter(Boolean);
+    if (typeof value === "string") return [value];
+    if (value && typeof value === "object") return Object.entries(value).map(([key, entry]) => `${key}: ${typeof entry === "string" ? entry : JSON.stringify(entry)}`);
+    return [];
+  };
 
   return {
     candidate: {
@@ -115,11 +121,9 @@ export async function buildInterviewContext({ candidateId, projectId, bookingId 
           title: project.title || "",
           role: project.role || "",
           technologies: project.technologies || project.techStack || [],
-          requirements:
-            project.requirements ||
-            project.functionalRequirements ||
-            project.deliverables ||
-            [],
+          requirements: requirementSummary(
+            project.requirements || project.functionalRequirements || project.deliverables || project.description || []
+          ),
         }
       : null,
     verification: {

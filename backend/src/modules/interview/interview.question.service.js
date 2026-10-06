@@ -80,7 +80,7 @@ function sanitizeAiQuestion(raw, askedQuestions) {
   // Duplicate prevention: exact or near-duplicate of an asked question.
   const normalized = text.toLowerCase();
   const dup = (askedQuestions || []).some((q) => {
-    const prev = String(q.question || "").toLowerCase();
+    const prev = String(q?.question || q || "").toLowerCase();
     return prev && (prev === normalized || (normalized.length > 20 && prev.includes(normalized.slice(0, 40))));
   });
   if (dup) return null;
@@ -96,10 +96,11 @@ function sanitizeAiQuestion(raw, askedQuestions) {
 function pickFallback(phase, askedQuestions) {
   const pool = FALLBACK_QUESTIONS[phase] || FALLBACK_QUESTIONS.QUESTIONING;
   const asked = new Set((askedQuestions || []).map((q) => String(q?.question || q || "").toLowerCase()));
-  return (
-    pool.find((q) => !asked.has(q.question.toLowerCase())) ||
-    { category: "FOLLOW_UP", question: "Could you explain a different technical decision you made in your project?", difficulty: "MEDIUM" }
-  );
+  const available = pool.find((q) => !asked.has(q.question.toLowerCase()));
+  if (available) return available;
+  if (phase === "PROJECT_WALKTHROUGH") return FALLBACK_QUESTIONS.CLOSING[0];
+  if (phase === "CLOSING") return { category: "CLOSING", question: "Is there anything else about your implementation you would like the recruitment team to know?", difficulty: "EASY" };
+  return { category: "FOLLOW_UP", question: "Could you explain another technical decision you made in your project?", difficulty: "MEDIUM" };
 }
 
 /**

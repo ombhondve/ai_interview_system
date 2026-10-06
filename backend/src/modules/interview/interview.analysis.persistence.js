@@ -1,4 +1,4 @@
-import AiInterview from "./aiInterview.model.js";
+import AiInterview from "./interview.model.js";
 import { buildInterviewContext } from "./interview.context.service.js";
 import { analyzeInterview } from "./interview.analysis.service.js";
 import logger from "../../utils/logger.js";

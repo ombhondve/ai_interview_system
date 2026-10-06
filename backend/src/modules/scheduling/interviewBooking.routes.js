@@ -20,6 +20,8 @@ import {
   formatDateInZone,
 } from "./interviewConfig.service.js";
 import { canBookInterviewSlot } from "../projects/deadline.service.js";
+import { ensureSessionForBooking } from "../interview/interview.session.service.js";
+import InterviewBooking from "./interviewBooking.model.js";
 
 const router = express.Router();
 
@@ -186,11 +188,25 @@ router.post(
         candidate: req.candidate,
         startAt,
       });
+      let interviewSession;
+      try {
+        const bookingDocument = await InterviewBooking.findById(booking.id);
+        interviewSession = await ensureSessionForBooking({
+          candidateId: req.candidate._id,
+          projectId: bookingDocument?.projectId || req.candidate.assignedProjectId,
+          bookingId: booking.id,
+          scheduledAt: booking.startAt,
+          meetLink: booking.meetLink,
+        });
+      } catch (sessionError) {
+        console.error("Unable to initialize AI interview session", sessionError.message);
+      }
 
       return res.status(201).json({
         success: true,
         message: "Interview scheduled successfully.",
-        booking,
+        booking: { ...booking, interviewId: interviewSession?._id?.toString() || null },
+        interviewId: interviewSession?._id?.toString() || null,
       });
     } catch (error) {
       if (error instanceof BookingError) {

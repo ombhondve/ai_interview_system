@@ -140,7 +140,7 @@ export default function InterviewSchedulingPage() {
 
     try {
       const result = await interviewSchedulingService.book(selectedStartAt);
-      setBookingResult(result.booking);
+      setBookingResult({ ...result.booking, interviewId: result.interviewId });
       setSelectedStartAt(null);
       await loadAvailability(selectedDate);
     } catch (error) {
@@ -305,9 +305,9 @@ export default function InterviewSchedulingPage() {
               <Button
                 className="mt-5"
                 variant="outline"
-                onClick={() => router.push("/student/status")}
+                onClick={() => router.push("/student/interview")}
               >
-                View application status
+                Go to interview room
               </Button>
             </CardContent>
           </Card>
