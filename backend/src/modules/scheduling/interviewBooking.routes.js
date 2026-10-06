@@ -26,6 +26,7 @@ import Candidate from "../candidate/candidate.model.js";
 import AiInterview from "../interview/interview.model.js";
 import { createInterviewMeeting, deleteInterviewMeeting } from "../interview/interview.booking.integration.js";
 import logger from "../../utils/logger.js";
+import { getActiveCalendarConnectionAdminId } from "../calendar/googleCalendar.connection.service.js";
 
 const router = express.Router();
 
@@ -206,12 +207,17 @@ router.post(
           calendarEventId: bookingDocument?.calendarEventId,
         });
         const candidate = await Candidate.findById(req.candidate._id);
-        meeting = await createInterviewMeeting({ session: interviewSession, booking: bookingDocument, candidate });
+        const calendarAdminId = await getActiveCalendarConnectionAdminId();
+        meeting = await createInterviewMeeting({ session: interviewSession, booking: bookingDocument, candidate, adminId: calendarAdminId });
         bookingDocument.meetLink = meeting.meetLink;
         bookingDocument.calendarEventId = meeting.eventId;
+        bookingDocument.conferenceId = meeting.conferenceId || null;
+        bookingDocument.calendarAdminId = meeting.adminId;
         await bookingDocument.save();
         interviewSession.meetLink = meeting.meetLink;
         interviewSession.calendarEventId = meeting.eventId;
+        interviewSession.conferenceId = meeting.conferenceId || null;
+        interviewSession.calendarAdminId = meeting.adminId;
         await interviewSession.save();
 
         return res.status(201).json({
@@ -222,10 +228,25 @@ router.post(
         });
       } catch (integrationError) {
         logger.error("Interview booking integration failed", { bookingId: booking.id, code: integrationError?.code || "INTEGRATION_FAILURE" });
-        if (meeting?.eventId) await deleteInterviewMeeting(meeting.eventId, interviewSession?._id).catch(() => {});
-        if (interviewSession) await AiInterview.deleteOne({ _id: interviewSession._id }).catch(() => {});
-        await InterviewBooking.findOneAndDelete({ _id: booking.id, candidateId: req.candidate._id }).catch(() => {});
-        await Candidate.findByIdAndUpdate(req.candidate._id, { $set: { interviewStatus: "pending" }, $unset: { interviewDate: "", interviewBookedAt: "" } }).catch(() => {});
+        if (meeting?.eventId && (!interviewSession?.calendarEventId || interviewSession.calendarEventId !== meeting.eventId)) {
+          try {
+            await deleteInterviewMeeting(meeting.eventId, interviewSession?._id, meeting.adminId);
+          } catch (cleanupError) {
+            logger.error("Google Calendar cleanup failed after booking setup error", { bookingId: booking.id, eventId: meeting.eventId, code: cleanupError?.code || "CALENDAR_CLEANUP_FAILED" });
+          }
+        }
+        if (interviewSession?.calendarEventId) {
+          try {
+            await deleteInterviewMeeting(interviewSession.calendarEventId, interviewSession._id, interviewSession.calendarAdminId);
+          } catch (cleanupError) {
+            logger.error("Persisted Google Calendar cleanup failed", { bookingId: booking.id, eventId: interviewSession.calendarEventId, code: cleanupError?.code || "CALENDAR_CLEANUP_FAILED" });
+          }
+        }
+        if (interviewSession) {
+          await AiInterview.deleteOne({ _id: interviewSession._id }).catch((cleanupError) => logger.error("Interview session cleanup failed", { bookingId: booking.id, code: cleanupError?.code || "SESSION_CLEANUP_FAILED" }));
+        }
+        await InterviewBooking.findOneAndDelete({ _id: booking.id, candidateId: req.candidate._id }).catch((cleanupError) => logger.error("Interview booking cleanup failed", { bookingId: booking.id, code: cleanupError?.code || "BOOKING_CLEANUP_FAILED" }));
+        await Candidate.findByIdAndUpdate(req.candidate._id, { $set: { interviewStatus: "pending" }, $unset: { interviewDate: "", interviewBookedAt: "" } }).catch((cleanupError) => logger.error("Candidate booking mirror cleanup failed", { bookingId: booking.id, code: cleanupError?.code || "CANDIDATE_CLEANUP_FAILED" }));
         const status = integrationError?.status || 503;
         return res.status(status).json({ success: false, code: integrationError?.code || "INTERVIEW_SETUP_FAILED", message: integrationError?.safeMessage || "Unable to set up the interview meeting. Please try booking again." });
       }

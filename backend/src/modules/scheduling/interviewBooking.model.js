@@ -81,6 +81,16 @@ const interviewBookingSchema = new mongoose.Schema(
       trim: true,
     },
 
+    conferenceId: {
+      type: String,
+      trim: true,
+    },
+
+    calendarAdminId: {
+      type: String,
+      trim: true,
+    },
+
     bookedAt: {
       type: Date,
       required: true,

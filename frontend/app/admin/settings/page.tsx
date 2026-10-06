@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   User,
   Palette,
@@ -22,7 +22,10 @@ import {
   AlertTriangle,
   Eye,
   EyeOff,
+  CalendarDays,
 } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { backendApiUrl } from "@/lib/client";
 
 type AdminRole = "Super Admin" | "Recruiter";
 
@@ -80,10 +83,15 @@ type Section =
   | "appearance"
   | "notifications"
   | "preferences"
-  | "team";
+  | "team"
+  | "calendar";
 
 export default function SettingsPage() {
+  const searchParams = useSearchParams();
   const [activeSection, setActiveSection] = useState<Section>("profile");
+  const [calendarStatus, setCalendarStatus] = useState<{ connected: boolean; googleAccountEmail?: string; calendarId?: string; connectedAt?: string; lastValidatedAt?: string }>({ connected: false });
+  const [calendarBusy, setCalendarBusy] = useState(false);
+  const [calendarNotice, setCalendarNotice] = useState("");
 
   const [admins, setAdmins] = useState(initialAdmins);
 
@@ -227,6 +235,58 @@ export default function SettingsPage() {
     setDeleteAdmin(null);
   };
 
+  const loadCalendarStatus = useCallback(async () => {
+    try {
+      const response = await fetch(backendApiUrl("/api/admin/google-calendar/status"), { credentials: "include", cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "Unable to load Google Calendar status.");
+      setCalendarStatus(data);
+      if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("calendar") === "connected") setCalendarNotice(data.connected ? "Google Calendar connected successfully." : "The connection could not be confirmed. Please retry.");
+    } catch (error) {
+      setCalendarNotice(error instanceof Error ? error.message : "Unable to load Google Calendar status.");
+    }
+  }, []);
+
+  useEffect(() => { void loadCalendarStatus(); }, [loadCalendarStatus]);
+  useEffect(() => {
+    const outcome = searchParams.get("calendar");
+    const reason = searchParams.get("reason");
+    if (outcome === "connected") {
+      setActiveSection("calendar");
+      setCalendarNotice("Calendar authorization completed. Checking the saved connection…");
+      void loadCalendarStatus();
+    } else if (outcome === "error") {
+      setActiveSection("calendar");
+      setCalendarNotice(reason === "authorization_denied" ? "Google Calendar access was not granted." : "Calendar connection could not be verified. Please retry.");
+    }
+  }, [searchParams, loadCalendarStatus]);
+
+  const connectCalendar = async () => {
+    setCalendarBusy(true); setCalendarNotice("");
+    try {
+      const response = await fetch(backendApiUrl("/api/admin/google-calendar/connect"), { credentials: "include", cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.authorizationUrl) throw new Error(data.message || "Unable to start Google Calendar connection.");
+      window.location.assign(data.authorizationUrl);
+    } catch (error) {
+      setCalendarNotice(error instanceof Error ? error.message : "Unable to start Google Calendar connection.");
+      setCalendarBusy(false);
+    }
+  };
+
+  const disconnectCalendar = async () => {
+    setCalendarBusy(true); setCalendarNotice("");
+    try {
+      const response = await fetch(backendApiUrl("/api/admin/google-calendar/disconnect"), { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" } });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.message || "Unable to disconnect Google Calendar.");
+      setCalendarStatus({ connected: false });
+      setCalendarNotice(data.revocationPending ? "Disconnected locally. Google token revocation could not be confirmed." : "Google Calendar disconnected.");
+    } catch (error) {
+      setCalendarNotice(error instanceof Error ? error.message : "Unable to disconnect Google Calendar.");
+    } finally { setCalendarBusy(false); }
+  };
+
   const handleSaveSettings = () => {
     setSaved(true);
 
@@ -267,6 +327,13 @@ export default function SettingsPage() {
             />
 
             <SettingsNav
+              icon={<CalendarDays size={17} />}
+              label="Google Calendar"
+              active={activeSection === "calendar"}
+              onClick={() => setActiveSection("calendar")}
+            />
+
+            <SettingsNav
               icon={<Users size={17} />}
               label="Team & Admins"
               active={activeSection === "team"}
@@ -297,6 +364,20 @@ export default function SettingsPage() {
 
           {/* Content */}
           <div className="space-y-6">
+            {activeSection === "calendar" && (
+              <SettingsCard title="Google Calendar" description="Connect the company calendar used to create interview events and Google Meet links.">
+                {calendarNotice && <p role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{calendarNotice}</p>}
+                <div className="flex flex-col gap-4 rounded-xl border border-slate-200 p-4 dark:border-white/10 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className={`flex items-center gap-2 font-semibold ${calendarStatus.connected ? "text-emerald-700" : "text-slate-700 dark:text-slate-200"}`}><span aria-hidden className={`h-2.5 w-2.5 rounded-full ${calendarStatus.connected ? "bg-emerald-500" : "bg-slate-400"}`} />{calendarStatus.connected ? "Connected" : "Not connected"}</p>
+                    {calendarStatus.connected ? <div className="mt-2 space-y-1 text-sm text-slate-600 dark:text-slate-400"><p>Account: {calendarStatus.googleAccountEmail}</p><p>Calendar: {calendarStatus.calendarId === "primary" ? "Primary calendar" : calendarStatus.calendarId}</p><p>Connected: {calendarStatus.connectedAt ? new Date(calendarStatus.connectedAt).toLocaleString() : "—"}</p></div> : <p className="mt-2 max-w-xl text-sm text-slate-600 dark:text-slate-400">Connect an authorized Google account so verified candidates can book calendar events and Meet conferences.</p>}
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2"><button disabled={calendarBusy} onClick={() => void connectCalendar()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">{calendarBusy ? "Working…" : calendarStatus.connected ? "Reconnect Google Calendar" : "Connect Google Calendar"}</button>{calendarStatus.connected && <button disabled={calendarBusy} onClick={() => void disconnectCalendar()} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300">Disconnect</button>}</div>
+                </div>
+                <p className="mt-4 text-xs text-slate-500">Google Calendar schedules the human meeting. The AI interview runs in RecruitAI’s separate interview room; the AI does not join Google Meet.</p>
+              </SettingsCard>
+            )}
+
             {activeSection === "profile" && (
               <ProfileSection
                 profile={profile}

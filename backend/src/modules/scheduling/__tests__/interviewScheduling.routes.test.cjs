@@ -88,6 +88,9 @@ jest.mock("../../interview/interview.model.js", () => ({
   __esModule: true,
   default: { deleteOne: jest.fn(async () => ({})) },
 }));
+jest.mock("../../calendar/googleCalendar.connection.service.js", () => ({
+  getActiveCalendarConnectionAdminId: jest.fn(async () => "calendar-admin"),
+}));
 
 
 jest.mock("../../verification/verificationSession.model.js", () => ({

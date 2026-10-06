@@ -14,6 +14,7 @@ import studentRoutes from "./modules/student/student.routes.js";
 import verificationRoutes from "./modules/verification/verification.routes.js";
 import authRoutes from "./modules/auth/auth.routes.js";
 import calendarRoutes from "./modules/calendar/calendar.routes.js";
+import googleCalendarOAuthRoutes from "./modules/calendar/googleCalendar.oauth.routes.js";
 import interviewSessionRoutes from "./modules/interview/interview.routes.js";
 import interviewVoiceRoutes from "./modules/interview/interview.voice.routes.js";
 import cookieParser from "./middleware/cookieParser.middleware.js";
@@ -361,6 +362,7 @@ app.use(
   "/api/calendar",
   calendarRoutes
 );
+app.use("/api/admin/google-calendar", googleCalendarOAuthRoutes);
 
 // =====================================================
 // 404 HANDLER

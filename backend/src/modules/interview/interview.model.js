@@ -25,7 +25,7 @@ const aiInterviewSchema = new mongoose.Schema({
   candidateId: { type: mongoose.Schema.Types.ObjectId, ref: "Candidate", required: true, index: true },
   bookingId: { type: mongoose.Schema.Types.ObjectId, ref: "InterviewBooking", required: true, unique: true },
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: "Project", default: null },
-  scheduledAt: { type: Date, required: true }, meetLink: { type: String, trim: true, default: null }, calendarEventId: { type: String, trim: true, default: null },
+  scheduledAt: { type: Date, required: true }, meetLink: { type: String, trim: true, default: null }, calendarEventId: { type: String, trim: true, default: null }, calendarAdminId: { type: String, trim: true, default: null }, conferenceId: { type: String, trim: true, default: null },
   status: { type: String, enum: INTERVIEW_STATUSES, default: "SCHEDULED", index: true },
   analysisError: { type: String, trim: true, default: null },
   analysisAttempts: { type: Number, min: 0, default: 0 },

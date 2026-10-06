@@ -10,9 +10,9 @@ function safeMessage(error) {
   return "Unable to create the interview meeting. Please try booking again.";
 }
 
-export async function createInterviewMeeting({ session, booking, candidate }) {
+export async function createInterviewMeeting({ session, booking, candidate, adminId }) {
   try {
-    const initialized = calendarService.initialized || await calendarService.initialize();
+    const initialized = await calendarService.initialize(adminId);
     if (!initialized) {
       const error = new Error("Google Calendar is not configured.");
       error.status = 503;
@@ -22,6 +22,7 @@ export async function createInterviewMeeting({ session, booking, candidate }) {
     const result = await calendarService.createInterviewEvent(
       {
         _id: session._id,
+        adminId,
         candidateId: candidate._id,
         bookingId: booking._id,
         interviewType: "ai",
@@ -38,7 +39,7 @@ export async function createInterviewMeeting({ session, booking, candidate }) {
 
     if (!result?.eventId || !result?.meetLink) {
       if (result?.eventId) {
-        await calendarService.deleteInterviewEvent(result.eventId, session._id, "Meet conference URL missing").catch(() => {});
+        await calendarService.deleteInterviewEvent(result.eventId, session._id, "Meet conference URL missing", adminId).catch((cleanupError) => logger.warn("Calendar event cleanup failed after missing Meet URL", { code: cleanupError?.code || "CALENDAR_CLEANUP_FAILED" }));
       }
       const error = new Error("Google Calendar did not return a Meet link.");
       error.status = 502;
@@ -56,9 +57,9 @@ export async function createInterviewMeeting({ session, booking, candidate }) {
   }
 }
 
-export async function deleteInterviewMeeting(eventId, interviewId) {
+export async function deleteInterviewMeeting(eventId, interviewId, adminId) {
   if (!eventId) return;
-  const initialized = calendarService.initialized || await calendarService.initialize();
-  if (!initialized) return;
-  await calendarService.deleteInterviewEvent(eventId, interviewId, "Booking compensation");
+  const initialized = await calendarService.initialize(adminId);
+  if (!initialized) throw new Error("Google Calendar connection is unavailable during event cleanup.");
+  await calendarService.deleteInterviewEvent(eventId, interviewId, "Booking compensation", adminId);
 }

@@ -7,76 +7,111 @@
 
 import { google } from 'googleapis';
 import logger from '../utils/logger.js';
+import GoogleCalendarConnection from '../modules/calendar/googleCalendarConnection.model.js';
+import { decryptGoogleToken } from '../modules/calendar/googleCalendar.crypto.js';
 
 class GoogleCalendarService {
   constructor() {
-    this.calendar = null;
-    this.initialized = false;
     this.calendarId = process.env.GOOGLE_CALENDAR_CALENDAR_ID || 'primary';
+    this.clientCache = new Map();
   }
 
-  async getCalendarEvent(eventId) {
-    if (!this.initialized || !this.calendar) {
-      throw new Error('Google Calendar service not initialized');
+  async getCalendarContext(adminId) {
+    if (!adminId) {
+      const error = new Error('Google Calendar connection is required.');
+      error.code = 'GOOGLE_CALENDAR_NOT_CONNECTED';
+      error.status = 503;
+      throw error;
     }
-    const response = await this.calendar.events.get({ calendarId: this.calendarId, eventId });
-    return response.data;
+    const key = String(adminId);
+    const cached = this.clientCache.get(key);
+    if (cached) return cached;
+    const connection = await GoogleCalendarConnection.findOne({ adminId: key, status: 'connected' }).select('+refreshTokenEncrypted');
+    if (!connection?.refreshTokenEncrypted) {
+      const error = new Error('Google Calendar is not connected by an administrator.');
+      error.code = 'GOOGLE_CALENDAR_NOT_CONNECTED';
+      error.status = 503;
+      throw error;
+    }
+    const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
+    const callbackUrl = process.env.GOOGLE_CALENDAR_CALLBACK_URL;
+    if (!clientId || !clientSecret || !callbackUrl) {
+      const error = new Error('Google Calendar OAuth is not configured.');
+      error.code = 'GOOGLE_CALENDAR_NOT_CONFIGURED';
+      error.status = 503;
+      throw error;
+    }
+    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, callbackUrl);
+    oauth2Client.setCredentials({ refresh_token: decryptGoogleToken(connection.refreshTokenEncrypted) });
+    const context = { calendar: google.calendar({ version: 'v3', auth: oauth2Client }), oauth2Client, calendarId: connection.calendarId || this.calendarId, adminId: key };
+    this.clientCache.set(key, context);
+    connection.lastValidatedAt = new Date();
+    await connection.save();
+    return context;
   }
 
-  /**
-   * Initialize Google Calendar API with OAuth2 credentials
-   */
-  async initialize() {
+  clearConnectionCache(adminId) {
+    if (adminId) this.clientCache.delete(String(adminId));
+    else this.clientCache.clear();
+  }
+
+  async initializeForRefreshToken(refreshToken, calendarId = this.calendarId, adminId = null) {
+    const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
+    const redirectUri = process.env.GOOGLE_CALENDAR_CALLBACK_URL;
+    if (!clientId || !clientSecret || !redirectUri || !refreshToken) {
+      const error = new Error('Google Calendar is not configured.');
+      error.code = 'GOOGLE_CALENDAR_NOT_CONFIGURED';
+      error.status = 503;
+      throw error;
+    }
+    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
+    const calendar = google.calendar({ version: 'v3', auth: oauth2Client });
+    if (!adminId) return calendar;
+    const context = { calendar, oauth2Client, calendarId, adminId: String(adminId) };
+    this.clientCache.set(String(adminId), context);
+    return calendar;
+  }
+
+  async initialize(adminId) {
     try {
-      const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID;
-      const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
-      const refreshToken = process.env.GOOGLE_CALENDAR_REFRESH_TOKEN;
-
-      if (!clientId || !clientSecret || !refreshToken) {
-        logger.warn('Google Calendar credentials not configured. Calendar integration will be disabled.');
-        this.initialized = false;
-        return false;
-      }
-
-      // Create OAuth2 client
-      const oauth2Client = new google.auth.OAuth2(
-        clientId,
-        clientSecret,
-        'https://ai-interview-system-eewl.vercel.app/api/calendar/callback' // Optional callback URL
-      );
-
-      // Set credentials with refresh token
-      oauth2Client.setCredentials({
-        refresh_token: refreshToken
-      });
-
-      // Create calendar client
-      this.calendar = google.calendar({ version: 'v3', auth: oauth2Client });
-      this.initialized = true;
-
-      logger.info('✅ Google Calendar service initialized successfully');
+      await this.getCalendarContext(adminId);
       return true;
-
     } catch (error) {
-      logger.error('❌ Failed to initialize Google Calendar service:', error.message);
-      this.initialized = false;
-      return false;
+      if (error.code === 'GOOGLE_CALENDAR_NOT_CONNECTED' || error.code === 'GOOGLE_CALENDAR_NOT_CONFIGURED') throw error;
+      logger.error('Failed to initialize connected Google Calendar', { code: error.code || error.response?.status || 'CALENDAR_AUTH_ERROR' });
+      const safe = new Error('The connected Google Calendar authorization is invalid or unavailable. Reconnect it in admin settings.');
+      safe.code = 'GOOGLE_CALENDAR_AUTH_FAILED';
+      safe.status = 503;
+      throw safe;
     }
+  }
+
+  async getCalendarEvent(eventId, adminId) {
+    const context = await this.getCalendarContext(adminId);
+    const response = await context.calendar.events.get({ calendarId: context.calendarId, eventId });
+    return response.data;
   }
 
   /**
    * Create a calendar event for an interview
    */
   async createInterviewEvent(interview, slot, candidate) {
-    if (!this.initialized || !this.calendar) {
-      throw new Error('Google Calendar service not initialized');
+    if (!interview.adminId) {
+      const error = new Error('Google Calendar is not connected by an administrator.');
+      error.code = 'GOOGLE_CALENDAR_NOT_CONNECTED';
+      error.status = 503;
+      throw error;
     }
 
     try {
+      const context = await this.getCalendarContext(interview.adminId);
       const event = this.buildCalendarEvent(interview, slot, candidate);
 
-      const response = await this.calendar.events.insert({
-        calendarId: this.calendarId,
+      const response = await context.calendar.events.insert({
+        calendarId: context.calendarId,
         resource: event,
         sendUpdates: 'all',
         conferenceDataVersion: 1,
@@ -89,7 +124,7 @@ class GoogleCalendarService {
       if (!meetLink && eventId && conferenceStatus === "pending") {
         for (let attempt = 0; attempt < 4 && !meetLink; attempt += 1) {
           await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
-          eventData = await this.getCalendarEvent(eventId);
+          eventData = await this.getCalendarEvent(eventId, interview.adminId);
           meetLink = eventData.conferenceData?.entryPoints?.find((entry) => entry.entryPointType === "video")?.uri || eventData.hangoutLink || null;
         }
       }
@@ -97,22 +132,25 @@ class GoogleCalendarService {
       if (!meetLink) {
         const error = new Error("Google Calendar did not provide a Meet conference URL.");
         error.code = "MEET_LINK_UNAVAILABLE";
-        if (eventId) await this.deleteInterviewEvent(eventId, interview._id, "Meet conference URL unavailable").catch(() => {});
+        if (eventId) await this.deleteInterviewEvent(eventId, interview._id, "Meet conference URL unavailable", interview.adminId).catch((cleanupError) => logger.warn('Calendar event cleanup failed after missing Meet URL', { code: cleanupError?.code || 'CALENDAR_CLEANUP_FAILED' }));
         throw error;
       }
 
-      logger.info(`Calendar event created for interview ${interview._id}`);
+      logger.info('Calendar event created for interview', { interviewId: String(interview._id), eventId });
       return {
         success: true,
         eventId,
         eventLink: eventData.htmlLink,
         hangoutLink: eventData.hangoutLink,
         meetLink,
+        conferenceId: eventData.conferenceData?.conferenceId || null,
+        adminId: String(interview.adminId),
+        calendarId: context.calendarId,
         eventData,
       };
 
     } catch (error) {
-      logger.error(`Failed to create calendar event for interview ${interview._id}:`, error.code || error.message);
+      logger.error('Failed to create calendar event for interview', { interviewId: String(interview._id), code: error.code || 'CALENDAR_API_ERROR' });
       throw error;
     }
   }
@@ -121,15 +159,14 @@ class GoogleCalendarService {
    * Update an existing calendar event (for rescheduling)
    */
   async updateInterviewEvent(eventId, interview, slot, candidate) {
-    if (!this.initialized || !this.calendar) {
-      throw new Error('Google Calendar service not initialized');
-    }
+    if (!interview.adminId) throw new Error('Google Calendar service not initialized');
 
     try {
+      const context = await this.getCalendarContext(interview.adminId);
       const event = this.buildCalendarEvent(interview, slot, candidate);
 
-      const response = await this.calendar.events.update({
-        calendarId: this.calendarId,
+      const response = await context.calendar.events.update({
+        calendarId: context.calendarId,
         eventId: eventId,
         resource: event,
         sendUpdates: 'all',
@@ -155,14 +192,12 @@ class GoogleCalendarService {
   /**
    * Delete a calendar event (when interview is cancelled)
    */
-  async deleteInterviewEvent(eventId, interviewId, reason = 'Interview cancelled') {
-    if (!this.initialized || !this.calendar) {
-      throw new Error('Google Calendar service not initialized');
-    }
+  async deleteInterviewEvent(eventId, interviewId, reason = 'Interview cancelled', adminId) {
+    const context = await this.getCalendarContext(adminId);
 
     try {
-      await this.calendar.events.delete({
-        calendarId: this.calendarId,
+      await context.calendar.events.delete({
+        calendarId: context.calendarId,
         eventId: eventId,
         sendUpdates: 'all',
       });
@@ -196,14 +231,12 @@ class GoogleCalendarService {
   /**
    * Get event status
    */
-  async getEventStatus(eventId) {
-    if (!this.initialized || !this.calendar) {
-      throw new Error('Google Calendar service not initialized');
-    }
+  async getEventStatus(eventId, adminId) {
+    const context = await this.getCalendarContext(adminId);
 
     try {
-      const response = await this.calendar.events.get({
-        calendarId: this.calendarId,
+      const response = await context.calendar.events.get({
+        calendarId: context.calendarId,
         eventId: eventId,
       });
 
@@ -279,7 +312,7 @@ class GoogleCalendarService {
       },
       conferenceData: {
         createRequest: {
-          requestId: `interview_${interview._id}_${Date.now()}`,
+          requestId: interview.conferenceRequestId || `interview_${interview._id}`,
           conferenceSolutionKey: { type: 'hangoutsMeet' },
         },
       },
@@ -343,31 +376,26 @@ This event was created by AI Interview System
   /**
    * Quick test to verify calendar connection
    */
-  async testConnection() {
-    if (!this.initialized || !this.calendar) {
-      return { success: false, message: 'Calendar service not initialized' };
-    }
-
+  async testConnection(adminId) {
     try {
-      // Try to get calendar settings
-      const response = await this.calendar.calendars.get({
-        calendarId: this.calendarId,
+      const context = await this.getCalendarContext(adminId);
+      const response = await context.calendar.events.list({
+        calendarId: context.calendarId,
+        maxResults: 1,
+        fields: 'items(id)',
       });
 
       return {
         success: true,
         message: 'Google Calendar connection successful',
-        calendarId: response.data.id,
-        calendarSummary: response.data.summary,
-        timeZone: response.data.timeZone,
-        accessRole: response.data.accessRole,
+        calendarId: context.calendarId,
+        eventsAccessible: Array.isArray(response.data?.items),
       };
 
     } catch (error) {
       return {
         success: false,
-        message: `Calendar connection failed: ${error.message}`,
-        error: error.message,
+        message: 'Calendar connection failed. Verify the connection and required permissions.',
       };
     }
   }
