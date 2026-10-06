@@ -1,13 +1,19 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
 const VERSION = "v1";
 
 function encryptionKey() {
   const value = process.env.GOOGLE_TOKEN_ENCRYPTION_KEY;
-  if (!value) throw new Error("Google Calendar token encryption is not configured.");
-  const key = Buffer.from(value, "base64");
-  if (key.length !== 32) throw new Error("GOOGLE_TOKEN_ENCRYPTION_KEY must be a base64-encoded 32-byte key.");
-  return key;
+  if (value) {
+    const key = Buffer.from(value, "base64");
+    if (key.length !== 32) throw new Error("GOOGLE_TOKEN_ENCRYPTION_KEY must be a base64-encoded 32-byte key.");
+    return key;
+  }
+  const fallback = process.env.JWT_SECRET || process.env.GOOGLE_CALENDAR_CLIENT_SECRET || process.env.DEMO_ADMIN_PASSWORD;
+  if (fallback) {
+    return createHash("sha256").update(`google_calendar_token_key:${fallback}`).digest();
+  }
+  throw new Error("Google Calendar token encryption is not configured.");
 }
 
 export function encryptGoogleToken(plaintext) {

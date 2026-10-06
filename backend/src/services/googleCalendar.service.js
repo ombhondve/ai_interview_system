@@ -35,7 +35,8 @@ class GoogleCalendarService {
     }
     const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
-    const callbackUrl = process.env.GOOGLE_CALENDAR_CALLBACK_URL;
+    const callbackUrl = process.env.GOOGLE_CALENDAR_CALLBACK_URL ||
+      (process.env.BACKEND_URL ? `${process.env.BACKEND_URL.replace(/\/+$/, "")}/api/admin/google-calendar/callback` : null);
     if (!clientId || !clientSecret || !callbackUrl) {
       const error = new Error('Google Calendar OAuth is not configured.');
       error.code = 'GOOGLE_CALENDAR_NOT_CONFIGURED';
@@ -59,7 +60,8 @@ class GoogleCalendarService {
   async initializeForRefreshToken(refreshToken, calendarId = this.calendarId, adminId = null) {
     const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
-    const redirectUri = process.env.GOOGLE_CALENDAR_CALLBACK_URL;
+    const redirectUri = process.env.GOOGLE_CALENDAR_CALLBACK_URL ||
+      (process.env.BACKEND_URL ? `${process.env.BACKEND_URL.replace(/\/+$/, "")}/api/admin/google-calendar/callback` : null);
     if (!clientId || !clientSecret || !redirectUri || !refreshToken) {
       const error = new Error('Google Calendar is not configured.');
       error.code = 'GOOGLE_CALENDAR_NOT_CONFIGURED';

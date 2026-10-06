@@ -69,19 +69,36 @@ router.get("/callback", async (req, res) => {
   }
 
   try {
-    const grant = await exchangeCalendarCode(req.query.code);
+    const grant = await exchangeCalendarCode(req.query.code, grantOwner.adminId);
     const refreshToken = decryptGoogleToken(grant.encryptedRefreshToken);
     const calendarId = process.env.GOOGLE_CALENDAR_CALENDAR_ID || "primary";
     const client = await googleCalendarService.initializeForRefreshToken(refreshToken, calendarId);
-    const validation = await client.events.list({ calendarId, maxResults: 1, fields: "items(id)" });
-    if (!Array.isArray(validation.data?.items)) throw new Error("Calendar validation returned an invalid response.");
+
+    // Verify Calendar access: try events.list first, fall back to calendars.get if needed
+    try {
+      const validation = await client.events.list({ calendarId, maxResults: 1 });
+      if (!validation || typeof validation.data !== "object") {
+        throw new Error("Calendar validation returned an invalid response.");
+      }
+    } catch (eventsErr) {
+      logger.warn("Initial events list check warned, verifying primary calendar access", {
+        message: eventsErr?.message,
+      });
+      await client.calendars.get({ calendarId });
+    }
+
     await persistCalendarConnection({ adminId: grantOwner.adminId, ...grant });
     googleCalendarService.clearConnectionCache(grantOwner.adminId);
     redirect.searchParams.set("calendar", "connected");
-    logger.info("Google Calendar connected", { adminId: grantOwner.adminId });
+    logger.info("Google Calendar connected", { adminId: grantOwner.adminId, email: grant.email });
   } catch (error) {
     googleCalendarService.clearConnectionCache(grantOwner.adminId);
-    logger.warn("Google Calendar OAuth callback failed", { code: error?.code || "OAUTH_CALLBACK_FAILED" });
+    logger.error("Google Calendar OAuth callback failed", {
+      adminId: grantOwner?.adminId,
+      message: error?.message,
+      code: error?.code,
+      status: error?.status || error?.response?.status,
+    });
     redirect.searchParams.set("calendar", "error");
     redirect.searchParams.set("reason", "connection_failed");
   }

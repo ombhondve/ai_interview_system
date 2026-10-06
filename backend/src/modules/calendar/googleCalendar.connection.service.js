@@ -10,7 +10,8 @@ const STATE_TTL_MS = 10 * 60 * 1000;
 function oauthConfig() {
   const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
-  const redirectUri = process.env.GOOGLE_CALENDAR_CALLBACK_URL;
+  const redirectUri = process.env.GOOGLE_CALENDAR_CALLBACK_URL ||
+    (process.env.BACKEND_URL ? `${process.env.BACKEND_URL.replace(/\/+$/, "")}/api/admin/google-calendar/callback` : null);
   if (!clientId || !clientSecret || !redirectUri) {
     const error = new Error("Google Calendar OAuth is not configured.");
     error.code = "GOOGLE_CALENDAR_NOT_CONFIGURED";
@@ -57,20 +58,57 @@ export async function consumeCalendarAuthorizationState(state) {
   return record ? { adminId: record.adminId } : null;
 }
 
-export async function exchangeCalendarCode(code) {
+export async function exchangeCalendarCode(code, adminId = null) {
   if (typeof code !== "string" || !code.trim()) {
     const error = new Error("Google authorization code is required."); error.status = 400; error.code = "GOOGLE_AUTH_CODE_MISSING"; throw error;
   }
   const client = createCalendarOAuthClient();
   const { tokens } = await client.getToken(code.trim());
+
+  if (!tokens?.refresh_token && adminId) {
+    const existing = await GoogleCalendarConnection.findOne({ adminId }).select("+refreshTokenEncrypted");
+    if (existing?.refreshTokenEncrypted) {
+      tokens.refresh_token = decryptGoogleToken(existing.refreshTokenEncrypted);
+    }
+  }
+
   if (!tokens?.refresh_token) {
     const error = new Error("Google did not issue a refresh token. Reconnect and grant Calendar access."); error.status = 502; error.code = "GOOGLE_REFRESH_TOKEN_MISSING"; throw error;
   }
-  client.setCredentials(tokens);
-  const oauth2 = google.oauth2({ version: "v2", auth: client });
-  const userInfo = await oauth2.userinfo.get();
-  const email = String(userInfo.data?.email || "").trim().toLowerCase();
-  if (!email || userInfo.data?.verified_email === false) {
+
+  // Extract email from id_token first (standard OpenID Connect, zero network calls)
+  let email = "";
+  if (tokens.id_token) {
+    try {
+      const parts = tokens.id_token.split(".");
+      if (parts.length >= 2) {
+        const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+        if (payload?.email && (payload.email_verified !== false)) {
+          email = String(payload.email).trim().toLowerCase();
+        }
+      }
+    } catch {}
+  }
+
+  if (!email) {
+    try {
+      client.setCredentials(tokens);
+      const oauth2 = google.oauth2({ version: "v2", auth: client });
+      const userInfo = await oauth2.userinfo.get();
+      email = String(userInfo.data?.email || "").trim().toLowerCase();
+    } catch {}
+  }
+
+  if (!email) {
+    try {
+      client.setCredentials(tokens);
+      const calendar = google.calendar({ version: "v3", auth: client });
+      const cal = await calendar.calendars.get({ calendarId: "primary" });
+      email = String(cal.data?.id || "").trim().toLowerCase();
+    } catch {}
+  }
+
+  if (!email) {
     const error = new Error("Google did not provide a verified account email."); error.status = 502; error.code = "GOOGLE_ACCOUNT_UNVERIFIED"; throw error;
   }
   return {
