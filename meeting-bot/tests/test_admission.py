@@ -112,16 +112,88 @@ async def test_navigator_unknown_ui_returns_none_and_captures_diag():
 
 
 @pytest.mark.asyncio
-async def test_leave_meeting_skipped_when_not_in_meeting():
+async def test_verify_meeting_admission_waiting_dialog_blocks_joined():
+    """Verify that if a waiting dialog is present, even with a Leave/Cancel button, it is NEVER considered inside."""
     page = MagicMock()
-    loc_empty = AsyncMock()
-    loc_empty.count.return_value = 0
-    loc_empty.is_visible.return_value = False
-    page.locator.return_value = loc_empty
+    # Mock waiting dialog to be visible
+    loc_waiting = AsyncMock()
+    loc_waiting.count.return_value = 1
+    loc_waiting.is_visible.return_value = True
+
+    # Mock leave call also visible (e.g. background toolbar or modal cancel)
+    loc_leave = AsyncMock()
+    loc_leave.count.return_value = 1
+    loc_leave.is_visible.return_value = True
+
+    def locator_side_effect(selector):
+        if "Asking to join" in selector or "Someone in the call" in selector:
+            return loc_waiting
+        if "Leave call" in selector:
+            return loc_leave
+        empty = AsyncMock()
+        empty.count.return_value = 0
+        empty.is_visible.return_value = False
+        return empty
+
+    page.locator.side_effect = locator_side_effect
 
     nav = MeetNavigator(page)
-    # When is_inside_meeting is False, leave_meeting should return without error or clicking
-    await nav.leave_meeting()
-    # verify locator for leave call was not clicked
-    loc_empty.first.click.assert_not_called()
+    res = await nav.verify_meeting_admission()
+    assert not res["is_inside"]
+    assert res["waiting_detected"]
+
+
+@pytest.mark.asyncio
+async def test_verify_meeting_admission_multi_signal_success():
+    """Verify that when waiting is absent AND Leave call AND People/Chat dock are present, it confirms entry."""
+    page = MagicMock()
+    loc_visible = AsyncMock()
+    loc_visible.count.return_value = 1
+    loc_visible.is_visible.return_value = True
+
+    def locator_side_effect(selector):
+        # Waiting selectors return false
+        if "Asking to join" in selector or "someone lets you in" in selector:
+            empty = AsyncMock()
+            empty.count.return_value = 0
+            empty.is_visible.return_value = False
+            return empty
+        # Leave call and People dock return true
+        if "Leave call" in selector or "People" in selector or "Chat" in selector:
+            return loc_visible
+        empty = AsyncMock()
+        empty.count.return_value = 0
+        empty.is_visible.return_value = False
+        return empty
+
+    page.locator.side_effect = locator_side_effect
+
+    nav = MeetNavigator(page)
+    res = await nav.verify_meeting_admission()
+    assert res["is_inside"]
+    assert not res["waiting_detected"]
+    assert len(res["evidence"]) >= 2
+
+
+@pytest.mark.asyncio
+async def test_leave_call_alone_insufficient_for_joined():
+    """Verify that a Leave call button by itself without active in-meeting dock/layout does not produce JOINED."""
+    page = MagicMock()
+    loc_leave = AsyncMock()
+    loc_leave.count.return_value = 1
+    loc_leave.is_visible.return_value = True
+
+    def locator_side_effect(selector):
+        if "Leave call" in selector:
+            return loc_leave
+        empty = AsyncMock()
+        empty.count.return_value = 0
+        empty.is_visible.return_value = False
+        return empty
+
+    page.locator.side_effect = locator_side_effect
+
+    nav = MeetNavigator(page)
+    res = await nav.verify_meeting_admission()
+    assert not res["is_inside"]
 

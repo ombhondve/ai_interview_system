@@ -197,16 +197,31 @@ class MeetingBot:
                     logger.warning("[MeetingBot] 'Ask to join' was clicked. Bot is NOT directly admitted.")
                     logger.warning("[MeetingBot] State changed to: WAITING_FOR_ADMISSION. Waiting for meeting host to admit...")
 
-                    # Wait to see if host admits candidate during grace period (up to 30s)
-                    is_inside = await self._navigator.is_inside_meeting(timeout_ms=30000)
-                    if not is_inside:
+                    # Poll admission status for up to 45 seconds (checking every 2 seconds)
+                    admitted = False
+                    for poll_idx in range(22):
+                        await self._page.wait_for_timeout(2000)
+                        admission_check = await self._navigator.verify_meeting_admission()
+
+                        if admission_check["waiting_detected"]:
+                            logger.info(f"[MeetingBot] Still on waiting screen ({poll_idx + 1}/22). State remains: WAITING_FOR_ADMISSION")
+                            continue
+
+                        if admission_check["is_inside"]:
+                            admitted = True
+                            logger.info(
+                                f"[MeetingBot] Admission confirmed! Evidence: {', '.join(admission_check['evidence'])}"
+                            )
+                            break
+
+                    if not admitted:
                         # Check if still on waiting screen
                         if await self._navigator.is_waiting_for_admission():
-                            logger.info("[MeetingBot] Bot remains in WAITING_FOR_ADMISSION state (waiting for host admission).")
-                            # Keep status as WAITING_FOR_ADMISSION
+                            logger.info("[MeetingBot] Admission timeout reached. Bot remains on waiting screen. State: WAITING_FOR_ADMISSION")
+                            # Bot did NOT enter meeting
                             return True
                         self.status = BotStatus.FAILED
-                        self.failure_reason = "Admission request was rejected, timed out, or canceled by host."
+                        self.failure_reason = "Admission was rejected, canceled, or host closed the meeting."
                         logger.error(f"[MeetingBot] FAILED: {self.failure_reason}")
                         return False
 
@@ -219,7 +234,7 @@ class MeetingBot:
                         logger.error(f"[MeetingBot] FAILED: {self.failure_reason}")
                         return False
 
-                # At this point, in-meeting controls are strictly confirmed
+                # At this point, in-meeting controls are strictly confirmed with multi-signal evidence
                 self.status = BotStatus.JOINED
                 self.joined_at = datetime.utcnow().isoformat() + "Z"
                 logger.info("[MeetingBot] Successfully joined Google Meet")

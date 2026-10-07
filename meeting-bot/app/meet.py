@@ -276,6 +276,9 @@ class MeetNavigator:
             'text="Waiting for the host"',
             'div:has-text("Asking to join")',
             'p:has-text("will let you in shortly")',
+            'span:has-text("Asking to join")',
+            'div:has-text("Someone in the call will let you in shortly")',
+            'button:has-text("Cancel")',
         ]
         for selector in waiting_indicators:
             try:
@@ -286,33 +289,94 @@ class MeetNavigator:
                 pass
         return False
 
-    async def is_inside_meeting(self, timeout_ms: int = 15000) -> bool:
+    async def verify_meeting_admission(self) -> dict:
         """
-        Determine whether the bot has successfully transitioned into the active meeting room.
-        Checks strictly for in-meeting controls (e.g. Leave call button, meeting details, chat, participant list).
+        Verify with multi-signal evidence that the bot is genuinely inside the active meeting:
+        1. Waiting-for-admission dialog/text is strictly ABSENT.
+        2. Meeting room UI is present (e.g. participant list, chat, meeting details, main grid).
+        3. Active in-call toolbar is present (e.g. bottom bar with End call AND People/Chat/Captions).
+        Returns a dict with `is_inside: bool`, `evidence: list[str]`, and `waiting_detected: bool`.
         """
-        in_meeting_indicators = [
+        waiting = await self.is_waiting_for_admission()
+        if waiting:
+            return {
+                "is_inside": False,
+                "waiting_detected": True,
+                "evidence": ["Waiting dialog or 'Asking to join' text is currently visible"],
+            }
+
+        evidence = []
+
+        # Signal 1: In-call bottom control bar / Leave call button
+        leave_call_selectors = [
             'button[aria-label*="Leave call" i]',
             'button[aria-label*="End call" i]',
             'div[aria-label*="Leave call" i]',
             'button[data-tooltip*="Leave call" i]',
-            'button[aria-label*="Meeting details" i]',
+        ]
+        has_leave = False
+        for sel in leave_call_selectors:
+            loc = self.page.locator(sel)
+            if await loc.count() > 0 and await loc.first.is_visible():
+                has_leave = True
+                evidence.append(f"In-call leave control present ({sel})")
+                break
+
+        # Signal 2: Active in-call companion controls (People, Chat, Meeting details, Activities)
+        # Note: These NEVER exist on the pre-join or waiting-to-join modal.
+        incall_dock_selectors = [
             'button[aria-label*="People" i]',
             'button[aria-label*="Chat with everyone" i]',
+            'button[aria-label*="Meeting details" i]',
+            'button[aria-label*="Activities" i]',
+            'button[aria-label*="Show everyone" i]',
         ]
+        has_dock = False
+        for sel in incall_dock_selectors:
+            loc = self.page.locator(sel)
+            if await loc.count() > 0 and await loc.first.is_visible():
+                has_dock = True
+                evidence.append(f"In-call companion dock control present ({sel})")
+                break
 
+        # Signal 3: In-call layout/captions/grid container
+        layout_selectors = [
+            '[data-allocation-index]',
+            'div[data-call-client-version]',
+            'div[role="region"][aria-label*="call" i]',
+            'button[aria-label*="Turn on captions" i]',
+            'button[aria-label*="Turn off captions" i]',
+        ]
+        has_layout = False
+        for sel in layout_selectors:
+            loc = self.page.locator(sel)
+            if await loc.count() > 0 and await loc.first.is_visible():
+                has_layout = True
+                evidence.append(f"In-call layout/caption control present ({sel})")
+                break
+
+        # Strict requirement: Waiting must NOT be active, AND we must see Leave Call AND (Dock OR Layout)
+        is_inside = (not waiting) and has_leave and (has_dock or has_layout)
+
+        return {
+            "is_inside": is_inside,
+            "waiting_detected": waiting,
+            "evidence": evidence,
+        }
+
+    async def is_inside_meeting(self, timeout_ms: int = 15000) -> bool:
+        """
+        Determine whether the bot has successfully transitioned into the active meeting room.
+        Requires multi-signal confirmation and strict absence of waiting screens.
+        """
         waited = 0
         step = 1000
 
         while waited < timeout_ms:
-            for selector in in_meeting_indicators:
-                try:
-                    loc = self.page.locator(selector)
-                    if await loc.count() > 0 and await loc.first.is_visible():
-                        logger.info(f"[MeetingBot] Confirmed in-meeting via element: {selector}")
-                        return True
-                except Exception:
-                    pass
+            res = await self.verify_meeting_admission()
+            if res["is_inside"]:
+                logger.info(f"[MeetingBot] Confirmed in-meeting with evidence: {', '.join(res['evidence'])}")
+                return True
             await self.page.wait_for_timeout(step)
             waited += step
 
