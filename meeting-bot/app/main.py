@@ -99,11 +99,65 @@ async def api_stop_bot():
 
 
 async def run_cli():
-    parser = argparse.ArgumentParser(description="RecruitAI Meeting Bot (Phase 1)")
+    parser = argparse.ArgumentParser(description="RecruitAI Meeting Bot (Phase 1 & 2)")
     parser.add_argument("--auth-setup", action="store_true", help="Launch browser for interactive Google account sign-in")
     parser.add_argument("--meet-url", type=str, help="Google Meet URL to join")
     parser.add_argument("--server", action="store_true", help="Run local HTTP API server")
+    # Phase 2 CLI commands
+    parser.add_argument("--audio-test", action="store_true", help="Record ~10 seconds of output audio via loopback to diagnostics/audio_test/ and report levels")
+    parser.add_argument("--transcribe-file", type=str, help="Transcribe a local WAV/MP3/WebM file with Deepgram Nova-2")
+    parser.add_argument("--meet-audio-test", action="store_true", help="Join meeting, capture audio in chunks, and transcribe with Deepgram")
     args = parser.parse_args()
+
+    if args.audio_test:
+        from app.audio_capture import audio_capture
+        from pathlib import Path
+        from datetime import datetime
+
+        logger.info("[MeetingBot] Starting 10-second audio capture loopback test...")
+        started = audio_capture.start_capture()
+        if not started:
+            logger.error("[MeetingBot] Audio capture failed to start.")
+            sys.exit(1)
+
+        info = audio_capture.get_device_info()
+        logger.info(f"[MeetingBot] Capture active on: {info['deviceName']} ({info['targetSampleRate']}Hz, {info['targetChannels']}ch)")
+        logger.info("[MeetingBot] Recording for 10 seconds. Play audio or speak in Google Meet...")
+
+        for s in range(10):
+            await asyncio.sleep(1)
+            level = audio_capture.get_audio_level()
+            logger.info(f"[MeetingBot] T+{s+1}s | Audio level (RMS): {round(level, 4)}")
+
+        audio_capture.stop_capture()
+
+        diag_dir = Path(__file__).resolve().parent.parent / "diagnostics" / "audio_test"
+        diag_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        test_file = str(diag_dir / f"test_recording_{ts}.wav")
+        res = audio_capture.save_recording(test_file)
+        if res:
+            logger.info(f"[MeetingBot] Audio test recording successfully saved: {res}")
+            if res["audioLevel"] == 0.0:
+                logger.warning("[MeetingBot] NO_AUDIO_DETECTED: Audio level is 0.0 (silence).")
+        else:
+            logger.warning("[MeetingBot] No audio frames were captured.")
+        return
+
+    if args.transcribe_file:
+        from app.deepgram import deepgram_client
+        logger.info(f"[MeetingBot] Transcribing file with Deepgram: {args.transcribe_file}")
+        try:
+            res = deepgram_client.transcribe_file(args.transcribe_file)
+            print("\n" + "=" * 50)
+            print(f"DEEPGRAM TRANSCRIPT ({res['model']}):")
+            print(f"'{res['transcript']}'")
+            print(f"Confidence: {round(res['confidence'], 3)} | Duration: {round(res['durationSeconds'], 2)}s")
+            print("=" * 50 + "\n")
+        except Exception as e:
+            logger.error(f"[MeetingBot] Transcription failed: {e}")
+            sys.exit(1)
+        return
 
     if args.auth_setup:
         logger.info("[MeetingBot] Launching interactive authentication setup...")
@@ -123,12 +177,61 @@ async def run_cli():
         return
 
     if args.meet_url:
+        from app.audio_capture import audio_capture
+        from app.deepgram import deepgram_client
+        from pathlib import Path
+        from datetime import datetime
+
         logger.info(f"[MeetingBot] CLI meet requested for URL: {args.meet_url}")
         success = await bot_instance.start(args.meet_url)
         if not success:
             logger.error("[MeetingBot] Bot failed to join the meeting.")
             await bot_instance.stop()
             sys.exit(1)
+
+        # If --meet-audio-test was passed or running interactive test
+        if args.meet_audio_test:
+            logger.info("[MeetingBot] Starting in-meeting audio capture & Deepgram transcription loop...")
+            audio_capture.start_capture()
+            diag_dir = Path(__file__).resolve().parent.parent / "diagnostics" / "audio_test"
+            diag_dir.mkdir(parents=True, exist_ok=True)
+
+            try:
+                # Capture in 10-second segments
+                while True:
+                    logger.info("[MeetingBot] Listening to candidate speech for 10s chunk...")
+                    await asyncio.sleep(10)
+                    lvl = audio_capture.get_audio_level()
+                    if lvl < 0.005:
+                        logger.info(f"[MeetingBot] Audio level too low ({round(lvl, 4)}). Skipping silence.")
+                        continue
+
+                    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+                    seg_file = str(diag_dir / f"meet_audio_{ts}.wav")
+                    meta = audio_capture.save_recording(seg_file)
+                    if meta and meta["audioLevel"] > 0.0:
+                        logger.info(f"[MeetingBot] Non-zero audio captured (Level: {meta['audioLevel']}). Transcribing...")
+                        if deepgram_client.is_configured():
+                            try:
+                                res = deepgram_client.transcribe_file(seg_file)
+                                if res.get("transcript"):
+                                    print("\n" + "=" * 50)
+                                    print(f"CANDIDATE TRANSCRIPT: '{res['transcript']}'")
+                                    print("=" * 50 + "\n")
+                                else:
+                                    logger.info("[MeetingBot] Deepgram: No speech detected in segment.")
+                            except Exception as stt_err:
+                                logger.error(f"[MeetingBot] STT error: {stt_err}")
+                        else:
+                            logger.warning("[MeetingBot] Audio saved, but DEEPGRAM_API_KEY is not configured.")
+                    # Restart frame accumulation for next segment
+                    audio_capture.start_capture()
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                pass
+            finally:
+                audio_capture.stop_capture()
+                await bot_instance.stop()
+            return
 
         logger.info("[MeetingBot] Bot joined successfully. Keeping browser open until interrupted (Ctrl+C)...")
 
@@ -144,7 +247,6 @@ async def run_cli():
             try:
                 loop.add_signal_handler(sig, handle_signal)
             except NotImplementedError:
-                # Windows signal compatibility
                 pass
 
         try:
