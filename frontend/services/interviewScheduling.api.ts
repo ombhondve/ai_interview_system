@@ -1,4 +1,4 @@
-import { backendApiUrl } from "@/lib/client";
+import { apiUrl, backendApiUrl } from "@/lib/client";
 
 export type InterviewSlotStatus = "available" | "already_taken" | "past";
 export interface InterviewSlot { startAt: string; endAt: string; time: string; endTime: string; status: InterviewSlotStatus }
@@ -12,13 +12,14 @@ export interface AdminScheduleResponse { date: string; timezone: string; intervi
 export interface AdminUpcomingInterview { id: string; startAt: string; endAt: string; date: string; time: string; endTime: string; status: string; candidate: { id: string | null; name: string | null; email: string | null; phone: string | null; role: string | null }; project: string | null; meetLink: string | null }
 export class InterviewApiError extends Error { status: number; code: string; constructor(status: number, message: string, code: string) { super(message); this.name = "InterviewApiError"; this.status = status; this.code = code; } }
 function toApiError(status: number, data: Record<string, unknown>): InterviewApiError { const code = typeof data?.code === "string" ? data.code : "UNKNOWN"; const message = typeof data?.message === "string" ? data.message : "Unable to complete the request."; return new InterviewApiError(status, message, code); }
-async function call<T>(path: string, init?: RequestInit): Promise<T> { const response = await fetch(backendApiUrl(path), { ...init, credentials: "include", headers: { "Content-Type": "application/json", ...init?.headers }, cache: "no-store" }); const data = await response.json().catch(() => ({})); if (!response.ok) throw toApiError(response.status, data); return data as T; }
+async function call<T>(url: string, init?: RequestInit): Promise<T> { const response = await fetch(url, { ...init, credentials: "include", headers: { "Content-Type": "application/json", ...init?.headers }, cache: "no-store" }); const data = await response.json().catch(() => ({})); if (!response.ok) throw toApiError(response.status, data); return data as T; }
 export const interviewSchedulingService = {
-  getConfig: () => call<InterviewConfigResponse>("/api/student/interview/config"),
-  getAvailability: (date: string) => call<AvailabilityResponse>(`/api/student/interview/availability?date=${encodeURIComponent(date)}`),
-  book: async (startAt: string) => call<BookInterviewResponse>("/api/student/interview/book", { method: "POST", body: JSON.stringify({ startAt }) }),
+  getConfig: () => call<InterviewConfigResponse>(backendApiUrl("/api/student/interview/config")),
+  getAvailability: (date: string) => call<AvailabilityResponse>(backendApiUrl(`/api/student/interview/availability?date=${encodeURIComponent(date)}`)),
+  book: async (startAt: string) => call<BookInterviewResponse>(backendApiUrl("/api/student/interview/book"), { method: "POST", body: JSON.stringify({ startAt }) }),
 };
 export const adminScheduleService = {
-  getSchedule: (date: string) => call<AdminScheduleResponse>(`/api/admin/interviews/schedule?date=${encodeURIComponent(date)}`),
-  getUpcoming: (limit = 50) => call<{ interviews: AdminUpcomingInterview[] }>(`/api/admin/interviews/upcoming?limit=${limit}`),
+  getSchedule: (date: string) => call<AdminScheduleResponse>(apiUrl(`/api/admin/interviews/schedule?date=${encodeURIComponent(date)}`)),
+  getUpcoming: (limit = 50) => call<{ interviews: AdminUpcomingInterview[] }>(apiUrl(`/api/admin/interviews/upcoming?limit=${limit}`)),
 };
+

@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { backendApiUrl } from "@/lib/client";
+import { apiUrl } from "@/lib/client";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 
 type ReportRow = { _id: string; status: string; scheduledAt: string; analysis?: { overallScore?: number; recommendation?: string }; candidateId?: { name?: string; email?: string } | string; projectId?: { title?: string } | string };
 export default function InterviewsPage() {
   const [rows, setRows] = useState<ReportRow[]>([]); const [error, setError] = useState("");
   const load = useCallback(async () => {
-    try { const response = await fetch(backendApiUrl("/api/ai-interviews/admin/reports"), { credentials: "include" }); const data = await response.json(); if (!response.ok) throw new Error(data.message || "Unable to load reports."); setRows(data.interviews || []); }
+    try { const response = await fetch(apiUrl("/api/ai-interviews/admin/reports"), { credentials: "include" }); const data = await response.json(); if (!response.ok) throw new Error(data.message || "Unable to load reports."); setRows(data.interviews || []); }
     catch (e) { setError(e instanceof Error ? e.message : "Unable to load interviews."); }
   }, []);
   useEffect(() => { void load(); }, [load]);

@@ -337,6 +337,23 @@ export default function SchedulePage() {
                           { timeZone: schedule?.timezone }
                         )}
                       />
+                      {entry.booking.meetLink && (
+                        <div className="min-w-0 sm:col-span-2">
+                          <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                            Google Meet
+                          </dt>
+                          <dd className="mt-0.5 truncate text-sm font-medium text-indigo-600 dark:text-indigo-400">
+                            <a
+                              href={entry.booking.meetLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="hover:underline"
+                            >
+                              {entry.booking.meetLink}
+                            </a>
+                          </dd>
+                        </div>
+                      )}
                     </dl>
                   ) : (
                     <p className="flex-1 text-sm text-slate-400">

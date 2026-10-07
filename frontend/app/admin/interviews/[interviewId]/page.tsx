@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { backendApiUrl } from "@/lib/client";
+import { apiUrl } from "@/lib/client";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 
@@ -16,7 +16,7 @@ type InterviewReport = {
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(backendApiUrl(`/api/ai-interviews${path}`), { ...init, credentials: "include", headers: { "Content-Type": "application/json", ...init?.headers } });
+  const response = await fetch(apiUrl(`/api/ai-interviews${path}`), { ...init, credentials: "include", headers: { "Content-Type": "application/json", ...init?.headers } });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(body.message || `Request failed (${response.status})`);
   return body;
