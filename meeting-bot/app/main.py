@@ -107,6 +107,11 @@ async def run_cli():
     parser.add_argument("--audio-test", action="store_true", help="Record ~10 seconds of output audio via loopback to diagnostics/audio_test/ and report levels")
     parser.add_argument("--transcribe-file", type=str, help="Transcribe a local WAV/MP3/WebM file with Deepgram Nova-2")
     parser.add_argument("--meet-audio-test", action="store_true", help="Join meeting, capture audio in chunks, and transcribe with Deepgram")
+    # Phase 3 CLI commands
+    parser.add_argument("--interview-id", type=str, help="AiInterviewSession ID to associate with the meeting bot")
+    parser.add_argument("--candidate-id", type=str, help="Candidate ID to verify with the interview session")
+    parser.add_argument("--submit-test-transcript", action="store_true", help="Submit test transcript to RecruitAI backend internal API")
+    parser.add_argument("--text", type=str, default="Hello, I am ready for the interview.", help="Text content for --submit-test-transcript")
     args = parser.parse_args()
 
     if args.audio_test:
@@ -159,6 +164,36 @@ async def run_cli():
             sys.exit(1)
         return
 
+    if args.submit_test_transcript:
+        from app.recruitai_client import recruitai_client
+        if not args.interview_id:
+            logger.error("[MeetingBot] --interview-id is required for --submit-test-transcript")
+            sys.exit(1)
+
+        logger.info(
+            f"[MeetingBot] Submitting test transcript to RecruitAI backend for interview {args.interview_id}..."
+        )
+        try:
+            res = recruitai_client.submit_transcript(
+                interview_id=args.interview_id,
+                transcript=args.text,
+                candidate_id=args.candidate_id,
+            )
+            print("\n" + "=" * 60)
+            print("RECRUITAI BACKEND RESPONSE:")
+            print(f"Accepted: {res.get('accepted')}")
+            print(f"Duplicate: {res.get('duplicate')}")
+            print(f"Interview Status: {res.get('interviewStatus')}")
+            print(f"Phase: {res.get('phase')}")
+            print(f"Question Index: {res.get('currentQuestionIndex')}")
+            if res.get("nextQuestion"):
+                print(f"NEXT QUESTION:\n{res.get('nextQuestion')}")
+            print("=" * 60 + "\n")
+        except Exception as e:
+            logger.error(f"[MeetingBot] Failed to submit transcript: {e}")
+            sys.exit(1)
+        return
+
     if args.auth_setup:
         logger.info("[MeetingBot] Launching interactive authentication setup...")
         await bot_instance.open_auth_session()
@@ -179,6 +214,7 @@ async def run_cli():
     if args.meet_url:
         from app.audio_capture import audio_capture
         from app.deepgram import deepgram_client
+        from app.recruitai_client import recruitai_client
         from pathlib import Path
         from datetime import datetime
 
@@ -214,10 +250,27 @@ async def run_cli():
                         if deepgram_client.is_configured():
                             try:
                                 res = deepgram_client.transcribe_file(seg_file)
-                                if res.get("transcript"):
+                                transcript = (res.get("transcript") or "").strip()
+                                if transcript:
                                     print("\n" + "=" * 50)
-                                    print(f"CANDIDATE TRANSCRIPT: '{res['transcript']}'")
+                                    print(f"CANDIDATE TRANSCRIPT: '{transcript}'")
                                     print("=" * 50 + "\n")
+
+                                    # Phase 3 integration: forward transcript to RecruitAI backend if interview_id is set
+                                    if args.interview_id:
+                                        try:
+                                            backend_res = recruitai_client.submit_transcript(
+                                                interview_id=args.interview_id,
+                                                transcript=transcript,
+                                                candidate_id=args.candidate_id,
+                                            )
+                                            if backend_res.get("nextQuestion"):
+                                                print("\n" + "*" * 50)
+                                                print("NEXT QUESTION:")
+                                                print(backend_res["nextQuestion"])
+                                                print("*" * 50 + "\n")
+                                        except Exception as b_err:
+                                            logger.error(f"[MeetingBot] Backend submission error: {b_err}")
                                 else:
                                     logger.info("[MeetingBot] Deepgram: No speech detected in segment.")
                             except Exception as stt_err:

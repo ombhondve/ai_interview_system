@@ -9,6 +9,7 @@ import { buildInterviewContext, publicSessionContext } from "./interview.context
 import logger from "../../utils/logger.js";
 import { analyzeAndPersist } from "./interview.analysis.persistence.js";
 import { isProjectVerified } from "../projects/deadline.service.js";
+import { requireInternalServiceSession } from "./interview.voice.auth.js";
 
 const router = express.Router();
 const answerAttempts = new Map();
@@ -126,4 +127,39 @@ router.get("/:interviewId/transcript", requireVerifiedSession, validInterviewId,
     return res.json({ success: true, transcript: doc.transcript, status: doc.status });
   } catch (error) { return handleError(res, error); }
 });
+
+router.post("/internal/:interviewId/answer", validInterviewId, async (req, res) => {
+  try {
+    const candidateId = req.body?.candidateId || null;
+    const interview = await requireInternalServiceSession(req, req.params.interviewId, candidateId);
+
+    const transcript = typeof req.body?.transcript === "string" ? req.body.transcript : (typeof req.body?.text === "string" ? req.body.text : "");
+    const input = validateAnswerInput({ text: transcript, requestId: req.body?.requestId });
+    if (!input.ok) {
+      return res.status(400).json({ success: false, message: input.message });
+    }
+
+    const effectiveCandidateId = interview.candidateId;
+    const result = await answerService.submitAnswer(
+      interview._id,
+      effectiveCandidateId,
+      input.text,
+      input.requestId
+    );
+
+    return res.json({
+      success: true,
+      accepted: true,
+      duplicate: Boolean(result.duplicate),
+      nextQuestion: result.nextQuestion?.question || result.nextQuestion || null,
+      interviewStatus: result.interview?.status || interview.status,
+      phase: result.interview?.phase || interview.phase,
+      currentQuestionIndex: result.interview?.currentQuestionIndex ?? interview.currentQuestionIndex,
+      closing: Boolean(result.closing),
+    });
+  } catch (error) {
+    return handleError(res, error);
+  }
+});
+
 export default router;
