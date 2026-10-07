@@ -29,15 +29,25 @@ function validInterviewId(req, res, next) {
   next();
 }
 
+import { syncInterviewLifecycles, recordCandidatePresence } from "./interview.lifecycle.service.js";
+
 router.get("/admin/reports", requireAuth, requireRole("superadmin", "recruiter", "admin"), async (_req, res) => {
   try {
-    const interviews = await AiInterview.find({ status: { $in: ["COMPLETED", "ANALYSIS_PENDING", "ANALYZED", "FAILED"] } }).sort({ scheduledAt: -1 }).limit(200).populate("candidateId", "name email role").populate("projectId", "title");
+    const interviews = await AiInterview.find({ status: { $in: ["COMPLETED", "ANALYSIS_PENDING", "ANALYZED", "FAILED", "CANDIDATE_NO_SHOW", "WAITING_FOR_CANDIDATE", "IN_PROGRESS", "SCHEDULED"] } }).sort({ scheduledAt: -1 }).limit(200).populate("candidateId", "name email role").populate("projectId", "title");
     return res.json({ success: true, interviews });
+  } catch (error) { return handleError(res, error); }
+});
+
+router.all("/cron/sync", async (_req, res) => {
+  try {
+    const result = await syncInterviewLifecycles();
+    return res.json({ success: true, ...result });
   } catch (error) { return handleError(res, error); }
 });
 
 router.get("/mine", requireVerifiedSession, async (req, res) => {
   try {
+    await syncInterviewLifecycles();
     const doc = await AiInterview.findOne({ candidateId: req.candidate._id, status: { $nin: ["CANCELLED"] } }).sort({ scheduledAt: -1 });
     if (!doc) return res.json({ success: true, interview: null });
     if (!isProjectVerified(req.candidate)) return res.status(403).json({ success: false, message: "The assigned project must be verified before interview access." });
@@ -84,6 +94,13 @@ router.get("/:interviewId", requireVerifiedSession, validInterviewId, async (req
     return res.json({ success: true, interview: doc });
   } catch (error) { return handleError(res, error); }
 });
+router.post("/:interviewId/presence", requireVerifiedSession, validInterviewId, async (req, res) => {
+  try {
+    const result = await recordCandidatePresence(req.params.interviewId, req.candidate._id);
+    return res.json({ success: true, ...result });
+  } catch (error) { return handleError(res, error); }
+});
+
 router.post("/:interviewId/start", requireVerifiedSession, validInterviewId, async (req, res) => {
   try { return res.json({ success: true, interview: await sessionService.startInterview(req.params.interviewId, req.candidate._id) }); }
   catch (error) { return handleError(res, error); }

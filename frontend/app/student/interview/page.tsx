@@ -37,6 +37,19 @@ export default function InterviewPage() {
     try {
       const data = await api<{ interview: Session | null }>("/mine");
       setSession(data.interview);
+      // If interview is scheduled or waiting, notify backend of candidate presence
+      if (data.interview?._id && ["SCHEDULED", "READY", "WAITING_FOR_CANDIDATE"].includes(data.interview.status)) {
+        try {
+          const presenceRes = await api<{ interview: Session; started?: boolean }>(`/${data.interview._id}/presence`, { method: "POST" });
+          if (presenceRes.interview) {
+            setSession(presenceRes.interview);
+            if (presenceRes.started) {
+              const q = presenceRes.interview.questions[presenceRes.interview.currentQuestionIndex];
+              await say(q?.questionId, q?.question);
+            }
+          }
+        } catch { /* ignore presence signal errors */ }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to load your interview.";
       setNotice(message);
@@ -46,9 +59,17 @@ export default function InterviewPage() {
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     if (!session?.startedAt || session.status !== "IN_PROGRESS") return;
-    const tick = () => setElapsed(Math.max(0, Math.floor((Date.now() - new Date(session.startedAt!).getTime()) / 1000)));
+    const tick = () => {
+      const secs = Math.max(0, Math.floor((Date.now() - new Date(session.startedAt!).getTime()) / 1000));
+      setElapsed(secs);
+      // Auto-complete if 30-minute duration has expired (1800s)
+      if (secs >= 1800 && !busy) {
+        setNotice("Scheduled 30-minute interview duration reached. Concluding interview session...");
+        void end();
+      }
+    };
     tick(); const timer = window.setInterval(tick, 1000); return () => window.clearInterval(timer);
-  }, [session?.startedAt, session?.status]);
+  }, [session?.startedAt, session?.status, busy]);
   useEffect(() => {
     return () => {
       recognition.current?.stop?.();
@@ -182,7 +203,13 @@ export default function InterviewPage() {
 
     {notice && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{notice}</p>}
 
-    {isFinished ? <Card><CardContent className="p-6"><h2 className="text-lg font-semibold">{session.status === "FAILED" ? "Analysis needs attention" : session.status === "ANALYZED" ? "Interview completed" : "Interview completed — report processing"}</h2><p className="mt-2 text-sm text-slate-600">Your transcript has been saved. The AI report is advisory; the recruitment team makes the final decision.</p>{session.analysisError && <p className="mt-2 text-sm text-amber-800">{session.analysisError}</p>}</CardContent></Card> : !isActive ? <Card><CardContent className="space-y-4 p-6"><p className="text-sm text-slate-700">Your interview can start from 15 minutes before its scheduled time until the booking ends.</p><p className="text-xs text-slate-500">Microphone audio is uploaded to the backend for transcription when STT credentials are configured. If unavailable, you can type answers. AI speech uses configured server TTS or browser speech fallback.</p><Button loading={busy} onClick={start}>Start interview</Button></CardContent></Card> : <>
+    {isFinished ? (
+      <Card><CardContent className="p-6"><h2 className="text-lg font-semibold">{session.status === "FAILED" ? "Analysis needs attention" : session.status === "ANALYZED" ? "Interview completed" : session.status === "CANDIDATE_NO_SHOW" ? "Candidate No-Show" : "Interview completed — report processing"}</h2><p className="mt-2 text-sm text-slate-600">{session.status === "CANDIDATE_NO_SHOW" ? "The interview slot passed without candidate attendance within the grace period." : "Your transcript has been saved. The AI report is advisory; the recruitment team makes the final decision."}</p>{session.analysisError && <p className="mt-2 text-sm text-amber-800">{session.analysisError}</p>}</CardContent></Card>
+    ) : session.status === "WAITING_FOR_CANDIDATE" ? (
+      <Card className="border-indigo-200 bg-indigo-50/50"><CardContent className="space-y-4 p-6"><h2 className="text-lg font-semibold text-indigo-900">AI Interviewer is Ready & Waiting</h2><p className="text-sm text-slate-700">The scheduled interview time has arrived. The AI interviewer has initialized and is waiting for you to begin.</p><Button loading={busy} onClick={start}>Join and Start Interview</Button></CardContent></Card>
+    ) : !isActive ? (
+      <Card><CardContent className="space-y-4 p-6"><p className="text-sm text-slate-700">Your interview is scheduled for {new Date(session.scheduledAt).toLocaleString()}. You can enter the interview room when the scheduled time arrives.</p><p className="text-xs text-slate-500">Microphone audio is uploaded to the backend for transcription when STT credentials are configured. AI speech uses configured server TTS or browser speech fallback.</p><Button loading={busy} onClick={start}>Enter interview room</Button></CardContent></Card>
+    ) : <>
       <Card><CardHeader title="AI Interviewer" subtitle={session.questions[session.currentQuestionIndex]?.category?.replaceAll("_", " ") || "Technical interview"}/><CardContent><p className="text-lg leading-8 text-slate-900">{currentQuestion}</p><p className="mt-3 text-xs text-slate-500">The interviewer does not see your screen. Please explain your submitted project verbally during the walkthrough.</p></CardContent></Card>
       <Card><CardContent className="space-y-4 p-5"><div className="flex flex-wrap items-center gap-3"><Button variant="outline" disabled={busy} onClick={listen}>{mic === "listening" ? "Listening…" : "Use microphone"}</Button><span className="text-sm text-slate-600">{mic === "listening" ? "Listening in browser" : mic === "denied" ? "Microphone permission denied" : mic === "unavailable" ? "Microphone unavailable" : "Microphone idle"}</span><label className="ml-auto flex items-center gap-2 text-sm"><input type="checkbox" checked={voice} onChange={(e) => setVoice(e.target.checked)}/> Read questions aloud</label></div><textarea value={answer} onChange={(e) => setAnswer(e.target.value)} maxLength={8000} rows={5} placeholder="Type your answer or use your browser microphone…" className="w-full rounded-xl border border-slate-300 p-3 text-sm outline-none focus:border-indigo-500"/><div className="flex flex-wrap justify-between gap-3"><p className="self-center text-xs text-slate-500">Answer {completedCount + 1} · Transcript turns are saved by the server.</p><div className="flex gap-2"><Button variant="outline" disabled={busy} onClick={end}>End interview</Button><Button loading={busy} disabled={!answer.trim()} onClick={() => void submitAnswer(answer)}>Submit answer</Button></div></div></CardContent></Card>
       </>}

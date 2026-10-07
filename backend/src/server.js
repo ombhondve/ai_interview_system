@@ -77,8 +77,16 @@ async function startServer() {
 
     logGitHubConfiguration();
 
-    // Initialize default admin account
-    await initializeDefaultAdmin();
+    // Start background interview lifecycle scheduler
+    const { syncInterviewLifecycles } = await import("./modules/interview/interview.lifecycle.service.js");
+    setInterval(async () => {
+      try {
+        await syncInterviewLifecycles();
+      } catch (err) {
+        console.error("Interview lifecycle sync error:", err.message);
+      }
+    }, 60 * 1000);
+    console.log("✅ Interview lifecycle scheduler initialized (every 60s)");
     
   } catch (error) {
     console.error("MongoDB connection failed:", error.message);
