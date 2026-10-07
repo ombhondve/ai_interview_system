@@ -23,6 +23,7 @@ const {
   listSchedulableDates,
   validateStartInstant,
   todayInTimezone,
+  formatTimeInZone,
 } = require("../interviewConfig.service.js");
 
 const {
@@ -600,3 +601,54 @@ describe("interviewBooking model - double booking guarantees", () => {
     expect(InterviewBooking.schema.path("updatedAt")).toBeDefined();
   });
 });
+
+describe("24/7 hours and no advance-lead restrictions", () => {
+  const fullDayConfig = {
+    timezone: TZ,
+    interviewDurationMinutes: 30,
+    workingHours: { startHour: 0, endHour: 24 },
+    allowedWeekdays: [0, 1, 2, 3, 4, 5, 6],
+    schedulingHorizonDays: 30,
+    minLeadHours: 0,
+    mode: "online",
+    location: "Online",
+  };
+
+  test("generates slots across the entire 24 hour day (48 half-hour slots)", () => {
+    const slots = generateInterviewTimesForDate(fullDayConfig, "2026-10-08");
+    expect(slots).toHaveLength(48);
+
+    // Slots at 00:00, 02:00, 06:00, 07:00, 09:00, 12:00, 17:00, 20:00, 23:30 all exist
+    const times = slots.map((s) => formatTimeInZone(s.startAt, TZ));
+    expect(times).toContain("12:00 am");
+    expect(times).toContain("02:00 am");
+    expect(times).toContain("06:00 am");
+    expect(times).toContain("07:00 am");
+    expect(times).toContain("09:00 am");
+    expect(times).toContain("12:00 pm");
+    expect(times).toContain("05:00 pm");
+    expect(times).toContain("08:00 pm");
+    expect(times).toContain("11:30 pm");
+  });
+
+  test("accepts future slots 30 minutes or 1 hour from now without 2-hour restriction", () => {
+    const slotStart = zonedWallClockToUtc("2026-10-08", 10, 0, TZ);
+    const now30minBefore = new Date(slotStart.getTime() - 30 * 60 * 1000);
+    const now1hrBefore = new Date(slotStart.getTime() - 60 * 60 * 1000);
+
+    const res30 = validateStartInstant(fullDayConfig, slotStart, now30minBefore);
+    expect(res30.valid).toBe(true);
+
+    const res1hr = validateStartInstant(fullDayConfig, slotStart, now1hrBefore);
+    expect(res1hr.valid).toBe(true);
+  });
+
+  test("strictly rejects slots in the past", () => {
+    const slotStart = zonedWallClockToUtc("2026-10-08", 10, 0, TZ);
+    const nowAfter = new Date(slotStart.getTime() + 5 * 60 * 1000);
+
+    const pastRes = validateStartInstant(fullDayConfig, slotStart, nowAfter);
+    expect(pastRes.valid).toBe(false);
+    expect(pastRes.code).toBe("INTERVIEW_TIME_IN_PAST");
+  });
+});

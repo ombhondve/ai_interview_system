@@ -19,11 +19,29 @@ export async function getInterviewConfig() {
 
   if (!config) {
     try {
-      config = await InterviewConfig.create({ key: SINGLETON_KEY });
+      config = await InterviewConfig.create({
+        key: SINGLETON_KEY,
+        workingHours: { startHour: 0, endHour: 24 },
+        minLeadHours: 0,
+      });
     } catch (error) {
       // Lost a create race - another request seeded it first.
       config = await InterviewConfig.findOne({ key: SINGLETON_KEY });
       if (!config) throw error;
+    }
+  }
+
+  // Ensure un-restricted schedule rules (no 2-hour minimum lead, no 9-18 business hours restriction)
+  if (
+    config &&
+    (config.minLeadHours !== 0 ||
+      config.workingHours?.startHour !== 0 ||
+      config.workingHours?.endHour !== 24)
+  ) {
+    config.minLeadHours = 0;
+    config.workingHours = { startHour: 0, endHour: 24 };
+    if (typeof config.save === "function") {
+      await config.save().catch(() => {});
     }
   }
 
@@ -321,13 +339,17 @@ export function validateStartInstant(config, startAt, now = new Date()) {
     };
   }
 
-  const leadMs = startAt.getTime() - now.getTime();
-  if (leadMs < config.minLeadHours * 3600000) {
-    return {
-      valid: false,
-      code: "INSUFFICIENT_LEAD_TIME",
-      message: `Interviews must be booked at least ${config.minLeadHours} hours in advance.`,
-    };
+  // Minimum advance-selection restriction removed:
+  // Any genuine future slot is valid (past check already enforced above).
+  if (config.minLeadHours && config.minLeadHours > 0) {
+    const leadMs = startAt.getTime() - now.getTime();
+    if (leadMs < config.minLeadHours * 3600000) {
+      return {
+        valid: false,
+        code: "INSUFFICIENT_LEAD_TIME",
+        message: `Interviews must be booked at least ${config.minLeadHours} hours in advance.`,
+      };
+    }
   }
 
   return { valid: true, endAt: match.endAt };

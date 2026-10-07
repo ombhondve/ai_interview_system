@@ -55,13 +55,13 @@ const interviewConfigSchema = new mongoose.Schema(
     workingHours: {
       startHour: {
         type: Number,
-        default: 9,
+        default: 0,
         min: 0,
         max: 23,
       },
       endHour: {
         type: Number,
-        default: 18,
+        default: 24,
         min: 1,
         max: 24,
       },
@@ -95,7 +95,7 @@ const interviewConfigSchema = new mongoose.Schema(
 
     minLeadHours: {
       type: Number,
-      default: 2,
+      default: 0,
       min: 0,
       max: 168,
       comment: "Minimum hours between now and the interview start.",

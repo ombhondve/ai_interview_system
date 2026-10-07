@@ -359,8 +359,12 @@ export default function InterviewSchedulingPage() {
               />
               <Field label="Timezone" value={config.timezone} />
               <Field
-                label="Working hours"
-                value={`${String(config.workingHours.startHour).padStart(2, "0")}:00 – ${String(config.workingHours.endHour).padStart(2, "0")}:00`}
+                label="Available hours"
+                value={
+                  config.workingHours.startHour === 0 && config.workingHours.endHour === 24
+                    ? "All day (24/7)"
+                    : `${String(config.workingHours.startHour).padStart(2, "0")}:00 – ${String(config.workingHours.endHour).padStart(2, "0")}:00`
+                }
               />
             </CardContent>
           </Card>
