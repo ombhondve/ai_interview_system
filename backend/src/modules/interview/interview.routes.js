@@ -162,4 +162,26 @@ router.post("/internal/:interviewId/answer", validInterviewId, async (req, res) 
   }
 });
 
+router.get("/internal/:interviewId/session", validInterviewId, async (req, res) => {
+  try {
+    const candidateId = req.query?.candidateId || null;
+    const interview = await requireInternalServiceSession(req, req.params.interviewId, candidateId);
+
+    const currentQ = interview.questions?.[interview.currentQuestionIndex] || interview.questions?.[0] || null;
+    return res.json({
+      success: true,
+      interviewId: String(interview._id),
+      candidateId: String(interview.candidateId),
+      status: interview.status,
+      phase: interview.phase,
+      currentQuestionIndex: interview.currentQuestionIndex,
+      totalQuestions: interview.questions.length,
+      currentQuestion: currentQ?.question || null,
+    });
+  } catch (error) {
+    return handleError(res, error);
+  }
+});
+
 export default router;
+

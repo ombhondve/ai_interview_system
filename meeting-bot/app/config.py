@@ -37,9 +37,17 @@ class Settings(BaseSettings):
         os.getenv("MEETING_BOT_API_SECRET", "recruitai-default-bot-secret"),
     )
 
+    # Kokoro TTS configuration (Phase 4 Integration)
+    kokoro_enabled: bool = os.getenv("KOKORO_ENABLED", "true").lower() in ("true", "1", "yes")
+    kokoro_lang_code: str = os.getenv("KOKORO_LANG_CODE", "a")
+    kokoro_voice: str = os.getenv("KOKORO_VOICE", "af_heart")
+    kokoro_output_device: str = os.getenv("KOKORO_OUTPUT_DEVICE", "CABLE Input (VB-Audio Virtual Cable)")
+    kokoro_sample_rate: int = int(os.getenv("KOKORO_SAMPLE_RATE", "48000"))
+
     class Config:
         env_file = ".env"
         extra = "ignore"
 
 
 settings = Settings()
+

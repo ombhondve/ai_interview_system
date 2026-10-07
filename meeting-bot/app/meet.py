@@ -397,3 +397,114 @@ class MeetNavigator:
                 logger.info("[MeetingBot] Clicked 'Leave call' button")
         except Exception as e:
             logger.debug(f"[MeetingBot] Leave call note: {e}")
+
+    async def is_microphone_muted(self) -> Optional[bool]:
+        """
+        Check if the in-call microphone is currently muted.
+        Returns:
+            True if microphone is muted
+            False if microphone is unmuted
+            None if unable to determine
+        """
+        mute_indicators = [
+            'button[aria-label*="Turn on microphone" i]',
+            'div[role="button"][aria-label*="Turn on microphone" i]',
+            'button[data-is-muted="true"][aria-label*="microphone" i]',
+            'button[data-is-muted="true"][aria-label*="mic" i]',
+        ]
+        unmute_indicators = [
+            'button[aria-label*="Turn off microphone" i]',
+            'div[role="button"][aria-label*="Turn off microphone" i]',
+            'button[data-is-muted="false"][aria-label*="microphone" i]',
+            'button[data-is-muted="false"][aria-label*="mic" i]',
+        ]
+
+        for sel in mute_indicators:
+            loc = self.page.locator(sel)
+            if await loc.count() > 0 and await loc.first.is_visible():
+                return True
+
+        for sel in unmute_indicators:
+            loc = self.page.locator(sel)
+            if await loc.count() > 0 and await loc.first.is_visible():
+                return False
+
+        return None
+
+    async def unmute_microphone(self) -> bool:
+        """
+        Unmute the Google Meet microphone when AI needs to speak.
+        Verifies that bot is inside the meeting and that the mic state transitions to unmuted.
+        """
+        # Selectors for button that turns ON the microphone (currently muted)
+        unmute_buttons = [
+            'button[aria-label*="Turn on microphone" i]',
+            'div[role="button"][aria-label*="Turn on microphone" i]',
+            'button[data-is-muted="true"][aria-label*="microphone" i]',
+            'button[data-is-muted="true"][aria-label*="mic" i]',
+        ]
+
+        for sel in unmute_buttons:
+            loc = self.page.locator(sel)
+            if await loc.count() > 0 and await loc.first.is_visible():
+                await loc.first.click(timeout=3000)
+                await self.page.wait_for_timeout(300)
+                logger.info("[MEET] Microphone unmuted")
+                return True
+
+        # Check if already unmuted
+        muted = await self.is_microphone_muted()
+        if muted is False:
+            logger.info("[MEET] Microphone is already unmuted")
+            return True
+
+        # Fallback to standard Google Meet shortcut: Ctrl + D
+        logger.info("[MEET] Attempting keyboard shortcut (Ctrl+D) to unmute microphone...")
+        await self.page.keyboard.press("Control+d")
+        await self.page.wait_for_timeout(400)
+        muted = await self.is_microphone_muted()
+        if muted is False:
+            logger.info("[MEET] Microphone unmuted via Ctrl+D")
+            return True
+
+        logger.warning("[MEET] Could not confirm microphone unmute via controls or shortcut.")
+        return False
+
+    async def mute_microphone(self) -> bool:
+        """
+        Mute the Google Meet microphone when AI finishes speaking.
+        """
+        # Selectors for button that turns OFF the microphone (currently unmuted)
+        mute_buttons = [
+            'button[aria-label*="Turn off microphone" i]',
+            'div[role="button"][aria-label*="Turn off microphone" i]',
+            'button[data-is-muted="false"][aria-label*="microphone" i]',
+            'button[data-is-muted="false"][aria-label*="mic" i]',
+        ]
+
+        for sel in mute_buttons:
+            loc = self.page.locator(sel)
+            if await loc.count() > 0 and await loc.first.is_visible():
+                await loc.first.click(timeout=3000)
+                await self.page.wait_for_timeout(300)
+                logger.info("[MEET] Microphone muted")
+                return True
+
+        # Check if already muted
+        muted = await self.is_microphone_muted()
+        if muted is True:
+            logger.info("[MEET] Microphone is already muted")
+            return True
+
+        # Fallback to shortcut
+        logger.info("[MEET] Attempting keyboard shortcut (Ctrl+D) to mute microphone...")
+        await self.page.keyboard.press("Control+d")
+        await self.page.wait_for_timeout(400)
+        muted = await self.is_microphone_muted()
+        if muted is True:
+            logger.info("[MEET] Microphone muted via Ctrl+D")
+            return True
+
+        logger.warning("[MEET] Could not confirm microphone mute via controls or shortcut.")
+        return False
+

@@ -141,5 +141,55 @@ class RecruitAIClient:
 
         return data
 
+    def get_interview_session(
+        self,
+        interview_id: str,
+        candidate_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Fetch existing interview session info (including the current/first question already generated).
+        Calls GET /api/ai-interviews/internal/:interviewId/session.
+        """
+        endpoint = f"{self.base_url}/api/ai-interviews/internal/{interview_id}/session"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Internal-Secret": self.internal_secret,
+        }
+        params = {}
+        if candidate_id:
+            params["candidateId"] = candidate_id
+
+        try:
+            response = requests.get(
+                endpoint,
+                headers=headers,
+                params=params,
+                timeout=self.timeout_seconds,
+            )
+        except requests.exceptions.Timeout:
+            logger.error(f"[RecruitAIClient] Request timed out connecting to backend ({endpoint})")
+            raise TimeoutError("Backend request timed out.")
+        except requests.exceptions.RequestException as exc:
+            logger.error(f"[RecruitAIClient] Network error connecting to backend: {exc}")
+            raise ConnectionError(f"Backend network error: {exc}")
+
+        if response.status_code == 401:
+            raise PermissionError("Unauthorized: Backend rejected internal service secret.")
+        elif response.status_code == 403:
+            raise PermissionError("Forbidden: Candidate mismatch or session forbidden.")
+        elif response.status_code == 404:
+            raise FileNotFoundError(f"Interview {interview_id} not found.")
+        elif response.status_code == 409:
+            try:
+                msg = response.json().get("message", "Interview not in progress.")
+            except Exception:
+                msg = "Interview not in progress."
+            raise ValueError(msg)
+        elif not response.ok:
+            raise RuntimeError(f"Backend error ({response.status_code}): {response.text}")
+
+        return response.json()
+
 
 recruitai_client = RecruitAIClient()
+

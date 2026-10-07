@@ -27,6 +27,7 @@ class BotStatus:
     JOINING = "JOINING"
     WAITING_FOR_ADMISSION = "WAITING_FOR_ADMISSION"
     JOINED = "JOINED"
+    AI_SPEAKING = "AI_SPEAKING"
     FAILED = "FAILED"
     STOPPED = "STOPPED"
 
@@ -40,17 +41,24 @@ class MeetingBot:
         self.started_at: Optional[str] = None
         self.joined_at: Optional[str] = None
         self.failure_reason: Optional[str] = None
+        self.ai_speaking: bool = False
 
         self._playwright: Optional[Playwright] = None
         self._context: Optional[BrowserContext] = None
         self._page: Optional[Page] = None
         self._navigator: Optional[MeetNavigator] = None
         self._lock = asyncio.Lock()
+        self._speak_lock = asyncio.Lock()
+
+    def is_ai_speaking(self) -> bool:
+        """Check if AI is currently speaking."""
+        return self.ai_speaking or self.status == BotStatus.AI_SPEAKING
 
     def get_status_info(self) -> Dict[str, Any]:
         """Return the current status snapshot."""
         return {
             "status": self.status,
+            "aiSpeaking": self.is_ai_speaking(),
             "meetUrl": self.meet_url,
             "startedAt": self.started_at,
             "joinedAt": self.joined_at,
@@ -58,6 +66,7 @@ class MeetingBot:
             "headless": settings.meeting_bot_headless,
             "profileDir": settings.meeting_bot_profile_dir,
         }
+
 
     async def open_auth_session(self) -> None:
         """
@@ -237,8 +246,15 @@ class MeetingBot:
                 # At this point, in-meeting controls are strictly confirmed with multi-signal evidence
                 self.status = BotStatus.JOINED
                 self.joined_at = datetime.utcnow().isoformat() + "Z"
+                logger.info("[MEET] Bot admitted")
                 logger.info("[MeetingBot] Successfully joined Google Meet")
                 logger.info("[MeetingBot] In-meeting controls verified. Bot is now inside meeting.")
+
+                # Ensure microphone is muted upon entering
+                if self._navigator:
+                    await self._navigator.mute_microphone()
+                    logger.info("[MEET] Microphone muted")
+
                 return True
 
             except Exception as e:
@@ -247,15 +263,87 @@ class MeetingBot:
                 logger.exception(f"[MeetingBot] FAILED: {self.failure_reason}")
                 return False
 
+    async def speak_text(self, text: str) -> bool:
+        """
+        Speak text into Google Meet using Kokoro TTS and VB-CABLE with safe sequencing:
+        1. Ensure the bot is genuinely inside the meeting
+        2. Set AI_SPEAKING state and pause candidate transcript ingestion
+        3. Unmute Google Meet microphone
+        4. Play Kokoro audio through VB-CABLE Input (which routes to Meet microphone CABLE Output)
+        5. Wait until playback finishes
+        6. Mute Google Meet microphone again
+        7. Clear AI_SPEAKING state and resume candidate listening
+        """
+        if not text or not text.strip():
+            logger.warning("[MeetingBot] speak_text called with empty text.")
+            return False
+
+        from app.kokoro_tts import kokoro_tts
+
+        async with self._speak_lock:
+            if not self._navigator or not self._page:
+                logger.warning("[MeetingBot] Cannot speak: browser or meeting navigator is not active.")
+                return False
+
+            # Verify bot is actually inside the meeting
+            is_inside = await self._navigator.is_inside_meeting(timeout_ms=3000)
+            if not is_inside:
+                logger.warning("[MeetingBot] Cannot speak: bot is not confirmed inside the meeting room.")
+                return False
+
+            previous_status = self.status
+            self.ai_speaking = True
+            self.status = BotStatus.AI_SPEAKING
+
+            logger.info("[VOICE] AI speaking started")
+            try:
+                # Unmute microphone
+                unmuted = await self._navigator.unmute_microphone()
+                if not unmuted:
+                    logger.warning("[MEET] Microphone could not be unmuted; proceeding with playback caution.")
+
+                # Small settling delay before audio playback starts
+                await asyncio.sleep(0.3)
+
+                # Run blocking audio playback in thread pool to avoid blocking the asyncio event loop
+                loop = asyncio.get_running_loop()
+                success = await loop.run_in_executor(None, kokoro_tts.speak, text.strip())
+
+                # Small settling delay before muting microphone
+                await asyncio.sleep(0.4)
+
+                # Mute microphone again
+                await self._navigator.mute_microphone()
+
+                return success
+
+            except Exception as e:
+                logger.exception(f"[MeetingBot] Error during AI speech execution: {e}")
+                if self._navigator:
+                    try:
+                        await self._navigator.mute_microphone()
+                    except Exception:
+                        pass
+                return False
+            finally:
+                self.ai_speaking = False
+                self.status = BotStatus.JOINED if previous_status != BotStatus.STOPPED else BotStatus.STOPPED
+                logger.info("[VOICE] AI speaking finished")
+
     async def stop(self) -> None:
         """Leave the meeting gracefully, close browser, and clean up resources."""
         async with self._lock:
             logger.info("[MeetingBot] Stopping MeetingBot...")
+            self.ai_speaking = False
+            from app.kokoro_tts import kokoro_tts
+            kokoro_tts.stop()
+
             if self._navigator and self._page:
                 try:
                     await self._navigator.leave_meeting()
                 except Exception as e:
                     logger.debug(f"[MeetingBot] Error during leave_meeting: {e}")
+
 
             if self._context:
                 try:
