@@ -175,10 +175,17 @@ class MeetingBot:
                 await self._navigator.prepare_prejoin()
                 await self._page.wait_for_timeout(2000)
 
-                # Check and attempt to click Join
+                # Check and attempt to click Join with a retry window (Google Meet often takes 3-10s to enable join controls)
                 self.status = BotStatus.JOINING
                 logger.info("[MeetingBot] Inspecting join options on pre-join page...")
-                action = await self._navigator.click_join()
+                action = None
+                for attempt in range(5):
+                    action = await self._navigator.click_join()
+                    if action:
+                        break
+                    logger.info(f"[MeetingBot] Join control not ready yet (attempt {attempt + 1}/5). Waiting 2s...")
+                    await self._page.wait_for_timeout(2000)
+
                 if not action:
                     self.status = BotStatus.FAILED
                     self.failure_reason = "Failed to find 'Join now' or 'Ask to join' control on Google Meet pre-join page."

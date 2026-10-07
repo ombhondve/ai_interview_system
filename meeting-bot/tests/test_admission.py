@@ -88,3 +88,40 @@ async def test_bot_status_waiting_for_admission_not_falsely_joined():
 
     assert bot.status == BotStatus.WAITING_FOR_ADMISSION
     assert bot.status != BotStatus.JOINED
+
+
+@pytest.mark.asyncio
+async def test_navigator_unknown_ui_returns_none_and_captures_diag():
+    page = MagicMock()
+    page.title = AsyncMock(return_value="Google Meet")
+    page.url = "https://meet.google.com/kdh-evrf-onf"
+    page.frames = [MagicMock()]
+    page.screenshot = AsyncMock()
+
+    loc_empty = AsyncMock()
+    loc_empty.count.return_value = 0
+    loc_empty.is_visible.return_value = False
+    loc_empty.all.return_value = []
+
+    page.locator.return_value = loc_empty
+
+    nav = MeetNavigator(page)
+    action = await nav.click_join()
+    assert action is None
+    page.screenshot.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_leave_meeting_skipped_when_not_in_meeting():
+    page = MagicMock()
+    loc_empty = AsyncMock()
+    loc_empty.count.return_value = 0
+    loc_empty.is_visible.return_value = False
+    page.locator.return_value = loc_empty
+
+    nav = MeetNavigator(page)
+    # When is_inside_meeting is False, leave_meeting should return without error or clicking
+    await nav.leave_meeting()
+    # verify locator for leave call was not clicked
+    loc_empty.first.click.assert_not_called()
+

@@ -4,5 +4,6 @@ node_modules/
 frontend.zip
 meeting-bot/.env
 meeting-bot/bot-profile/
+meeting-bot/diagnostics/
 meeting-bot/**/__pycache__/
 meeting-bot/.venv/

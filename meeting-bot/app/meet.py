@@ -75,16 +75,99 @@ class MeetNavigator:
         except Exception as e:
             logger.debug(f"[MeetingBot] Microphone toggle note: {e}")
 
+    async def dump_prejoin_diagnostics(self) -> dict:
+        """
+        Collect safe, non-sensitive diagnostic information from the pre-join page:
+        - document title, current URL
+        - visible buttons, their text, accessible names, aria-labels, and role=button elements
+        - whether iframes exist
+        """
+        diagnostics = {
+            "title": await self.page.title(),
+            "url": self.page.url,
+            "buttons": [],
+            "role_buttons": [],
+            "headings": [],
+            "iframes_count": len(self.page.frames),
+        }
+
+        try:
+            # Query all button elements
+            buttons = await self.page.locator("button").all()
+            for btn in buttons:
+                try:
+                    if await btn.is_visible():
+                        text = (await btn.inner_text()).strip()
+                        aria = (await btn.get_attribute("aria-label") or "").strip()
+                        role = await btn.get_attribute("role") or "button"
+                        diagnostics["buttons"].append({
+                            "text": text[:60] if text else "",
+                            "aria_label": aria[:60] if aria else "",
+                            "role": role,
+                        })
+                except Exception:
+                    pass
+
+            # Query all role="button" elements
+            role_btns = await self.page.locator('[role="button"]').all()
+            for r_btn in role_btns:
+                try:
+                    if await r_btn.is_visible():
+                        text = (await r_btn.inner_text()).strip()
+                        aria = (await r_btn.get_attribute("aria-label") or "").strip()
+                        diagnostics["role_buttons"].append({
+                            "text": text[:60] if text else "",
+                            "aria_label": aria[:60] if aria else "",
+                        })
+                except Exception:
+                    pass
+
+            # Query visible headings or main indicators
+            headings = await self.page.locator("h1, h2, [role='heading']").all()
+            for h in headings:
+                try:
+                    if await h.is_visible():
+                        htext = (await h.inner_text()).strip()
+                        if htext:
+                            diagnostics["headings"].append(htext[:80])
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug(f"[MeetingBot] Diagnostics collection note: {e}")
+
+        return diagnostics
+
+    async def capture_failure_screenshot(self, prefix: str = "prejoin_failure") -> Optional[str]:
+        """Save a diagnostic screenshot to meeting-bot/diagnostics/ when join-control detection fails."""
+        try:
+            from pathlib import Path
+            from datetime import datetime
+
+            diag_dir = Path(__file__).resolve().parent.parent / "diagnostics"
+            diag_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+            file_path = diag_dir / f"{prefix}_{timestamp}.png"
+            await self.page.screenshot(path=str(file_path), full_page=True)
+            logger.info(f"[MeetingBot] Diagnostic screenshot saved: {file_path}")
+            return str(file_path)
+        except Exception as e:
+            logger.warning(f"[MeetingBot] Failed to capture diagnostic screenshot: {e}")
+            return None
+
     async def get_join_action(self) -> Optional[str]:
         """
         Check if 'Join now' or 'Ask to join' is visible on the pre-join page.
         Returns 'JOIN_NOW', 'ASK_TO_JOIN', or None.
         """
+        # 1. Direct join selectors
         join_now_selectors = [
             'button:has-text("Join now")',
             'span:has-text("Join now")',
             'div[role="button"]:has-text("Join now")',
             'button[aria-label*="Join now" i]',
+            '[role="button"][aria-label*="Join now" i]',
+            'button:text-is("Join now")',
+            'button:has-text("Join")',
         ]
         for sel in join_now_selectors:
             loc = self.page.locator(sel)
@@ -94,11 +177,14 @@ class MeetNavigator:
             except Exception:
                 pass
 
+        # 2. Ask to join selectors
         ask_to_join_selectors = [
             'button:has-text("Ask to join")',
             'span:has-text("Ask to join")',
             'div[role="button"]:has-text("Ask to join")',
             'button[aria-label*="Ask to join" i]',
+            '[role="button"][aria-label*="Ask to join" i]',
+            'button:text-is("Ask to join")',
         ]
         for sel in ask_to_join_selectors:
             loc = self.page.locator(sel)
@@ -126,6 +212,11 @@ class MeetNavigator:
             'span:has-text("Join now")',
             'div[role="button"]:has-text("Join now")',
             'button[aria-label*="Join now" i]',
+            '[role="button"][aria-label*="Join now" i]',
+            'button:text-is("Join now")',
+            # Fallback for plain "Join" button if present
+            'button:text-matches("^Join$", "i")',
+            'div[role="button"]:text-matches("^Join$", "i")',
         ]
         for selector in join_now_selectors:
             locator = self.page.locator(selector)
@@ -143,6 +234,8 @@ class MeetNavigator:
             'span:has-text("Ask to join")',
             'div[role="button"]:has-text("Ask to join")',
             'button[aria-label*="Ask to join" i]',
+            '[role="button"][aria-label*="Ask to join" i]',
+            'button:text-is("Ask to join")',
         ]
         for selector in ask_to_join_selectors:
             locator = self.page.locator(selector)
@@ -153,6 +246,20 @@ class MeetNavigator:
                     return "ASK_TO_JOIN"
             except Exception as e:
                 logger.debug(f"[MeetingBot] Ask to join selector {selector} note: {e}")
+
+        # Dump diagnostic information if join controls were not found
+        diagnostics = await self.dump_prejoin_diagnostics()
+        logger.warning(
+            f"[MeetingBot] Diagnostic dump on pre-join page: Title='{diagnostics.get('title')}', "
+            f"URL='{diagnostics.get('url')}', Headings={diagnostics.get('headings')}"
+        )
+        if diagnostics.get("buttons"):
+            logger.info(f"[MeetingBot] Visible buttons found: {diagnostics['buttons'][:10]}")
+        if diagnostics.get("role_buttons"):
+            logger.info(f"[MeetingBot] Visible role='button' elements: {diagnostics['role_buttons'][:10]}")
+
+        # Capture diagnostic screenshot
+        await self.capture_failure_screenshot("no_join_button")
 
         logger.warning("[MeetingBot] No 'Join now' or 'Ask to join' button found.")
         return None
@@ -167,6 +274,8 @@ class MeetNavigator:
             'text="someone lets you in"',
             'text="will let you in shortly"',
             'text="Waiting for the host"',
+            'div:has-text("Asking to join")',
+            'p:has-text("will let you in shortly")',
         ]
         for selector in waiting_indicators:
             try:
@@ -210,8 +319,14 @@ class MeetNavigator:
         return False
 
     async def leave_meeting(self) -> None:
-        """Attempt to click the Leave Call button gracefully."""
+        """Attempt to click the Leave Call button gracefully only when actually inside meeting."""
         try:
+            # First verify we are actually in a meeting before clicking leave
+            in_meeting = await self.is_inside_meeting(timeout_ms=1000)
+            if not in_meeting:
+                logger.debug("[MeetingBot] Not in an active meeting; skipping leave_meeting click.")
+                return
+
             leave_btn = self.page.locator('button[aria-label*="Leave call" i], button[aria-label*="End call" i]')
             if await leave_btn.count() > 0 and await leave_btn.first.is_visible():
                 await leave_btn.first.click(timeout=3000)
