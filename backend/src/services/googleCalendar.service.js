@@ -296,6 +296,11 @@ class GoogleCalendarService {
           displayName: candidate.name || candidate.email,
           responseStatus: 'needsAction',
         }] : []),
+        ...((interview.botEmail || process.env.GOOGLE_MEET_BOT_EMAIL) ? [{
+          email: (interview.botEmail || process.env.GOOGLE_MEET_BOT_EMAIL).trim().toLowerCase(),
+          displayName: 'RecruitAI Interview Bot',
+          responseStatus: 'accepted',
+        }] : []),
         // Add interviewer email if available
         ...(interview.interviewerEmail ? [{
           email: interview.interviewerEmail,

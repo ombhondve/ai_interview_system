@@ -75,41 +75,112 @@ class MeetNavigator:
         except Exception as e:
             logger.debug(f"[MeetingBot] Microphone toggle note: {e}")
 
-    async def click_join(self) -> bool:
+    async def get_join_action(self) -> Optional[str]:
         """
-        Identify and click the 'Join now' or 'Ask to join' button.
-        Returns True if a join button was found and clicked, False otherwise.
+        Check if 'Join now' or 'Ask to join' is visible on the pre-join page.
+        Returns 'JOIN_NOW', 'ASK_TO_JOIN', or None.
         """
-        logger.info("[MeetingBot] Attempting to click Join button...")
-
-        join_selectors = [
+        join_now_selectors = [
             'button:has-text("Join now")',
-            'button:has-text("Ask to join")',
             'span:has-text("Join now")',
-            'span:has-text("Ask to join")',
             'div[role="button"]:has-text("Join now")',
-            'div[role="button"]:has-text("Ask to join")',
             'button[aria-label*="Join now" i]',
+        ]
+        for sel in join_now_selectors:
+            loc = self.page.locator(sel)
+            try:
+                if await loc.count() > 0 and await loc.first.is_visible():
+                    return "JOIN_NOW"
+            except Exception:
+                pass
+
+        ask_to_join_selectors = [
+            'button:has-text("Ask to join")',
+            'span:has-text("Ask to join")',
+            'div[role="button"]:has-text("Ask to join")',
             'button[aria-label*="Ask to join" i]',
         ]
+        for sel in ask_to_join_selectors:
+            loc = self.page.locator(sel)
+            try:
+                if await loc.count() > 0 and await loc.first.is_visible():
+                    return "ASK_TO_JOIN"
+            except Exception:
+                pass
 
-        for selector in join_selectors:
+        return None
+
+    async def click_join(self) -> Optional[str]:
+        """
+        Identify and click 'Join now' or 'Ask to join'.
+        Returns:
+            'JOIN_NOW': Clicked direct join button
+            'ASK_TO_JOIN': Clicked admission request button
+            None: No join control found
+        """
+        logger.info("[MeetingBot] Inspecting pre-join join control...")
+
+        # 1. First priority: Check for direct "Join now"
+        join_now_selectors = [
+            'button:has-text("Join now")',
+            'span:has-text("Join now")',
+            'div[role="button"]:has-text("Join now")',
+            'button[aria-label*="Join now" i]',
+        ]
+        for selector in join_now_selectors:
             locator = self.page.locator(selector)
             try:
                 if await locator.count() > 0 and await locator.first.is_visible():
                     await locator.first.click(timeout=5000)
-                    logger.info(f"[MeetingBot] Clicked join control via selector: {selector}")
-                    return True
+                    logger.info(f"[MeetingBot] Detected and clicked 'Join now' via: {selector}")
+                    return "JOIN_NOW"
             except Exception as e:
-                logger.debug(f"[MeetingBot] Selector {selector} not clickable: {e}")
+                logger.debug(f"[MeetingBot] Join now selector {selector} note: {e}")
 
-        logger.warning("[MeetingBot] No standard 'Join now' or 'Ask to join' button found.")
+        # 2. Second priority: Check for "Ask to join"
+        ask_to_join_selectors = [
+            'button:has-text("Ask to join")',
+            'span:has-text("Ask to join")',
+            'div[role="button"]:has-text("Ask to join")',
+            'button[aria-label*="Ask to join" i]',
+        ]
+        for selector in ask_to_join_selectors:
+            locator = self.page.locator(selector)
+            try:
+                if await locator.count() > 0 and await locator.first.is_visible():
+                    await locator.first.click(timeout=5000)
+                    logger.warning(f"[MeetingBot] Detected and clicked 'Ask to join' via: {selector}")
+                    return "ASK_TO_JOIN"
+            except Exception as e:
+                logger.debug(f"[MeetingBot] Ask to join selector {selector} note: {e}")
+
+        logger.warning("[MeetingBot] No 'Join now' or 'Ask to join' button found.")
+        return None
+
+    async def is_waiting_for_admission(self) -> bool:
+        """
+        Check if the bot is currently on the waiting screen (e.g. 'Asking to join...',
+        'Someone in the call will let you in shortly', or 'You'll join the call when someone lets you in').
+        """
+        waiting_indicators = [
+            'text="Asking to join"',
+            'text="someone lets you in"',
+            'text="will let you in shortly"',
+            'text="Waiting for the host"',
+        ]
+        for selector in waiting_indicators:
+            try:
+                loc = self.page.locator(selector)
+                if await loc.count() > 0 and await loc.first.is_visible():
+                    return True
+            except Exception:
+                pass
         return False
 
     async def is_inside_meeting(self, timeout_ms: int = 15000) -> bool:
         """
         Determine whether the bot has successfully transitioned into the active meeting room.
-        Checks for in-meeting controls (e.g. Leave call button, meeting details, chat, participant list).
+        Checks strictly for in-meeting controls (e.g. Leave call button, meeting details, chat, participant list).
         """
         in_meeting_indicators = [
             'button[aria-label*="Leave call" i]',
@@ -121,7 +192,6 @@ class MeetNavigator:
             'button[aria-label*="Chat with everyone" i]',
         ]
 
-        end_time = self.page.context.browser.is_connected()  # just to check loop
         waited = 0
         step = 1000
 

@@ -25,6 +25,7 @@ class BotStatus:
     OPENING_MEET = "OPENING_MEET"
     PRE_JOIN = "PRE_JOIN"
     JOINING = "JOINING"
+    WAITING_FOR_ADMISSION = "WAITING_FOR_ADMISSION"
     JOINED = "JOINED"
     FAILED = "FAILED"
     STOPPED = "STOPPED"
@@ -174,29 +175,48 @@ class MeetingBot:
                 await self._navigator.prepare_prejoin()
                 await self._page.wait_for_timeout(2000)
 
-                # Attempt to click Join
+                # Check and attempt to click Join
                 self.status = BotStatus.JOINING
-                logger.info("[MeetingBot] Joining meeting...")
-                clicked = await self._navigator.click_join()
-                if not clicked:
+                logger.info("[MeetingBot] Inspecting join options on pre-join page...")
+                action = await self._navigator.click_join()
+                if not action:
                     self.status = BotStatus.FAILED
                     self.failure_reason = "Failed to find 'Join now' or 'Ask to join' control on Google Meet pre-join page."
                     logger.error(f"[MeetingBot] FAILED: {self.failure_reason}")
                     return False
 
-                # Verify entry into meeting
-                logger.info("[MeetingBot] Waiting to confirm entry into meeting room...")
-                is_inside = await self._navigator.is_inside_meeting(timeout_ms=25000)
-                if not is_inside:
-                    self.status = BotStatus.FAILED
-                    self.failure_reason = "Join button clicked but failed to detect in-meeting controls within timeout."
-                    logger.error(f"[MeetingBot] FAILED: {self.failure_reason}")
-                    return False
+                if action == "ASK_TO_JOIN":
+                    self.status = BotStatus.WAITING_FOR_ADMISSION
+                    logger.warning("[MeetingBot] 'Ask to join' was clicked. Bot is NOT directly admitted.")
+                    logger.warning("[MeetingBot] State changed to: WAITING_FOR_ADMISSION. Waiting for meeting host to admit...")
 
+                    # Wait to see if host admits candidate during grace period (up to 30s)
+                    is_inside = await self._navigator.is_inside_meeting(timeout_ms=30000)
+                    if not is_inside:
+                        # Check if still on waiting screen
+                        if await self._navigator.is_waiting_for_admission():
+                            logger.info("[MeetingBot] Bot remains in WAITING_FOR_ADMISSION state (waiting for host admission).")
+                            # Keep status as WAITING_FOR_ADMISSION
+                            return True
+                        self.status = BotStatus.FAILED
+                        self.failure_reason = "Admission request was rejected, timed out, or canceled by host."
+                        logger.error(f"[MeetingBot] FAILED: {self.failure_reason}")
+                        return False
+
+                elif action == "JOIN_NOW":
+                    logger.info("[MeetingBot] Direct 'Join now' clicked. Waiting to confirm entry into meeting room...")
+                    is_inside = await self._navigator.is_inside_meeting(timeout_ms=25000)
+                    if not is_inside:
+                        self.status = BotStatus.FAILED
+                        self.failure_reason = "Direct 'Join now' was clicked but failed to detect in-meeting controls within timeout."
+                        logger.error(f"[MeetingBot] FAILED: {self.failure_reason}")
+                        return False
+
+                # At this point, in-meeting controls are strictly confirmed
                 self.status = BotStatus.JOINED
                 self.joined_at = datetime.utcnow().isoformat() + "Z"
                 logger.info("[MeetingBot] Successfully joined Google Meet")
-                logger.info("[MeetingBot] Bot is now inside meeting")
+                logger.info("[MeetingBot] In-meeting controls verified. Bot is now inside meeting.")
                 return True
 
             except Exception as e:
