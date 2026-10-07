@@ -2,3 +2,7 @@ node_modules/
 .next/
 .env
 frontend.zip
+meeting-bot/.env
+meeting-bot/bot-profile/
+meeting-bot/**/__pycache__/
+meeting-bot/.venv/
