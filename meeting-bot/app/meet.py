@@ -227,11 +227,35 @@ class MeetNavigator:
         """
         Locate and click settings control to open Settings dialog with bounded timeouts.
         Distinguishes More options menu from the actual Settings dialog.
-        PATH A: Direct Settings button -> click -> Settings dialog
-        PATH B: More options button -> wait for menu -> find Settings menu item -> click -> Settings dialog
-        PATH C: Audio & Video preview control -> click -> Settings dialog
+        Captures diagnostic screenshots and dumps visible DOM buttons/menu items.
         """
+        from pathlib import Path
+        debug_dir = Path(__file__).resolve().parent.parent / "debug"
+        debug_dir.mkdir(parents=True, exist_ok=True)
+
         logger.info("[MEET][AUDIO] Opening Google Meet settings...")
+
+        # Diagnostic 1: Log all visible buttons currently on the pre-join page
+        try:
+            visible_btns = await self.page.locator("button, [role='button']").all()
+            btn_summaries = []
+            for b in visible_btns:
+                try:
+                    if await b.is_visible():
+                        b_text = (await b.inner_text()).strip()
+                        b_aria = (await b.get_attribute("aria-label") or "").strip()
+                        b_tip = (await b.get_attribute("data-tooltip") or "").strip()
+                        b_title = (await b.get_attribute("title") or "").strip()
+                        b_role = await b.get_attribute("role") or "button"
+                        label_part = b_aria or b_tip or b_title or b_text
+                        if label_part:
+                            btn_summaries.append(f"tag=button, role={b_role}, text='{b_text[:40]}', aria='{b_aria[:40]}', tooltip='{b_tip[:40]}'")
+                except Exception:
+                    pass
+            if btn_summaries:
+                logger.info(f"[MEET][AUDIO][DEBUG] Visible pre-join buttons ({len(btn_summaries)}):\n- " + "\n- ".join(btn_summaries[:20]))
+        except Exception as e:
+            logger.debug(f"[MEET][AUDIO] Pre-join button dump note: {e}")
 
         # PATH A: Direct Settings button if already visible
         settings_selectors = [
@@ -262,52 +286,83 @@ class MeetNavigator:
             'button[aria-label*="more settings" i]',
             'button[data-tooltip*="More options" i]',
             '[aria-label*="More options" i]',
+            'button:has([data-icon="more_vert"])',
+            'button:has(i:has-text("more_vert"))',
         ]
+        more_clicked = False
         more_opened = False
+        clicked_selector = None
+
         for more_sel in more_selectors:
             loc = self.page.locator(more_sel)
             try:
                 if await loc.count() > 0 and await loc.first.is_visible():
+                    logger.info(f"[MEET][AUDIO] Clicking More options button via: {more_sel}")
                     await loc.first.click()
-                    # Wait for menu to appear (bounded 5s timeout)
-                    menu_loc = self.page.locator('[role="menu"], ul[role="menu"], div[role="menu"]')
+                    more_clicked = True
+                    clicked_selector = more_sel
+                    await self.page.wait_for_timeout(800)
+
+                    # Take debug screenshot immediately after clicking More options
+                    screenshot_path = str(debug_dir / "meet-more-options.png")
                     try:
-                        await menu_loc.first.wait_for(state="visible", timeout=5000)
-                        more_opened = True
-                        logger.info("[MEET][AUDIO] More options menu opened")
-                        break
-                    except Exception:
-                        # Fallback check if menuitems are visible directly
-                        items = self.page.locator('[role="menuitem"]')
-                        if await items.count() > 0 and await items.first.is_visible():
+                        await self.page.screenshot(path=screenshot_path)
+                        logger.info(f"[MEET][AUDIO][DEBUG] Screenshot saved to: {screenshot_path}")
+                    except Exception as ss_err:
+                        logger.debug(f"[MEET][AUDIO] Screenshot error: {ss_err}")
+
+                    # Check for visible menu or menuitems
+                    menu_loc = self.page.locator('[role="menu"], ul[role="menu"], div[role="menu"], [role="menuitem"]')
+                    for _ in range(15):
+                        if await menu_loc.count() > 0 and await menu_loc.first.is_visible():
                             more_opened = True
                             logger.info("[MEET][AUDIO] More options menu opened")
                             break
+                        await self.page.wait_for_timeout(200)
+
+                    if more_opened:
+                        break
             except Exception as e:
                 logger.debug(f"[MEET][AUDIO] Failed clicking more options on {more_sel}: {e}")
 
-        if more_opened:
-            # Diagnostic logging: log accessible names/text of visible menu items
+        if more_clicked and not more_opened:
+            logger.warning(f"[MEET][AUDIO] Clicked More options ({clicked_selector}) but menu element did not report visible.")
+
+        if more_opened or more_clicked:
+            # Diagnostic logging: inspect REAL visible DOM for all menu items and popup elements
             try:
-                menu_items = await self.page.locator('[role="menuitem"], [role="menu"] [role="button"]').all()
-                menu_labels = []
-                for item in menu_items:
-                    txt = (await item.inner_text() or await item.get_attribute("aria-label") or "").strip()
-                    if txt:
-                        menu_labels.append(txt.replace("\n", " "))
-                if menu_labels:
-                    logger.info(f"[MEET][AUDIO][DEBUG] Visible menu items:\n- " + "\n- ".join(menu_labels))
+                raw_items = await self.page.locator('[role="menuitem"], [role="menu"] [role="button"], [role="menu"] li, [role="menu"] div, li[role="menuitem"]').all()
+                menu_diagnostics = []
+                for item in raw_items:
+                    try:
+                        if await item.is_visible():
+                            txt = (await item.inner_text()).strip()
+                            aria = (await item.get_attribute("aria-label") or "").strip()
+                            title = (await item.get_attribute("title") or "").strip()
+                            role = await item.get_attribute("role") or ""
+                            tag = await item.evaluate("el => el.tagName.toLowerCase()")
+                            menu_diagnostics.append(
+                                f"tag={tag}, role={role}, text='{txt[:40]}', aria='{aria[:40]}', title='{title[:40]}'"
+                            )
+                    except Exception:
+                        pass
+                if menu_diagnostics:
+                    logger.info(f"[MEET][AUDIO][DEBUG] Visible menu items ({len(menu_diagnostics)}):\n- " + "\n- ".join(menu_diagnostics[:20]))
+                else:
+                    logger.warning("[MEET][AUDIO][DEBUG] No visible elements found with [role='menuitem'].")
             except Exception as diag_err:
                 logger.debug(f"[MEET][AUDIO] Menu diagnostic error: {diag_err}")
 
-            # Locate Settings menu item inside menu
+            # Locate Settings menu item inside menu using broad, case-insensitive matchers
             settings_item_selectors = [
                 '[role="menuitem"]:has-text("Settings")',
                 '[role="menuitem"][aria-label*="Settings" i]',
                 'li[role="menuitem"]:has-text("Settings")',
                 '[role="menu"] button:has-text("Settings")',
+                '[role="menu"] :has-text("Settings")',
                 'button:has-text("Settings")',
                 'span:has-text("Settings")',
+                'div[role="button"]:has-text("Settings")',
             ]
             settings_item = None
             for item_sel in settings_item_selectors:
@@ -315,7 +370,7 @@ class MeetNavigator:
                 try:
                     if await loc.count() > 0 and await loc.first.is_visible():
                         settings_item = loc.first
-                        logger.info("[MEET][AUDIO] Settings menu item found")
+                        logger.info(f"[MEET][AUDIO] Settings menu item found ({item_sel})")
                         break
                 except Exception:
                     pass
@@ -342,6 +397,7 @@ class MeetNavigator:
             'button[aria-label*="Check your audio" i]',
             'button[aria-label*="Audio and video" i]',
             'button[aria-label*="device settings" i]',
+            '[data-tooltip*="Check your audio" i]',
         ]
         for sel in preview_audio_btns:
             loc = self.page.locator(sel)
@@ -356,6 +412,10 @@ class MeetNavigator:
             except Exception:
                 pass
 
+        logger.error(
+            f"[MEET][AUDIO] Settings failed to open. Diagnostic summary: "
+            f"more_clicked={more_clicked}, more_opened={more_opened}"
+        )
         return False
 
     async def _wait_for_settings_dialog(self, timeout_ms: int = 6000) -> bool:
