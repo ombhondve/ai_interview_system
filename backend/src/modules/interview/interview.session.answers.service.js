@@ -42,24 +42,55 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
   }
   try {
     const context = await loadInterviewContext(doc.candidateId, doc.projectId, doc.bookingId);
-    let phase = doc.phase;
-    if (phase === "QUESTIONING" && doc.questions.length >= 6) phase = "PROJECT_WALKTHROUGH";
-    else if (phase === "PROJECT_WALKTHROUGH" && doc.questions.filter((q) => q.category === "PROJECT_WALKTHROUGH").length >= 2) phase = "CLOSING";
-    const candidateAnswers = doc.transcript.filter((turn) => turn.speaker === "CANDIDATE");
-    const answerAssessment = assessAnswer(answer.text);
-    answer.answerQuality = answerAssessment.quality;
+    let phase = doc.phase || "OPENING";
+    let next;
+
+    if (phase === "OPENING") {
+      // Step 1: Candidate answered audio check ("Can you hear me clearly?")
+      // Question 2 should be: "Great. Before we begin, could you briefly introduce yourself?"
+      if (doc.questions.length === 1) {
+        next = {
+          category: "INTRODUCTION",
+          question: "Great. Before we begin, could you briefly introduce yourself?",
+          difficulty: "EASY",
+          reason: "Candidate self-introduction before project discussion.",
+          source: "fallback",
+          followUpExpected: true,
+        };
+      } else {
+        // Step 2: Candidate answered introduction -> transition to PROJECT_WALKTHROUGH
+        phase = "PROJECT_WALKTHROUGH";
+        next = {
+          category: "PROJECT_WALKTHROUGH",
+          question: "Thank you. Let's talk about your project: can you briefly give an overview of what you built?",
+          difficulty: "MEDIUM",
+          reason: "Transition from introduction to project walkthrough.",
+          source: "fallback",
+          followUpExpected: true,
+        };
+      }
+    } else {
+      if (phase === "QUESTIONING" && doc.questions.length >= 6) phase = "PROJECT_WALKTHROUGH";
+      else if (phase === "PROJECT_WALKTHROUGH" && doc.questions.filter((q) => q.category === "PROJECT_WALKTHROUGH").length >= 2) phase = "CLOSING";
+
+      const candidateAnswers = doc.transcript.filter((turn) => turn.speaker === "CANDIDATE");
+      const answerAssessment = assessAnswer(answer.text);
+      answer.answerQuality = answerAssessment.quality;
+      answer.answerProcessed = true;
+      await doc.save();
+      const coveredTopics = [...new Set(doc.questions.map((q) => q.category))];
+      next = await generateNextQuestion({
+        context,
+        askedQuestions: doc.questions,
+        transcript: doc.transcript.map(({ speaker, text: turnText }) => ({ speaker, text: turnText })),
+        answersSoFar: candidateAnswers.map((turn) => turn.text),
+        coveredTopics,
+        answerAssessment,
+        phase,
+      });
+    }
+
     answer.answerProcessed = true;
-    await doc.save();
-    const coveredTopics = [...new Set(doc.questions.map((q) => q.category))];
-    const next = await generateNextQuestion({
-      context,
-      askedQuestions: doc.questions,
-      transcript: doc.transcript.map(({ speaker, text: turnText }) => ({ speaker, text: turnText })),
-      answersSoFar: candidateAnswers.map((turn) => turn.text),
-      coveredTopics,
-      answerAssessment,
-      phase,
-    });
     if (next.category === "CLOSING") phase = "CLOSING";
     doc.phase = phase;
     const nextQuestionId = String(doc.questions.length);

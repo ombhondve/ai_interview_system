@@ -26,41 +26,92 @@ const PHASE_CATEGORY = {
 
 /** Deterministic fallback pool per phase - only used when the AI fails. */
 const FALLBACK_QUESTIONS = {
+  OPENING: [
+    { category: "INTRODUCTION", question: "Hello, welcome to your interview. Can you hear me clearly?", difficulty: "EASY" },
+    { category: "INTRODUCTION", question: "Great. Before we begin, could you briefly introduce yourself?", difficulty: "EASY" },
+  ],
   QUESTIONING: [
-    { category: "INTRODUCTION", question: "Please introduce yourself briefly and tell us about your role.", difficulty: "EASY" },
-    { category: "PROJECT_OVERVIEW", question: "Can you give a short overview of the project you submitted?", difficulty: "EASY" },
-    { category: "PROJECT_ARCHITECTURE", question: "Can you explain the overall architecture of your project?", difficulty: "MEDIUM" },
-    { category: "TECHNOLOGY", question: "Which technologies did you use, and why did you choose them?", difficulty: "MEDIUM" },
-    { category: "IMPLEMENTATION", question: "Which part of the implementation was the most challenging, and how did you solve it?", difficulty: "MEDIUM" },
-    { category: "DATABASE", question: "How did you design the database schema for this project?", difficulty: "MEDIUM" },
-    { category: "API", question: "How does your frontend communicate with your backend?", difficulty: "MEDIUM" },
+    { category: "PROJECT_OVERVIEW", question: "Can you give a short overview of your project?", difficulty: "EASY" },
+    { category: "PROJECT_ARCHITECTURE", question: "How is your project structured architecturally?", difficulty: "MEDIUM" },
+    { category: "TECHNOLOGY", question: "Which technologies did you choose, and why?", difficulty: "MEDIUM" },
+    { category: "IMPLEMENTATION", question: "What was the most challenging feature you built?", difficulty: "MEDIUM" },
+    { category: "DATABASE", question: "How did you design your database schema?", difficulty: "MEDIUM" },
+    { category: "API", question: "How does your frontend interact with the backend APIs?", difficulty: "MEDIUM" },
     { category: "AUTHENTICATION", question: "How did you implement authentication in your project?", difficulty: "MEDIUM" },
-    { category: "ERROR_HANDLING", question: "How does your application handle errors and failures?", difficulty: "MEDIUM" },
-    { category: "SECURITY", question: "What security measures did you take in this project?", difficulty: "HARD" },
-    { category: "PROBLEM_SOLVING", question: "If a user reports a bug you cannot reproduce locally, how would you track it down?", difficulty: "HARD" },
+    { category: "ERROR_HANDLING", question: "How does your application handle errors and edge cases?", difficulty: "MEDIUM" },
+    { category: "SECURITY", question: "What security measures did you put in place?", difficulty: "HARD" },
+    { category: "PROBLEM_SOLVING", question: "How would you debug an issue you cannot reproduce locally?", difficulty: "HARD" },
   ],
   PROJECT_WALKTHROUGH: [
     {
       category: "PROJECT_WALKTHROUGH",
-      question:
-        "Please share your screen and walk me through the main functionality of the project you submitted. Start with the frontend, then explain the backend, APIs, database and authentication.",
+      question: "Can you give a brief walkthrough of your project's main features?",
       difficulty: "MEDIUM",
     },
     {
       category: "PROJECT_WALKTHROUGH",
-      question:
-        "Which feature are you most proud of in this project, and can you show us how it works end to end?",
+      question: "Which feature are you most proud of in this project?",
       difficulty: "MEDIUM",
     },
   ],
   CLOSING: [
     {
       category: "CLOSING",
-      question: "Thank you for walking us through your project. Do you have any questions for us?",
+      question: "Thank you. Do you have any questions for us before we finish?",
       difficulty: "EASY",
     },
   ],
 };
+
+/**
+ * Clean and simplify conversational questions to fit voice requirements:
+ * 1. Single sentence / single idea.
+ * 2. Under 20 words normal, 25 words absolute limit.
+ * 3. Strips clause lists like "including ...".
+ */
+export function shortenForVoice(rawText) {
+  let text = String(rawText || "").trim();
+  if (!text) return "";
+
+  // Split on multiple sentences if present and take the first interrogative sentence
+  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+  let firstSentence = sentences[0].trim();
+
+  // Strip multi-clause lists like ", including...", ", such as...", ", along with..."
+  firstSentence = firstSentence.replace(/,\s*(including|such as|along with|as well as)\b.*$/i, "?");
+
+  // Ensure it ends with a question mark if interrogative
+  if (!firstSentence.endsWith("?") && !firstSentence.endsWith(".")) {
+    firstSentence += "?";
+  }
+
+  // Count words
+  const words = firstSentence.split(/\s+/).filter(Boolean);
+  if (words.length <= 20) {
+    return firstSentence;
+  }
+
+  // If between 21 and 25 words, check if it's already a single clean sentence
+  if (words.length <= 25 && !/(\band\b.*\band\b|,.*,)/i.test(firstSentence)) {
+    return firstSentence;
+  }
+
+  // If still too long (> 20 words or complex clause), prune or simplify
+  // E.g. "Can you walk me through the exact steps you took to troubleshoot and resolve the CI/CD pipeline credential configuration issue you encountered?"
+  // -> "How did you troubleshoot the CI/CD pipeline issue in your project?"
+  // Or extract up to the main punctuation clause / direct question:
+  const subClause = firstSentence.split(/,\s*/)[0];
+  const subWords = subClause.split(/\s+/).filter(Boolean);
+  if (subWords.length >= 4 && subWords.length <= 20) {
+    let result = subClause.trim();
+    if (!result.endsWith("?")) result += "?";
+    return result;
+  }
+
+  // Slice to 20 words gracefully
+  const truncated = words.slice(0, 20).join(" ").replace(/[,;:]+$/, "");
+  return truncated.endsWith("?") ? truncated : `${truncated}?`;
+}
 
 /**
  * Normalize raw LLM output into a safe question object.
@@ -76,7 +127,11 @@ function sanitizeAiQuestion(raw, askedQuestions) {
   const difficulty = ["EASY", "MEDIUM", "HARD"].includes(raw.difficulty)
     ? raw.difficulty
     : "MEDIUM";
-  const text = raw.question.trim().slice(0, 800);
+  
+  // Enforce voice brevity and conciseness
+  const text = shortenForVoice(raw.question);
+  if (!text) return null;
+
   // Normalize punctuation and stop words so common paraphrases do not repeat
   // the same underlying wording. This remains deliberately provider-free.
   const normalize = (value) => String(value || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((word) => word && !["the", "a", "an", "is", "are", "did", "do", "you", "your", "how", "what", "can", "could", "please", "explain", "describe", "tell", "about", "in", "for", "to", "of", "and"].includes(word));
@@ -175,4 +230,5 @@ export async function generateNextQuestion({ context, askedQuestions = [], trans
   return { ...fb, reason: "Fallback question (AI unavailable).", followUpExpected: false, source: "fallback" };
 }
 
-export default { generateNextQuestion };
+export { sanitizeAiQuestion };
+export default { generateNextQuestion, shortenForVoice, sanitizeAiQuestion };

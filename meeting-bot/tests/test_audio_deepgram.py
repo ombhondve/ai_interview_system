@@ -271,3 +271,43 @@ async def test_audio_capture_ai_speaking_clears_candidate_buffer():
     assert result is None
 
 
+def test_main_imports_time_without_name_error():
+    """Verify meeting-bot/app/main.py imports time and can be inspected without NameError."""
+    import app.main as main_mod
+    import time
+    assert hasattr(main_mod, "time")
+    assert main_mod.time is time
+
+
+@pytest.mark.asyncio
+async def test_audio_buffer_flush_and_listening_transition():
+    """
+    Verify AI speaking finished -> audio buffer flush -> candidate listening transition.
+    """
+    import numpy as np
+    from app.audio_capture import CaptureState
+
+    service = AudioCaptureService(sample_rate=16000, channels=1)
+    service._native_sample_rate = 16000
+    service._native_channels = 1
+    service._state = CaptureState.RUNNING
+
+    # Simulate residual audio chunks lingering in the queue
+    chunk_samples = 800
+    t = np.linspace(0, 0.05, chunk_samples, endpoint=False)
+    dummy_chunk = (np.sin(2 * np.pi * 440 * t) * 16000).astype(np.int16).tobytes()
+
+    for _ in range(10):
+        service._audio_queue.put(dummy_chunk)
+    service._recorded_frames.append(dummy_chunk)
+
+    assert not service._audio_queue.empty()
+    assert len(service._recorded_frames) > 0
+
+    # Execute transition flush
+    service.reset_buffer()
+
+    assert service._audio_queue.empty()
+    assert len(service._recorded_frames) == 0
+
+

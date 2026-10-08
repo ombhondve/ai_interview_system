@@ -58,9 +58,17 @@ export async function startInterview(interviewId, candidateId) {
   if (now < start - 15 * 60_000 || now > end) { const e = new Error("Interview is outside its allowed start window."); e.status = 403; throw e; }
   const ctx = await loadInterviewContext(doc.candidateId, doc.projectId, doc.bookingId);
   if (doc.questions.length === 0) {
-    const question = await generateNextQuestion({ context: ctx, askedQuestions: [], transcript: [], phase: "QUESTIONING" });
+    const question = {
+      category: "INTRODUCTION",
+      question: "Hello, welcome to your interview. Can you hear me clearly?",
+      difficulty: "EASY",
+      reason: "Initial greeting and audio check.",
+      source: "fallback",
+      followUpExpected: true,
+    };
+    doc.phase = "OPENING";
     doc.questions.push({ ...question, questionId: "0", askedAt: new Date() });
-    doc.transcript.push({ speaker: "AI", text: question.question, timestamp: new Date(), questionId: "0", category: question.category, section: "QUESTIONING" });
+    doc.transcript.push({ speaker: "AI", text: question.question, timestamp: new Date(), questionId: "0", category: question.category, section: "OPENING" });
   }
   if (doc.status !== "IN_PROGRESS") {
     doc.status = "IN_PROGRESS";

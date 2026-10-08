@@ -29,6 +29,7 @@ export const INTERVIEW_PHASES = [
   "READY",
   "WAITING_FOR_CANDIDATE",
   "IN_PROGRESS",
+  "OPENING",
   "QUESTIONING",
   "PROJECT_WALKTHROUGH",
   "CLOSING",
@@ -69,6 +70,9 @@ export function buildQuestionPrompt({ candidate, project, verification, history 
   return `Act as a professional technical interviewer conducting a live conversational interview.
 
 RULES (must follow):
+- CONCISE SPOKEN QUESTIONS: Each question MUST be short, direct, and conversational (preferably under 20 words, absolute maximum 25 words).
+- SINGLE IDEA ONLY: Ask ONE single idea or question at a time. Never combine multiple sub-questions.
+- NO COMPOUND CLAUSES: Never use "including X, Y, and Z" or long introductory clauses. Keep it easy to understand when heard once.
 - Ask ONE question at a time. Never ask multiple questions in one response.
 - Use the candidate's ACTUAL project below. Prefer project-specific questions over generic ones.
 - Use the candidate's most recent answer explicitly. Classify it as STRONG, INCOMPLETE, VAGUE, or WEAK before choosing the next question.

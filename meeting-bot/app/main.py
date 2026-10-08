@@ -10,6 +10,7 @@ Provides:
 """
 
 import sys
+import time
 import signal
 import asyncio
 import logging
@@ -386,9 +387,14 @@ async def run_cli():
                         spoken = await bot_instance.speak_text(first_question)
                     if not spoken:
                         logger.error("[AI] Question playback could not be completed after retry. Mic remains muted.")
+                    logger.info("[PERF] ai_speaking_finished")
+                    audio_capture.reset_buffer()
+                    logger.info("[PERF] audio_buffer_flushed")
+                    await asyncio.sleep(0.4)
                 else:
                     logger.info("[MeetingBot] No initial question returned from backend; waiting for candidate speech.")
 
+            logger.info("[PERF] candidate_listening_started")
             logger.info("[AUDIO] Listening for candidate")
             try:
                 while True:
@@ -513,6 +519,11 @@ async def run_cli():
                             tts_end = time.monotonic()
                             tts_duration = round(tts_end - tts_start, 2)
                             logger.info(f"[PERF] tts_end duration={tts_duration}s")
+                            logger.info("[PERF] ai_speaking_finished")
+                            audio_capture.reset_buffer()
+                            logger.info("[PERF] audio_buffer_flushed")
+                            await asyncio.sleep(0.4)
+                            logger.info("[PERF] candidate_listening_started")
 
                             # Total response time from candidate speech end to AI question starting/completing
                             total_response_time = round(tts_end - speech_ended_timestamp, 2)

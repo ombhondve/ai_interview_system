@@ -11,7 +11,7 @@ const transcriptSchema = new mongoose.Schema({
   sequence: { type: Number, min: 0, default: 0 }, speaker: { type: String, enum: ["AI", "CANDIDATE", "SYSTEM"], required: true }, text: { type: String, required: true, trim: true, maxlength: 8000 },
   timestamp: { type: Date, default: Date.now }, questionId: { type: String, default: null }, requestId: { type: String, trim: true, default: null },
   answerProcessed: { type: Boolean, default: false }, answerQuality: { type: String, enum: ["WEAK", "INCOMPLETE", "POTENTIALLY_DETAILED"], default: null }, category: { type: String, enum: INTERVIEW_CATEGORIES, default: null },
-  section: { type: String, enum: ["QUESTIONING", "PROJECT_WALKTHROUGH", "CLOSING", "SYSTEM"], default: "QUESTIONING" },
+  section: { type: String, enum: ["OPENING", "QUESTIONING", "PROJECT_WALKTHROUGH", "CLOSING", "SYSTEM"], default: "OPENING" },
 }, { _id: false });
 const scoreBlock = new mongoose.Schema({ score: { type: Number, min: 0, max: 100, required: true }, summary: { type: String, trim: true, default: "" } }, { _id: false });
 const analysisSchema = new mongoose.Schema({
@@ -35,7 +35,7 @@ const aiInterviewSchema = new mongoose.Schema({
   analysisError: { type: String, trim: true, default: null },
   analysisAttempts: { type: Number, min: 0, default: 0 },
   analysisUpdatedAt: { type: Date, default: null },
-  phase: { type: String, enum: ["QUESTIONING", "PROJECT_WALKTHROUGH", "CLOSING"], default: "QUESTIONING" },
+  phase: { type: String, enum: ["OPENING", "QUESTIONING", "PROJECT_WALKTHROUGH", "CLOSING"], default: "OPENING" },
   currentQuestionIndex: { type: Number, default: 0, min: 0 }, questions: { type: [questionSchema], default: [] }, transcript: { type: [transcriptSchema], default: [] },
   startedAt: { type: Date, default: null }, endedAt: { type: Date, default: null }, analysis: { type: analysisSchema, default: null },
   adminDecision: { status: { type: String, enum: ["pending", "selected", "rejected", "another_interview"], default: "pending" }, notes: { type: String, trim: true, default: "" }, decidedBy: { type: String, trim: true, default: null }, decidedAt: { type: Date, default: null } },
