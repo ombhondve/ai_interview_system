@@ -367,7 +367,13 @@ async def run_cli():
                     logger.info(f"[AI] First question generated: '{first_question}'")
                     logger.info("[AI] SPEAKING")
                     await asyncio.sleep(1.5)
-                    await bot_instance.speak_text(first_question)
+                    spoken = await bot_instance.speak_text(first_question)
+                    if not spoken:
+                        logger.warning("[AI] First question playback failed; attempting single retry in 2s...")
+                        await asyncio.sleep(2.0)
+                        spoken = await bot_instance.speak_text(first_question)
+                    if not spoken:
+                        logger.error("[AI] Question playback could not be completed after retry. Mic remains muted.")
                 else:
                     logger.info("[MeetingBot] No initial question returned from backend; waiting for candidate speech.")
 
@@ -380,15 +386,18 @@ async def run_cli():
                         await asyncio.sleep(0.5)
                         continue
 
-                    logger.info("[STT] Listening for candidate (sampling chunks)...")
-                    await asyncio.sleep(5)
+                    await asyncio.sleep(2.5)
 
                     if bot_instance.is_ai_speaking():
-                        logger.info("[STT] Ignored because AI_SPEAKING=true")
+                        logger.debug("[STT] Ignored because AI_SPEAKING=true")
                         continue
 
                     lvl = audio_capture.get_audio_level()
-                    if lvl < 0.005:
+                    # Safe runtime audio diagnostics
+                    if lvl > 0.001:
+                        logger.info(f"[AUDIO] Candidate listening RMS level: {lvl:.4f}")
+
+                    if lvl < 0.003:
                         continue
 
                     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -404,6 +413,7 @@ async def run_cli():
 
                         if deepgram_client.is_configured():
                             try:
+                                logger.info(f"[AUDIO] Candidate speech detected (RMS: {meta['audioLevel']}). Transcribing...")
                                 res = deepgram_client.transcribe_file(seg_file)
                                 transcript = (res.get("transcript") or "").strip()
                                 confidence = res.get("confidence", 0.0)

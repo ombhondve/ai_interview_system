@@ -329,6 +329,7 @@ class MeetingBot:
             self.status = BotStatus.AI_SPEAKING
 
             logger.info("[VOICE] AI speaking started")
+            playback_success = False
             try:
                 # Unmute microphone
                 unmuted = await self._navigator.unmute_microphone()
@@ -340,15 +341,23 @@ class MeetingBot:
 
                 # Run blocking audio playback in thread pool to avoid blocking the asyncio event loop
                 loop = asyncio.get_running_loop()
-                success = await loop.run_in_executor(None, kokoro_tts.speak, text.strip())
+                result = await loop.run_in_executor(None, kokoro_tts.speak, text.strip())
+
+                # Result is a dict with status and duration
+                if isinstance(result, dict):
+                    playback_success = result.get("success", False)
+                    if not playback_success:
+                        logger.error(f"[VOICE] Kokoro TTS playback failed: {result.get('error')}")
+                else:
+                    playback_success = bool(result)
 
                 # Small settling delay before muting microphone
                 await asyncio.sleep(0.4)
 
-                # Mute microphone again
+                # Mute microphone again immediately after playback completes
                 await self._navigator.mute_microphone()
 
-                return success
+                return playback_success
 
             except Exception as e:
                 logger.exception(f"[MeetingBot] Error during AI speech execution: {e}")
@@ -361,7 +370,10 @@ class MeetingBot:
             finally:
                 self.ai_speaking = False
                 self.status = BotStatus.JOINED if previous_status != BotStatus.STOPPED else BotStatus.STOPPED
-                logger.info("[VOICE] AI speaking finished")
+                if playback_success:
+                    logger.info("[VOICE] AI speaking finished successfully")
+                else:
+                    logger.warning("[VOICE] AI speaking finished with failure / incomplete")
 
     async def stop(self) -> None:
         """Leave the meeting gracefully, close browser, and clean up resources."""

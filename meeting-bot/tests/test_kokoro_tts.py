@@ -135,8 +135,9 @@ def test_speak_playback_routed_to_sounddevice():
 
     with patch("sounddevice.play") as mock_play, \
          patch("sounddevice.stop") as mock_stop:
-        success = tts.speak("Test speech")
-        assert success is True
+        res = tts.speak("Test speech")
+        assert res["success"] is True
+        assert res["duration"] == 1.0
         mock_play.assert_called_once()
         args, kwargs = mock_play.call_args
         assert kwargs["device"] == 15
