@@ -386,39 +386,40 @@ class AudioCaptureService:
     async def capture_utterance(
         self,
         is_ai_speaking_fn=None,
+        on_speech_start=None,
+        on_speech_pause=None,
+        on_speech_resume=None,
         speech_start_rms: Optional[float] = None,
         silence_rms: Optional[float] = None,
         silence_duration_sec: Optional[float] = None,
+        pause_confirmation_sec: float = 1.6,
         min_speech_duration_sec: Optional[float] = None,
         max_utterance_sec: Optional[float] = None,
         pre_roll_sec: Optional[float] = None,
         check_interval: float = 0.05,
     ) -> Optional[Dict[str, Any]]:
         """
-        Monitor continuous loopback stream and extract a single speech utterance using energy VAD.
-        State Machine:
-            LISTENING -> SPEECH_STARTED -> RECORDING_UTTERANCE -> SILENCE_DETECTED -> UTTERANCE_FINALIZED
-        Returns dictionary with:
-            {
-                "wav_bytes": bytes,
-                "duration": float,
-                "speech_duration": float,
-                "rms": float,
-                "speech_detected": bool,
-                "frames_count": int,
-            }
-        Or None if cancelled / stopped.
+        Monitor continuous loopback stream and extract a single complete candidate utterance.
+        Two-stage end-of-speech strategy:
+            - short silence -> CANDIDATE_PAUSED (triggers on_speech_pause)
+            - if speech resumes -> CANDIDATE_SPEAKING (triggers on_speech_resume)
+            - only sustained silence >= pause_confirmation_sec -> finalize answer
         """
         import asyncio
 
         start_thresh = speech_start_rms or settings.audio_speech_start_rms
         end_thresh = silence_rms or settings.audio_silence_rms
-        silence_limit = silence_duration_sec or settings.audio_silence_duration_sec
+        silence_limit = silence_duration_sec if silence_duration_sec is not None else settings.audio_silence_duration_sec
+        # Two-stage confirmation window: candidate may pause to think for 1-2 seconds
+        # If caller explicitly provided silence_duration_sec and default pause_confirmation_sec was not overridden, honor silence_limit
+        if silence_duration_sec is not None and pause_confirmation_sec == 1.6:
+            confirm_limit = silence_duration_sec
+        else:
+            confirm_limit = max(silence_limit, pause_confirmation_sec)
         min_speech_limit = min_speech_duration_sec or settings.audio_min_speech_duration_sec
         max_utterance_limit = max_utterance_sec or settings.audio_max_utterance_sec
         pre_roll_time = pre_roll_sec or settings.audio_pre_roll_sec
 
-        # Chunk size is 1024 frames at native_sample_rate (typically 48000Hz -> ~0.0213s per chunk)
         chunk_sec = 1024.0 / max(1, self._native_sample_rate)
         pre_roll_chunks = max(3, int(pre_roll_time / chunk_sec))
 
@@ -426,12 +427,14 @@ class AudioCaptureService:
         utterance_frames: List[bytes] = []
 
         in_speech = False
+        is_paused = False
         speech_start_time: Optional[float] = None
         last_speech_time: Optional[float] = None
         audio_clock: Optional[float] = None
 
         logger.debug(
-            f"[VAD] Started utterance listening (start_thresh={start_thresh}, end_thresh={end_thresh}, silence_limit={silence_limit}s)"
+            f"[VAD] Started utterance listening (start_thresh={start_thresh}, end_thresh={end_thresh}, "
+            f"silence_limit={silence_limit}s, confirm_limit={confirm_limit}s)"
         )
 
         while self.is_running():
@@ -479,9 +482,15 @@ class AudioCaptureService:
                     # Speech start trigger
                     if rms >= start_thresh or peak >= (start_thresh * 2.5):
                         in_speech = True
+                        is_paused = False
                         speech_start_time = now
                         last_speech_time = now
                         logger.info(f"[PERF] speech_started (RMS: {rms:.4f}, Peak: {peak:.4f})")
+                        if on_speech_start:
+                            try:
+                                on_speech_start()
+                            except Exception:
+                                pass
                         # Include pre-roll buffer so the first consonant/syllable is preserved
                         utterance_frames.extend(list(pre_roll_buffer))
                         pre_roll_buffer.clear()
@@ -489,7 +498,26 @@ class AudioCaptureService:
                 else:
                     utterance_frames.append(chunk)
                     if rms >= end_thresh:
+                        if is_paused:
+                            is_paused = False
+                            logger.info("[PERF] speech_resumed (candidate resumed speaking after pause)")
+                            if on_speech_resume:
+                                try:
+                                    on_speech_resume()
+                                except Exception:
+                                    pass
                         last_speech_time = now
+                    else:
+                        # Candidate is silent right now
+                        gap = now - (last_speech_time or now)
+                        if gap >= 0.5 and not is_paused:
+                            is_paused = True
+                            logger.info("[PERF] speech_paused (candidate paused answering)")
+                            if on_speech_pause:
+                                try:
+                                    on_speech_pause()
+                                except Exception:
+                                    pass
 
                 if in_speech:
                     curr_speech_duration = now - (speech_start_time or now)
@@ -502,23 +530,24 @@ class AudioCaptureService:
                         )
                         break
 
-                    # Condition B: Continuous silence detected after minimum speech duration
-                    if silence_gap >= silence_limit:
+                    # Condition B: Continuous silence confirmed after confirmation window
+                    if silence_gap >= confirm_limit:
                         actual_speech_duration = (last_speech_time or now) - (speech_start_time or now)
                         if actual_speech_duration >= min_speech_limit:
                             logger.info(
-                                f"[PERF] speech_ended after {actual_speech_duration:.2f}s (silence: {silence_gap:.2f}s)"
+                                f"[PERF] speech_ended after {actual_speech_duration:.2f}s (confirmed silence: {silence_gap:.2f}s)"
                             )
                             break
                         else:
                             # Too brief (e.g. click/cough), discard and resume listening
                             logger.debug(f"[VAD] Discarded brief noise spike ({actual_speech_duration:.2f}s)")
                             in_speech = False
+                            is_paused = False
                             utterance_frames.clear()
                             speech_start_time = None
                             last_speech_time = None
 
-            if in_speech and silence_gap >= silence_limit:
+            if in_speech and silence_gap >= confirm_limit:
                 break
             if in_speech and curr_speech_duration >= max_utterance_limit:
                 break

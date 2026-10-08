@@ -42,6 +42,7 @@ class MeetingBot:
         self.joined_at: Optional[str] = None
         self.failure_reason: Optional[str] = None
         self.ai_speaking: bool = False
+        self.candidate_speaking: bool = False
 
         self._playwright: Optional[Playwright] = None
         self._context: Optional[BrowserContext] = None
@@ -49,6 +50,22 @@ class MeetingBot:
         self._navigator: Optional[MeetNavigator] = None
         self._lock = asyncio.Lock()
         self._speak_lock = asyncio.Lock()
+
+    def set_candidate_speaking(self, is_speaking: bool) -> None:
+        """Update whether candidate is actively speaking."""
+        self.candidate_speaking = bool(is_speaking)
+        if self.candidate_speaking and self.ai_speaking:
+            # Candidate interrupted AI while AI was speaking: stop TTS playback immediately
+            logger.info("[SAFETY] AI_TTS_CANCELLED_CANDIDATE_STARTED - candidate began speaking during playback")
+            try:
+                from app.kokoro_tts import kokoro_tts
+                kokoro_tts.stop()
+            except Exception:
+                pass
+
+    def is_candidate_speaking(self) -> bool:
+        """Check if candidate is actively speaking."""
+        return self.candidate_speaking
 
     def is_ai_speaking(self) -> bool:
         """Check if AI is currently speaking."""
@@ -322,6 +339,10 @@ class MeetingBot:
         from app.kokoro_tts import kokoro_tts
 
         async with self._speak_lock:
+            if self.candidate_speaking:
+                logger.info("[SAFETY] AI_TTS_BLOCKED_CANDIDATE_SPEAKING - candidate is speaking, suppressing TTS")
+                return False
+
             if not self._navigator or not self._page:
                 logger.warning("[MeetingBot] Cannot speak: browser or meeting navigator is not active.")
                 return False

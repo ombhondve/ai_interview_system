@@ -7,13 +7,92 @@ import logger from "../../utils/logger.js";
 import { isProjectVerified } from "../projects/deadline.service.js";
 import Candidate from "../candidate/candidate.model.js";
 
+/**
+ * Conversational intent detection for human-like interviewer reactions.
+ * Categorizes answer into:
+ * - DONT_KNOW: "I don't know", "not sure", "don't remember", etc.
+ * - THINKING: "give me a moment", "let me think", "trying to remember", etc.
+ * - CLARIFY_REPEAT: "can you repeat?", "what do you mean?", "don't understand", etc.
+ * - SHORT_ANSWER: single word or ultra brief (e.g. "React", "JWT")
+ * - VALID_ANSWER: genuine technical or conversational answer
+ */
+export function classifyCandidateIntent(text) {
+  const clean = String(text || "").trim().toLowerCase();
+  if (!clean) return { intent: "SILENCE", text: "" };
+
+  // Clarification / repeat request (English, Hindi, Marathi)
+  if (
+    /^(can you (please )?repeat|could you repeat|repeat the question|can you rephrase|pardon|what do you mean|i don't understand|i do not understand|could you clarify|can you clarify)\b/i.test(clean) ||
+    /\b(repeat (the )?question|what does that mean|explain what you mean|not understand|samajh nahi aaya|samajla nahi|samajh nahi aa raha)\b/i.test(clean)
+  ) {
+    return { intent: "CLARIFY_REPEAT", text: clean };
+  }
+
+  // Thinking / pause request (English, Hindi, Marathi)
+  if (
+    /\b(give me a (moment|second|min)|let me think|i'm thinking|just a (moment|sec|second)|give me a sec|trying to remember|thinking about it|ek minute|thoda sochna hai|zara thamba|thoda vel dya)\b/i.test(clean)
+  ) {
+    return { intent: "THINKING", text: clean };
+  }
+
+  // "I don't know" / unsure (English, Hindi, Marathi code-switching)
+  // "I don't know", "not sure", "mala exact athvat nahi", "mujhe nahi pata", "mala mahit nahi", "ye part nahi pata"
+  if (
+    /^(i don't know|i do not know|not sure|i'm not sure|i am not sure|i don't remember|i do not remember|haven't worked with that|never used that|no idea|cannot answer|can't answer|don't have an answer|can't remember)\b/i.test(clean) ||
+    /\b(i don't know|i don't remember|not really sure|haven't used that|mala mahit nahi|mala athvat nahi|mala exact athvat nahi|mujhe nahi pata|ye part nahi pata|pata nahi|athavat nahi)\b/i.test(clean)
+  ) {
+    // If the candidate mentions a technical keyword despite saying "don't remember exactly" (e.g. "Mala exact athvat nahi, but I think JWT")
+    // treat as a valid answer mentioning that keyword so AI can probe it!
+    const techMention = /\b(jwt|token|tokens|react|node|mongodb|mongo|express|sql|redis|aws|docker|auth|api|rest)\b/i.test(clean);
+    if (techMention) {
+      return { intent: "VALID_ANSWER", text: clean, note: "Hesitant answer with technical mention" };
+    }
+    return { intent: "DONT_KNOW", text: clean };
+  }
+
+  // Off-topic detection (e.g. "Actually during college I also worked on sports/event...")
+  if (/\b(during college i also|in my free time i like|unrelated to this project|out of topic)\b/i.test(clean)) {
+    return { intent: "OFF_TOPIC", text: clean };
+  }
+
+  const words = clean.split(/\s+/).filter(Boolean);
+  if (words.length <= 3 && !/\b(yes|no|yeah|yep|sure|fine)\b/i.test(clean)) {
+    return { intent: "SHORT_ANSWER", text: clean, wordsCount: words.length };
+  }
+
+  return { intent: "VALID_ANSWER", text: clean, wordsCount: words.length };
+}
+
+/** Short, varied natural acknowledgments */
+const NATURAL_ACKS = [
+  "Got it.",
+  "That makes sense.",
+  "Understood.",
+  "Thanks for explaining that.",
+  "I see.",
+];
+
+export function getNaturalAcknowledgment(index = 0) {
+  return NATURAL_ACKS[index % NATURAL_ACKS.length];
+}
+
 function assessAnswer(text) {
   const answer = String(text || "").trim();
   const words = answer.split(/\s+/).filter(Boolean);
+  const intentInfo = classifyCandidateIntent(answer);
+  if (intentInfo.intent === "DONT_KNOW") {
+    return { quality: "WEAK", intent: "DONT_KNOW", reason: "Candidate is unsure or does not know; move on gracefully." };
+  }
+  if (intentInfo.intent === "CLARIFY_REPEAT") {
+    return { quality: "INCOMPLETE", intent: "CLARIFY_REPEAT", reason: "Candidate asked for clarification or question repeat." };
+  }
+  if (intentInfo.intent === "THINKING") {
+    return { quality: "INCOMPLETE", intent: "THINKING", reason: "Candidate asked for a moment to think." };
+  }
   const hasImplementationDetail = /\b(I (used|built|implemented|chose|designed|handled)|because|for example|specifically|the reason)\b/i.test(answer);
-  if (words.length < 8) return { quality: "WEAK", reason: "The response is very brief; ask for a clearer explanation." };
-  if (words.length < 24 || !hasImplementationDetail) return { quality: "INCOMPLETE", reason: "The response needs more implementation detail or rationale." };
-  return { quality: "POTENTIALLY_DETAILED", reason: "Probe a concrete detail or continue to an uncovered topic." };
+  if (words.length < 8) return { quality: "WEAK", intent: intentInfo.intent, reason: "The response is very brief; ask for a clearer explanation." };
+  if (words.length < 24 || !hasImplementationDetail) return { quality: "INCOMPLETE", intent: intentInfo.intent, reason: "The response needs more implementation detail or rationale." };
+  return { quality: "POTENTIALLY_DETAILED", intent: "VALID_ANSWER", reason: "Probe a concrete detail or continue to an uncovered topic." };
 }
 
 export async function submitAnswer(interviewId, candidateId, text, requestId = null) {
@@ -45,6 +124,9 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
     let phase = doc.phase || "OPENING";
     let next;
 
+    let acknowledgment = "";
+    let actionType = "NEXT_TOPIC";
+
     if (phase === "OPENING") {
       // Step 1: Candidate answered audio check ("Can you hear me clearly?")
       // Question 2 should be: "Great. Before we begin, could you briefly introduce yourself?"
@@ -57,6 +139,7 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
           source: "fallback",
           followUpExpected: true,
         };
+        actionType = "FOLLOW_UP";
       } else {
         // Step 2: Candidate answered introduction -> transition to PROJECT_WALKTHROUGH
         phase = "PROJECT_WALKTHROUGH";
@@ -68,8 +151,62 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
           source: "fallback",
           followUpExpected: true,
         };
+        actionType = "NEXT_TOPIC";
       }
     } else {
+      const intentInfo = classifyCandidateIntent(clean);
+      const lastQ = doc.questions[doc.currentQuestionIndex] || doc.questions[doc.questions.length - 1];
+
+      // 1. CLARIFY / REPEAT handling
+      if (intentInfo.intent === "CLARIFY_REPEAT") {
+        actionType = "REPEAT";
+        const repeatedText = `No problem: ${lastQ?.question || "Can you share more about your project?"}`;
+        return {
+          interview: doc,
+          duplicate: false,
+          nextQuestion: { ...lastQ, question: repeatedText, reason: "Candidate requested repeat/clarification" },
+          acknowledgment: "No problem.",
+          action: "REPEAT",
+          closing: false,
+        };
+      }
+
+      // 2. THINKING handling
+      if (intentInfo.intent === "THINKING") {
+        actionType = "WAIT";
+        return {
+          interview: doc,
+          duplicate: false,
+          nextQuestion: { question: "Sure, take your time.", category: "FOLLOW_UP" },
+          acknowledgment: "Sure, take your time.",
+          action: "WAIT",
+          closing: false,
+        };
+      }
+
+      // 2b. OFF_TOPIC redirection
+      if (intentInfo.intent === "OFF_TOPIC") {
+        actionType = "FOLLOW_UP";
+        const redirectQuestion = `Understood. Let's stay with your project for now: ${lastQ?.question || "can you tell me how you built the backend?"}`;
+        return {
+          interview: doc,
+          duplicate: false,
+          nextQuestion: { ...lastQ, question: redirectQuestion, reason: "Polite redirection back to project" },
+          acknowledgment: "Understood.",
+          action: "FOLLOW_UP",
+          closing: false,
+        };
+      }
+
+      // 3. "I DON'T KNOW" handling
+      if (intentInfo.intent === "DONT_KNOW") {
+        actionType = "MOVE_ON";
+        acknowledgment = "No problem. Let's move on.";
+      } else {
+        // Natural varied acknowledgment for valid answers
+        acknowledgment = getNaturalAcknowledgment(doc.questions.length);
+      }
+
       if (phase === "QUESTIONING" && doc.questions.length >= 6) phase = "PROJECT_WALKTHROUGH";
       else if (phase === "PROJECT_WALKTHROUGH" && doc.questions.filter((q) => q.category === "PROJECT_WALKTHROUGH").length >= 2) phase = "CLOSING";
 
@@ -79,6 +216,7 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
       answer.answerProcessed = true;
       await doc.save();
       const coveredTopics = [...new Set(doc.questions.map((q) => q.category))];
+
       next = await generateNextQuestion({
         context,
         askedQuestions: doc.questions,
@@ -88,6 +226,11 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
         answerAssessment,
         phase,
       });
+
+      // If short answer, ensure follow-up action
+      if (intentInfo.intent === "SHORT_ANSWER") {
+        actionType = "FOLLOW_UP";
+      }
     }
 
     answer.answerProcessed = true;
@@ -99,7 +242,14 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
     doc.transcript.push({ sequence: doc.transcript.length, speaker: "AI", text: next.question, timestamp: new Date(), questionId: nextQuestionId, category: next.category, section: phase });
     await doc.save();
     logger.info(`Question generated ${doc._id} category=${next.category}`);
-    return { interview: doc, duplicate: false, nextQuestion: next, closing: next.category === "CLOSING" };
+    return {
+      interview: doc,
+      duplicate: false,
+      nextQuestion: next,
+      acknowledgment: acknowledgment || null,
+      action: actionType,
+      closing: next.category === "CLOSING",
+    };
   } catch (error) {
     await doc.save();
     logger.warn(`Question generation failed after answer persistence ${doc._id}: ${error.message}`);

@@ -209,7 +209,7 @@ class KokoroTTS:
             logger.info(f"[VOICE] Sample rate: {self.sample_rate}")
             diag = self.validate_output_device()
             if diag.get("valid"):
-                logger.info(f"[VOICE] Device validation passed: {diag['deviceName']} ({diag['hostApi']})")
+                logger.info(f"[VOICE] Device validation passed: {diag.get('deviceName')} ({diag.get('hostApi')})")
             else:
                 logger.warning(f"[VOICE] Device validation warning: {diag.get('error')}")
         except Exception as e:

@@ -152,6 +152,8 @@ router.post("/internal/:interviewId/answer", validInterviewId, async (req, res) 
       accepted: true,
       duplicate: Boolean(result.duplicate),
       nextQuestion: result.nextQuestion?.question || result.nextQuestion || null,
+      acknowledgment: result.acknowledgment || null,
+      action: result.action || "NEXT_TOPIC",
       interviewStatus: result.interview?.status || interview.status,
       phase: result.interview?.phase || interview.phase,
       currentQuestionIndex: result.interview?.currentQuestionIndex ?? interview.currentQuestionIndex,

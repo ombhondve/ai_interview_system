@@ -156,5 +156,119 @@ describe("Interview Warmup and Spoken Question Flow", () => {
       expect(res.nextQuestion.category).toBe("PROJECT_WALKTHROUGH");
       expect(res.nextQuestion.question).toContain("Let's talk about your project");
     });
+
+    test("Candidate says 'I don't know' -> Acknowledges gracefully and moves on with action: MOVE_ON", async () => {
+      mockSession.status = "IN_PROGRESS";
+      mockSession.phase = "QUESTIONING";
+      mockSession.questions = [
+        { questionId: "0", category: "DATABASE", question: "How did you design your database schema?" },
+      ];
+      mockSession.transcript = [
+        { speaker: "AI", text: "How did you design your database schema?", questionId: "0" },
+      ];
+
+      const res = await answerService.submitAnswer("int-123", "cand-123", "I don't know, I haven't worked with that.");
+      expect(res.action).toBe("MOVE_ON");
+      expect(res.acknowledgment).toBe("No problem. Let's move on.");
+      expect(res.nextQuestion).toBeDefined();
+    });
+
+    test("Candidate says 'Can you repeat the question?' -> Does not advance question, repeats with action: REPEAT", async () => {
+      mockSession.status = "IN_PROGRESS";
+      mockSession.phase = "QUESTIONING";
+      mockSession.questions = [
+        { questionId: "0", category: "AUTHENTICATION", question: "How did you implement authentication?" },
+      ];
+      mockSession.transcript = [
+        { speaker: "AI", text: "How did you implement authentication?", questionId: "0" },
+      ];
+
+      const res = await answerService.submitAnswer("int-123", "cand-123", "Can you repeat the question please?");
+      expect(res.action).toBe("REPEAT");
+      expect(res.acknowledgment).toBe("No problem.");
+      expect(res.nextQuestion.question).toContain("How did you implement authentication?");
+      // Questions array should NOT have added a new question index
+      expect(mockSession.questions).toHaveLength(1);
+    });
+
+    test("Candidate asks for time ('Give me a moment') -> Returns action: WAIT without advancing", async () => {
+      mockSession.status = "IN_PROGRESS";
+      mockSession.phase = "QUESTIONING";
+      mockSession.questions = [
+        { questionId: "0", category: "API", question: "How does your frontend interact with APIs?" },
+      ];
+      mockSession.transcript = [
+        { speaker: "AI", text: "How does your frontend interact with APIs?", questionId: "0" },
+      ];
+
+      const res = await answerService.submitAnswer("int-123", "cand-123", "Give me a moment, let me think.");
+      expect(res.action).toBe("WAIT");
+      expect(res.acknowledgment).toBe("Sure, take your time.");
+      expect(mockSession.questions).toHaveLength(1);
+    });
+
+    test("Candidate gives short answer -> Triggers follow-up action: FOLLOW_UP", async () => {
+      mockSession.status = "IN_PROGRESS";
+      mockSession.phase = "QUESTIONING";
+      mockSession.questions = [
+        { questionId: "0", category: "TECHNOLOGY", question: "Which technologies did you choose?" },
+      ];
+      mockSession.transcript = [
+        { speaker: "AI", text: "Which technologies did you choose?", questionId: "0" },
+      ];
+
+      const res = await answerService.submitAnswer("int-123", "cand-123", "React and Node.");
+      expect(res.action).toBe("FOLLOW_UP");
+      expect(res.acknowledgment).toBeDefined();
+    });
+
+    test("Candidate uses Hindi phrase 'Mujhe nahi pata' -> Maps to DONT_KNOW and moves on", async () => {
+      mockSession.status = "IN_PROGRESS";
+      mockSession.phase = "QUESTIONING";
+      mockSession.questions = [
+        { questionId: "0", category: "AUTHENTICATION", question: "How did you implement authentication?" },
+      ];
+      mockSession.transcript = [
+        { speaker: "AI", text: "How did you implement authentication?", questionId: "0" },
+      ];
+
+      const res = await answerService.submitAnswer("int-123", "cand-123", "Sir ye part mujhe nahi pata.");
+      expect(res.action).toBe("MOVE_ON");
+      expect(res.acknowledgment).toBe("No problem. Let's move on.");
+    });
+
+    test("Candidate uses Marathi phrase 'Mala exact athvat nahi, but I think JWT' -> Technical mention recognized as valid answer", async () => {
+      mockSession.status = "IN_PROGRESS";
+      mockSession.phase = "QUESTIONING";
+      mockSession.questions = [
+        { questionId: "0", category: "AUTHENTICATION", question: "How did you implement authentication?" },
+      ];
+      mockSession.transcript = [
+        { speaker: "AI", text: "How did you implement authentication?", questionId: "0" },
+      ];
+
+      const res = await answerService.submitAnswer("int-123", "cand-123", "Mala exact athvat nahi, but I think JWT tokens.");
+      expect(res.action).toBeDefined();
+      // Should not be rejected as empty/unknown
+      expect(["NEXT_TOPIC", "FOLLOW_UP"]).toContain(res.action);
+    });
+
+    test("Candidate gives off-topic answer -> Gently redirected back to project", async () => {
+      mockSession.status = "IN_PROGRESS";
+      mockSession.phase = "QUESTIONING";
+      mockSession.questions = [
+        { questionId: "0", category: "PROJECT_WALKTHROUGH", question: "How did you structure the backend?" },
+      ];
+      mockSession.transcript = [
+        { speaker: "AI", text: "How did you structure the backend?", questionId: "0" },
+      ];
+
+      const res = await answerService.submitAnswer("int-123", "cand-123", "Actually during college I also worked on cricket tournament event management.");
+      expect(res.action).toBe("FOLLOW_UP");
+      expect(res.acknowledgment).toBe("Understood.");
+      expect(res.nextQuestion.question).toContain("stay with your project");
+    });
   });
 });
+
+

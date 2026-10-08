@@ -130,11 +130,18 @@ def test_text_to_audio_generation_mocked():
 
 def test_speak_playback_routed_to_sounddevice():
     tts = KokoroTTS(enabled=True, auto_init_pipeline=False)
+    tts._pipeline = MagicMock()
     tts._selected_device_index = 15
+    tts._selected_device_name = "CABLE Input"
+    tts._selected_host_api = "Windows DirectSound"
+    tts._candidate_devices = [(15, "CABLE Input", "Windows DirectSound")]
     tts.generate_audio = MagicMock(return_value=np.zeros(48000, dtype=np.float32))
 
-    with patch("sounddevice.play") as mock_play, \
-         patch("sounddevice.stop") as mock_stop:
+    import sounddevice as sd
+    with patch.object(tts, "validate_output_device", return_value={"valid": True, "deviceIndex": 15, "hostApi": "Windows DirectSound"}), \
+         patch.object(tts, "resolve_output_device", return_value=(15, "CABLE Input", "Windows DirectSound")), \
+         patch.object(sd, "play") as mock_play, \
+         patch.object(sd, "stop") as mock_stop:
         res = tts.speak("Test speech")
         assert res["success"] is True
         assert res["duration"] == 1.0
@@ -144,6 +151,7 @@ def test_speak_playback_routed_to_sounddevice():
         assert kwargs["samplerate"] == 48000
         assert kwargs["blocking"] is True
         mock_stop.assert_called_once()
+
 
 
 # ==============================================================================
