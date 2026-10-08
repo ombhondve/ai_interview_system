@@ -25,8 +25,8 @@ class Settings(BaseSettings):
     deepgram_api_key: str = os.getenv("DEEPGRAM_API_KEY", "")
     deepgram_model: str = os.getenv("DEEPGRAM_MODEL", "nova-2")
 
-    # Audio capture configuration
-    audio_capture_device: str = os.getenv("AUDIO_CAPTURE_DEVICE", "")  # empty means default loopback output
+    # Audio capture configuration (WASAPI loopback capturing audio routed to Meet speaker)
+    audio_capture_device: str = os.getenv("AUDIO_CAPTURE_DEVICE", "CABLE Input (VB-Audio Virtual Cable)")
     audio_sample_rate: int = int(os.getenv("AUDIO_SAMPLE_RATE", "16000"))
     audio_channels: int = int(os.getenv("AUDIO_CHANNELS", "1"))
 

@@ -311,3 +311,60 @@ async def test_audio_buffer_flush_and_listening_transition():
     assert len(service._recorded_frames) == 0
 
 
+def test_device_resolution_matches_cable_input_loopback():
+    """Verify AudioCaptureService resolves CABLE Input Loopback device correctly."""
+    service = AudioCaptureService(device_name="CABLE Input (VB-Audio Virtual Cable)")
+
+    mock_devices = [
+        {"index": 16, "name": "Speaker (2- Realtek(R) Audio)", "hostApi": 2, "maxInputChannels": 0, "maxOutputChannels": 2, "defaultSampleRate": 48000.0},
+        {"index": 18, "name": "CABLE Output (VB-Audio Virtual Cable)", "hostApi": 2, "maxInputChannels": 2, "maxOutputChannels": 0, "defaultSampleRate": 48000.0},
+        {"index": 20, "name": "CABLE Input (VB-Audio Virtual Cable) [Loopback]", "hostApi": 2, "maxInputChannels": 2, "maxOutputChannels": 0, "defaultSampleRate": 48000.0},
+        {"index": 21, "name": "Speaker (2- Realtek(R) Audio) [Loopback]", "hostApi": 2, "maxInputChannels": 2, "maxOutputChannels": 0, "defaultSampleRate": 48000.0},
+    ]
+    loopback_devices = [mock_devices[2], mock_devices[3]]
+
+    with patch("pyaudiowpatch.PyAudio") as mock_pa_cls:
+        mock_pa = MagicMock()
+        mock_pa_cls.return_value = mock_pa
+        mock_pa.get_host_api_info_by_type.return_value = {"defaultOutputDevice": 16}
+        mock_pa.get_device_count.return_value = len(mock_devices)
+        mock_pa.get_device_info_by_index.side_effect = lambda idx: next(d for d in mock_devices if d["index"] == idx)
+        mock_pa.get_host_api_info_by_index.return_value = {"name": "Windows WASAPI"}
+        mock_pa.get_loopback_device_info_generator.return_value = iter(loopback_devices)
+
+        # Mock worker thread to not actually start loop
+        with patch("threading.Thread"):
+            success = service.start_capture()
+            assert success is True
+            assert service._capture_device_info is not None
+            assert service._capture_device_info["index"] == 20
+            assert "CABLE Input" in service._capture_device_info["name"]
+            service.stop_capture()
+
+
+def test_device_resolution_fails_clearly_when_not_found():
+    """Verify AudioCaptureService fails with False if configured device is not found, without silent fallback."""
+    service = AudioCaptureService(device_name="NonExistent Virtual Cable Device")
+
+    mock_devices = [
+        {"index": 16, "name": "Speaker (2- Realtek(R) Audio)", "hostApi": 2, "maxInputChannels": 0, "maxOutputChannels": 2, "defaultSampleRate": 48000.0},
+        {"index": 21, "name": "Speaker (2- Realtek(R) Audio) [Loopback]", "hostApi": 2, "maxInputChannels": 2, "maxOutputChannels": 0, "defaultSampleRate": 48000.0},
+    ]
+    loopback_devices = [mock_devices[1]]
+
+    with patch("pyaudiowpatch.PyAudio") as mock_pa_cls:
+        mock_pa = MagicMock()
+        mock_pa_cls.return_value = mock_pa
+        mock_pa.get_host_api_info_by_type.return_value = {"defaultOutputDevice": 16}
+        mock_pa.get_device_count.return_value = len(mock_devices)
+        mock_pa.get_device_info_by_index.side_effect = lambda idx: next(d for d in mock_devices if d["index"] == idx)
+        mock_pa.get_host_api_info_by_index.return_value = {"name": "Windows WASAPI"}
+        mock_pa.get_loopback_device_info_generator.return_value = iter(loopback_devices)
+
+        success = service.start_capture()
+        # Must fail and NOT silently fallback to Realtek Loopback
+        assert success is False
+        assert service._capture_device_info is None
+
+
+

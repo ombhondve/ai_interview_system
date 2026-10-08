@@ -133,28 +133,69 @@ class AudioCaptureService:
                     p.terminate()
                     return False
 
-                # Find the default WASAPI output speaker and its matching loopback device
-                default_speakers = p.get_device_info_by_index(wasapi_info["defaultOutputDevice"])
+                # 1. Enumerate and log available PyAudioWPatch devices at startup
+                device_count = p.get_device_count()
+                all_devices = []
+                for idx in range(device_count):
+                    try:
+                        d = p.get_device_info_by_index(idx)
+                        host_info = p.get_host_api_info_by_index(d.get("hostApi", 0))
+                        host_name = host_info.get("name", "Unknown")
+                        all_devices.append((d, host_name))
+                    except Exception:
+                        pass
+
+                logger.info("=" * 60)
+                logger.info("[AudioCapture] PyAudioWPatch Device Inventory:")
+                for d, host_name in all_devices:
+                    is_loopback = bool(d.get("isLoopbackDevice", False) or "[loopback]" in d.get("name", "").lower())
+                    logger.info(
+                        f"  [{d['index']}] '{d['name']}' | Host: {host_name} | "
+                        f"In: {d['maxInputChannels']} | Out: {d['maxOutputChannels']} | "
+                        f"Rate: {int(d['defaultSampleRate'])}Hz | Loopback: {is_loopback}"
+                    )
+                logger.info("=" * 60)
+
+                # 2. Enumerate WASAPI loopback devices
+                loopback_devices = list(p.get_loopback_device_info_generator())
                 target_loopback = None
 
-                for loopback_device in p.get_loopback_device_info_generator():
-                    # If specific device configured, match by name
-                    if self.device_name and self.device_name.lower() in loopback_device["name"].lower():
-                        target_loopback = loopback_device
-                        break
-                    # Otherwise match the system default output device
-                    if default_speakers["name"] in loopback_device["name"]:
-                        target_loopback = loopback_device
-                        break
+                # Search key: configured device_name (e.g., "CABLE Input (VB-Audio Virtual Cable)")
+                search_name = (self.device_name or "").strip()
 
-                # Fallback to the first available loopback device
-                if not target_loopback:
-                    loopback_list = list(p.get_loopback_device_info_generator())
-                    if loopback_list:
-                        target_loopback = loopback_list[0]
+                if search_name:
+                    logger.info(f"[AudioCapture] Resolving configured capture device: '{search_name}'")
+                    # Clean/normalize target name (remove [Loopback] if already present in config)
+                    clean_target = search_name.replace("[Loopback]", "").replace("[loopback]", "").strip().lower()
+
+                    for dev in loopback_devices:
+                        dev_clean = dev["name"].replace("[Loopback]", "").replace("[loopback]", "").strip().lower()
+                        # Match either cleaned device name or full substring
+                        if clean_target in dev_clean or dev_clean in clean_target:
+                            target_loopback = dev
+                            break
+
+                    if not target_loopback:
+                        available_names = [f"'{dev['name']}' (idx={dev['index']})" for dev in loopback_devices]
+                        logger.error(
+                            f"[AudioCapture] AUDIO_CAPTURE_DEVICE_NOT_FOUND: Configured capture device '{search_name}' "
+                            f"does not match any available WASAPI loopback endpoint! "
+                            f"Available loopback endpoints: {', '.join(available_names) if available_names else 'None'}"
+                        )
+                        p.terminate()
+                        return False
+                else:
+                    # If no device_name explicitly configured, find the default WASAPI output speaker loopback
+                    default_speakers = p.get_device_info_by_index(wasapi_info["defaultOutputDevice"])
+                    for dev in loopback_devices:
+                        if default_speakers["name"].lower() in dev["name"].lower():
+                            target_loopback = dev
+                            break
+                    if not target_loopback and loopback_devices:
+                        target_loopback = loopback_devices[0]
 
                 if not target_loopback:
-                    logger.error("[AudioCapture] No WASAPI loopback audio device discovered on system.")
+                    logger.error("[AudioCapture] AUDIO_CAPTURE_DEVICE_NOT_FOUND: No suitable WASAPI loopback device found.")
                     p.terminate()
                     return False
 
@@ -162,10 +203,11 @@ class AudioCaptureService:
                 self._native_sample_rate = int(target_loopback["defaultSampleRate"])
                 self._native_channels = int(target_loopback["maxInputChannels"])
 
-                logger.info(
-                    f"[AudioCapture] Selected loopback device: '{target_loopback['name']}' "
-                    f"(Native rate: {self._native_sample_rate}Hz, channels: {self._native_channels})"
-                )
+                logger.info("[AUDIO][DEVICE]")
+                logger.info(f"Selected: {target_loopback['name']}")
+                logger.info("API: Windows WASAPI")
+                logger.info(f"Rate: {self._native_sample_rate}")
+                logger.info(f"Channels: {self._native_channels}")
 
                 self._state = CaptureState.RUNNING
                 self._thread = threading.Thread(

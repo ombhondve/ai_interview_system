@@ -123,21 +123,36 @@ async def run_cli():
         from app.audio_capture import audio_capture
         from pathlib import Path
         from datetime import datetime
+        import numpy as np
 
-        logger.info("[MeetingBot] Starting 10-second audio capture loopback test...")
+        logger.info("[MeetingBot] Starting 4-second diagnostic audio capture test...")
         started = audio_capture.start_capture()
         if not started:
             logger.error("[MeetingBot] Audio capture failed to start.")
             sys.exit(1)
 
         info = audio_capture.get_device_info()
-        logger.info(f"[MeetingBot] Capture active on: {info['deviceName']} ({info['targetSampleRate']}Hz, {info['targetChannels']}ch)")
-        logger.info("[MeetingBot] Recording for 10 seconds. Play audio or speak in Google Meet...")
+        logger.info("[AUDIO][DEVICE]")
+        logger.info(f"Selected: {info['deviceName']}")
+        logger.info("API: Windows WASAPI")
+        logger.info(f"Rate: {info['nativeSampleRate']}")
+        logger.info(f"Channels: {info['nativeChannels']}")
+        logger.info("[MeetingBot] Recording for 4 seconds...")
 
-        for s in range(10):
+        for s in range(4):
             await asyncio.sleep(1)
             level = audio_capture.get_audio_level()
             logger.info(f"[MeetingBot] T+{s+1}s | Audio level (RMS): {round(level, 4)}")
+
+        diag = audio_capture.get_audio_diagnostics()
+        wav_bytes = audio_capture.export_wav_bytes()
+        samples = np.frombuffer(wav_bytes[44:], dtype=np.int16) if len(wav_bytes) > 44 else np.array([], dtype=np.int16)
+        non_zero = int(np.count_nonzero(samples))
+
+        logger.info("[AUDIO][LEVEL]")
+        logger.info(f"RMS={diag.get('rms', 0.0):.6f}")
+        logger.info(f"Peak={diag.get('peak', 0.0):.6f}")
+        logger.info(f"NonZeroSamples={non_zero}")
 
         audio_capture.stop_capture()
 
@@ -148,8 +163,6 @@ async def run_cli():
         res = audio_capture.save_recording(test_file)
         if res:
             logger.info(f"[MeetingBot] Audio test recording successfully saved: {res}")
-            if res["audioLevel"] == 0.0:
-                logger.warning("[MeetingBot] NO_AUDIO_DETECTED: Audio level is 0.0 (silence).")
         else:
             logger.warning("[MeetingBot] No audio frames were captured.")
         return
@@ -395,7 +408,10 @@ async def run_cli():
                     logger.info("[MeetingBot] No initial question returned from backend; waiting for candidate speech.")
 
             logger.info("[PERF] candidate_listening_started")
-            logger.info("[AUDIO] Listening for candidate")
+            dev_info = audio_capture.get_device_info()
+            logger.info("[AUDIO] Candidate listening started")
+            logger.info(f"[AUDIO] Capture device: {dev_info.get('deviceName', 'Unknown')}")
+            logger.info("[AUDIO] Waiting for speech...")
             try:
                 while True:
                     # AI_SPEAKING guard: Do NOT process candidate audio if AI is speaking
@@ -445,6 +461,7 @@ async def run_cli():
                         continue
 
                     # 1. Deepgram STT
+                    logger.info("[STT] Sending utterance to Deepgram")
                     deepgram_start = time.monotonic()
                     logger.info(f"[PERF] deepgram_start")
                     try:
