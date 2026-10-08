@@ -637,8 +637,8 @@ async def run_cli():
                     confidence = res.get("confidence", 0.0)
                     logger.info(f"[STT] Deepgram response: success={res.get('success')}, confidence={round(confidence, 3)}, model={res.get('model')}")
 
-                    # Reject empty or very low confidence noise
-                    if not transcript or confidence < 0.35:
+                    # Reject empty or extremely low confidence noise (allow 0.20+ for Indian accented / Hindi / Marathi code-switching)
+                    if not transcript or confidence < 0.20:
                         logger.info(f"[STT] Filtered empty/low-confidence transcript (conf={round(confidence, 2)})")
                         conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="low_confidence_filtered")
                         continue
@@ -657,6 +657,14 @@ async def run_cli():
                         conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="no_interview_id_mode")
                         continue
 
+                    # Check camera status for PRECHECK or ongoing verification
+                    candidate_cam_on = None
+                    try:
+                        candidate_cam_on = await bot_instance.is_candidate_camera_on()
+                        logger.info(f"[MEET][CAMERA] Candidate camera status: {candidate_cam_on}")
+                    except Exception as cam_err:
+                        logger.debug(f"[MEET][CAMERA] Could not determine candidate camera status: {cam_err}")
+
                     # 2. Backend Submission
                     backend_start = time.monotonic()
                     logger.info(f"[PERF] backend_start")
@@ -665,6 +673,7 @@ async def run_cli():
                             interview_id=args.interview_id,
                             transcript=transcript,
                             candidate_id=args.candidate_id,
+                            camera_on=candidate_cam_on,
                         )
                         backend_end = time.monotonic()
                         backend_duration = round(backend_end - backend_start, 2)
@@ -694,8 +703,8 @@ async def run_cli():
                         # Map backend action to conversational state
                         if action == "WAIT":
                             conv_mgr.set_state(ConversationState.THINKING, decision="candidate_thinking")
-                        elif action == "REPEAT":
-                            conv_mgr.set_state(ConversationState.CLARIFICATION, decision="clarification_requested")
+                        elif action in ("REPEAT", "EXPLAIN"):
+                            conv_mgr.set_state(ConversationState.CLARIFICATION, decision="clarification_or_concept_explanation")
                         elif action == "FOLLOW_UP":
                             conv_mgr.set_state(ConversationState.ASKING_FOLLOWUP, decision="contextual_follow_up")
                         elif action == "MOVE_ON":
@@ -784,6 +793,9 @@ async def run_cli():
                     except Exception as b_err:
                         logger.error(f"[MeetingBot] Backend submission error: {b_err}")
                         conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="backend_submission_error")
+                        conv_mgr.last_speech_time = time.monotonic()
+                        audio_capture.reset_buffer()
+                        logger.info("[AUDIO] Audio buffer reset after backend submission recovery.")
 
             except (KeyboardInterrupt, asyncio.CancelledError):
                 pass

@@ -146,11 +146,13 @@ router.post("/internal/:interviewId/answer", validInterviewId, async (req, res) 
     }
 
     const effectiveCandidateId = interview.candidateId;
+    const cameraOn = typeof req.body?.cameraOn === "boolean" ? req.body.cameraOn : null;
     const result = await answerService.submitAnswer(
       interview._id,
       effectiveCandidateId,
       input.text,
-      input.requestId
+      input.requestId,
+      { cameraOn }
     );
 
     return res.json({

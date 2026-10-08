@@ -22,7 +22,7 @@ export function classifyCandidateIntent(text) {
 
   // Explanation request (when candidate asks what a technical term, word or question means)
   if (
-    /\b(what does (that|this|it) mean|what do you mean by|i don't know what that means|can you explain (what|that|it)?|explain what you mean|don't understand (the word|the term|what you mean)|samajh nahi aaya|samajla nahi|samajh nahi aa raha|arth samjhla nahi|matlab kya hai)\b/i.test(clean)
+    /\b(what does (that|this|it|.+?) mean|what do you mean by|i don't understand what.+means|i don't know what that means|can you explain|explain what you mean|don't understand (the word|the term|what you mean)|samajh nahi aaya|samajla nahi|samajh nahi aa raha|arth samjhla nahi|matlab kya hai)\b/i.test(clean)
   ) {
     return { intent: "EXPLAIN_REQUEST", text: clean };
   }
@@ -102,7 +102,13 @@ function assessAnswer(text) {
   return { quality: "POTENTIALLY_DETAILED", intent: "VALID_ANSWER", reason: "Probe a concrete detail or continue to an uncovered topic." };
 }
 
-export async function submitAnswer(interviewId, candidateId, text, requestId = null) {
+export async function submitAnswer(interviewId, candidateId, text, requestId = null, options = {}) {
+  let reqId = requestId;
+  let opts = options;
+  if (requestId && typeof requestId === "object" && options && Object.keys(options).length === 0) {
+    opts = requestId;
+    reqId = opts.requestId || null;
+  }
   const clean = String(text || "").trim().slice(0, 8000);
   if (!clean) { const e = new Error("Answer text required"); e.status = 400; throw e; }
   const doc = await AiInterview.findById(interviewId);
@@ -112,16 +118,16 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
   const candidate = await Candidate.findById(candidateId);
   if (!isProjectVerified(candidate)) { const e = new Error("The assigned project must remain verified to continue."); e.status = 403; throw e; }
   const questionId = String(doc.currentQuestionIndex ?? Math.max(0, doc.questions.length - 1));
-  const duplicate = requestId && doc.transcript.find((entry) => entry.requestId === requestId);
+  const duplicate = reqId && doc.transcript.find((entry) => entry.requestId === reqId);
   if (duplicate) return { interview: doc, duplicate: true, nextQuestion: doc.questions[doc.currentQuestionIndex] };
   const lastTurn = doc.transcript[doc.transcript.length - 1];
   let answer;
   if (lastTurn?.speaker === "CANDIDATE" && lastTurn.questionId === questionId) {
     if (lastTurn.answerProcessed) { const e = new Error("An answer for the current question has already been submitted."); e.status = 409; throw e; }
     answer = lastTurn;
-    if (requestId && !answer.requestId) answer.requestId = requestId;
+    if (reqId && !answer.requestId) answer.requestId = reqId;
   } else {
-    answer = { sequence: doc.transcript.length, speaker: "CANDIDATE", text: clean, timestamp: new Date(), questionId, requestId: requestId || null, section: doc.phase, answerProcessed: false };
+    answer = { sequence: doc.transcript.length, speaker: "CANDIDATE", text: clean, timestamp: new Date(), questionId, requestId: reqId || null, section: doc.phase, answerProcessed: false };
     doc.transcript.push(answer);
     await doc.save();
     logger.info(`Answer received ${doc._id} q=${questionId}`);
@@ -137,17 +143,33 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
 
     if (phase === "PRECHECK") {
       // Candidate answered pre-check audio/video question
-      phase = "OPENING";
-      next = {
-        category: "INTRODUCTION",
-        question: "Great, everything looks good. I'm your AI interviewer today. I'll ask you about your project and some technical decisions you made. Before we begin, could you briefly introduce yourself?",
-        difficulty: "EASY",
-        reason: "AI introduction and asking candidate for self-introduction.",
-        source: "fallback",
-        followUpExpected: true,
-      };
-      actionType = "FOLLOW_UP";
-      acknowledgment = "Great, I can hear you clearly.";
+      // Check if camera is flagged as off
+      const isCameraOff = opts?.cameraOn === false || /\b(camera off|video off|camera nahi|band hai)\b/i.test(clean);
+      if (isCameraOff) {
+        phase = "PRECHECK";
+        next = {
+          category: "PRECHECK",
+          question: "I can hear you clearly, but before we begin, please turn on your camera.",
+          difficulty: "EASY",
+          reason: "Candidate camera is off; prompt to turn on camera before proceeding.",
+          source: "fallback",
+          followUpExpected: true,
+        };
+        actionType = "FOLLOW_UP";
+        acknowledgment = "Thanks.";
+      } else {
+        phase = "OPENING";
+        next = {
+          category: "INTRODUCTION",
+          question: "Great, everything looks good. I'm your AI interviewer today. I'll ask you about your project and some technical decisions you made. Before we begin, could you briefly introduce yourself?",
+          difficulty: "EASY",
+          reason: "AI introduction and asking candidate for self-introduction.",
+          source: "fallback",
+          followUpExpected: true,
+        };
+        actionType = "FOLLOW_UP";
+        acknowledgment = "Great, I can hear you clearly.";
+      }
     } else if (phase === "OPENING") {
       // Candidate gave self-introduction
       phase = "PROJECT_CONFIRMATION";
@@ -224,6 +246,7 @@ Return JSON ONLY:
           nextQuestion: { ...lastQ, question: explanationText, reason: "Candidate requested explanation of term/concept" },
           acknowledgment: "No problem. Let me explain.",
           action: "EXPLAIN",
+          phase: doc.phase,
           closing: false,
         };
       }
@@ -238,6 +261,7 @@ Return JSON ONLY:
           nextQuestion: { ...lastQ, question: repeatedText, reason: "Candidate requested question repeat" },
           acknowledgment: "Sure.",
           action: "REPEAT",
+          phase: doc.phase,
           closing: false,
         };
       }
@@ -251,6 +275,7 @@ Return JSON ONLY:
           nextQuestion: { question: "Sure, take your time.", category: "FOLLOW_UP" },
           acknowledgment: "Sure, take your time.",
           action: "WAIT",
+          phase: doc.phase,
           closing: false,
         };
       }
@@ -265,6 +290,7 @@ Return JSON ONLY:
           nextQuestion: { ...lastQ, question: redirectQuestion, reason: "Polite redirection back to project" },
           acknowledgment: "Understood.",
           action: "FOLLOW_UP",
+          phase: doc.phase,
           closing: false,
         };
       }
@@ -340,6 +366,7 @@ Return JSON ONLY:
       nextQuestion: next,
       acknowledgment: acknowledgment || null,
       action: actionType,
+      phase: doc.phase,
       closing: next.category === "CLOSING",
     };
   } catch (error) {

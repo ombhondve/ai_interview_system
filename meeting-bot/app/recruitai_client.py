@@ -55,6 +55,7 @@ class RecruitAIClient:
         transcript: str,
         candidate_id: Optional[str] = None,
         request_id: Optional[str] = None,
+        camera_on: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
         Submit a candidate's transcribed answer to the RecruitAI backend.
@@ -88,6 +89,8 @@ class RecruitAIClient:
         }
         if candidate_id:
             payload["candidateId"] = candidate_id
+        if camera_on is not None:
+            payload["cameraOn"] = camera_on
 
         # Never log internal secrets or full sensitive candidate tokens
         logger.info(

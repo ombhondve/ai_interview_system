@@ -284,6 +284,40 @@ describe("Interview Warmup and Spoken Question Flow", () => {
       expect(res.acknowledgment).toBe("Understood.");
       expect(res.nextQuestion.question).toContain("stay with your project");
     });
+
+    test("Candidate asks 'What does this mean?' -> Maps to EXPLAIN and provides simple concept explanation", async () => {
+      mockSession.status = "IN_PROGRESS";
+      mockSession.phase = "QUESTIONING";
+      mockSession.questions = [
+        { questionId: "0", category: "AUTHENTICATION", question: "How did you handle cache invalidation in your project?" },
+      ];
+      mockSession.transcript = [
+        { speaker: "AI", text: "How did you handle cache invalidation in your project?", questionId: "0" },
+      ];
+
+      const res = await answerService.submitAnswer("int-123", "cand-123", "I don't understand what cache invalidation means. Can you explain?");
+      expect(res.action).toBe("EXPLAIN");
+      expect(res.acknowledgment).toBe("No problem. Let me explain.");
+      expect(res.nextQuestion).toBeDefined();
+      expect(typeof res.nextQuestion.question).toBe("string");
+      expect(res.nextQuestion.question.length).toBeGreaterThan(10);
+    });
+
+    test("PRECHECK: camera is OFF -> AI politely asks candidate to turn on camera", async () => {
+      mockSession.status = "IN_PROGRESS";
+      mockSession.phase = "PRECHECK";
+      mockSession.precheckState = "WAITING_FOR_CANDIDATE_HEAR_CHECK";
+      mockSession.questions = [
+        { questionId: "0", category: "PRECHECK", question: "Hi, welcome to your interview. Can you hear me clearly?" },
+      ];
+      mockSession.transcript = [
+        { speaker: "AI", text: "Hi, welcome to your interview. Can you hear me clearly?", questionId: "0" },
+      ];
+
+      const res = await answerService.submitAnswer("int-123", "cand-123", "Yes, I can hear you clearly.", { cameraOn: false });
+      expect(res.phase).toBe("PRECHECK");
+      expect(res.nextQuestion.question).toContain("turn on your camera");
+    });
   });
 });
 

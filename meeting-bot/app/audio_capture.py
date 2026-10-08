@@ -444,7 +444,14 @@ class AudioCaptureService:
         start_thresh = speech_start_rms or settings.audio_speech_start_rms
         end_thresh = silence_rms or settings.audio_silence_rms
         silence_limit = silence_duration_sec if silence_duration_sec is not None else settings.audio_silence_duration_sec
-        confirm_limit = max(silence_limit, pause_confirmation_sec, 1.8)
+        # If caller explicitly provided silence_duration_sec or pause_confirmation_sec, respect it;
+        # otherwise ensure at least 1.8s for live interview pause protection
+        if silence_duration_sec is not None:
+            confirm_limit = silence_limit
+        elif pause_confirmation_sec != 1.8:
+            confirm_limit = max(silence_limit, pause_confirmation_sec)
+        else:
+            confirm_limit = max(silence_limit, pause_confirmation_sec, 1.8)
         min_speech_limit = min_speech_duration_sec or settings.audio_min_speech_duration_sec
         max_utterance_limit = max_utterance_sec or settings.audio_max_utterance_sec
         pre_roll_time = pre_roll_sec or settings.audio_pre_roll_sec
