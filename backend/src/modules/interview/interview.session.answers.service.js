@@ -123,36 +123,63 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
     const context = await loadInterviewContext(doc.candidateId, doc.projectId, doc.bookingId);
     let phase = doc.phase || "OPENING";
     let next;
-
     let acknowledgment = "";
     let actionType = "NEXT_TOPIC";
 
-    if (phase === "OPENING") {
-      // Step 1: Candidate answered audio check ("Can you hear me clearly?")
-      // Question 2 should be: "Great. Before we begin, could you briefly introduce yourself?"
-      if (doc.questions.length === 1) {
-        next = {
-          category: "INTRODUCTION",
-          question: "Great. Before we begin, could you briefly introduce yourself?",
-          difficulty: "EASY",
-          reason: "Candidate self-introduction before project discussion.",
-          source: "fallback",
-          followUpExpected: true,
-        };
-        actionType = "FOLLOW_UP";
-      } else {
-        // Step 2: Candidate answered introduction -> transition to PROJECT_WALKTHROUGH
-        phase = "PROJECT_WALKTHROUGH";
-        next = {
-          category: "PROJECT_WALKTHROUGH",
-          question: "Thank you. Let's talk about your project: can you briefly give an overview of what you built?",
-          difficulty: "MEDIUM",
-          reason: "Transition from introduction to project walkthrough.",
-          source: "fallback",
-          followUpExpected: true,
-        };
-        actionType = "NEXT_TOPIC";
-      }
+    const projectName = context?.project?.title || "assigned project";
+
+    if (phase === "PRECHECK") {
+      // Candidate answered pre-check audio/video question
+      phase = "OPENING";
+      next = {
+        category: "INTRODUCTION",
+        question: "Great, everything looks good. I'm your AI interviewer today. I'll ask you about your project and some technical decisions you made. Before we begin, could you briefly introduce yourself?",
+        difficulty: "EASY",
+        reason: "AI introduction and asking candidate for self-introduction.",
+        source: "fallback",
+        followUpExpected: true,
+      };
+      actionType = "FOLLOW_UP";
+      acknowledgment = "Great, I can hear you clearly.";
+    } else if (phase === "OPENING") {
+      // Candidate gave self-introduction
+      phase = "PROJECT_CONFIRMATION";
+      next = {
+        category: "PROJECT_CONFIRMATION",
+        question: `Thanks, that's helpful. I see that you've been assigned the ${projectName} project. Is that the project you worked on?`,
+        difficulty: "EASY",
+        reason: "Confirming assigned project with candidate before technical questions.",
+        source: "fallback",
+        followUpExpected: true,
+      };
+      actionType = "FOLLOW_UP";
+      acknowledgment = "Thanks, that's helpful.";
+    } else if (phase === "PROJECT_CONFIRMATION") {
+      // Candidate confirmed project
+      phase = "PROJECT_UNDERSTANDING";
+      next = {
+        category: "PROJECT_UNDERSTANDING",
+        question: "Great. Can you give me a brief overview of what you built and what problem it solves?",
+        difficulty: "MEDIUM",
+        reason: "High-level project understanding before technical probing.",
+        source: "fallback",
+        followUpExpected: true,
+      };
+      actionType = "FOLLOW_UP";
+      acknowledgment = "Great.";
+    } else if (phase === "PROJECT_UNDERSTANDING") {
+      // Candidate gave overview; ask for personal role / ownership
+      phase = "QUESTIONING";
+      next = {
+        category: "IMPLEMENTATION",
+        question: "Understood. Which part of the project did you personally implement?",
+        difficulty: "MEDIUM",
+        reason: "Determining project ownership and personal contribution.",
+        source: "fallback",
+        followUpExpected: true,
+      };
+      actionType = "FOLLOW_UP";
+      acknowledgment = "Understood.";
     } else {
       const intentInfo = classifyCandidateIntent(clean);
       const lastQ = doc.questions[doc.currentQuestionIndex] || doc.questions[doc.questions.length - 1];
@@ -160,12 +187,12 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
       // 1. CLARIFY / REPEAT handling
       if (intentInfo.intent === "CLARIFY_REPEAT") {
         actionType = "REPEAT";
-        const repeatedText = `No problem: ${lastQ?.question || "Can you share more about your project?"}`;
+        const repeatedText = `Sure. What I mean is: ${lastQ?.question || "can you explain how your project works?"}`;
         return {
           interview: doc,
           duplicate: false,
           nextQuestion: { ...lastQ, question: repeatedText, reason: "Candidate requested repeat/clarification" },
-          acknowledgment: "No problem.",
+          acknowledgment: "Sure.",
           action: "REPEAT",
           closing: false,
         };
@@ -202,18 +229,40 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
       if (intentInfo.intent === "DONT_KNOW") {
         actionType = "MOVE_ON";
         acknowledgment = "No problem. Let's move on.";
+        if (lastQ?.category) {
+          doc.knowledgeGaps = [...new Set([...(doc.knowledgeGaps || []), lastQ.category])];
+        }
       } else {
-        // Natural varied acknowledgment for valid answers
         acknowledgment = getNaturalAcknowledgment(doc.questions.length);
       }
 
-      if (phase === "QUESTIONING" && doc.questions.length >= 6) phase = "PROJECT_WALKTHROUGH";
-      else if (phase === "PROJECT_WALKTHROUGH" && doc.questions.filter((q) => q.category === "PROJECT_WALKTHROUGH").length >= 2) phase = "CLOSING";
-
+      // Track evaluation metrics
       const candidateAnswers = doc.transcript.filter((turn) => turn.speaker === "CANDIDATE");
       const answerAssessment = assessAnswer(answer.text);
       answer.answerQuality = answerAssessment.quality;
       answer.answerProcessed = true;
+
+      if (lastQ?.category) {
+        doc.technicalAreas = [...new Set([...(doc.technicalAreas || []), lastQ.category])];
+        if (answerAssessment.quality === "POTENTIALLY_DETAILED") {
+          doc.candidateStrengths = [...new Set([...(doc.candidateStrengths || []), lastQ.category])];
+        } else if (answerAssessment.quality === "WEAK") {
+          doc.candidateWeaknesses = [...new Set([...(doc.candidateWeaknesses || []), lastQ.category])];
+        }
+      }
+
+      // Adaptive Phase Progression:
+      // QUESTIONING (turns 4-7) -> STRENGTH_DEPTH or WEAKNESS_GAP (turns 8-10) -> CLOSING (turn 11+)
+      const techQuestionCount = doc.questions.filter((q) =>
+        !["PRECHECK", "INTRODUCTION", "PROJECT_CONFIRMATION"].includes(q.category)
+      ).length;
+
+      if (techQuestionCount >= 3 && phase === "QUESTIONING") {
+        phase = doc.candidateStrengths.length > 0 ? "STRENGTH_DEPTH" : "WEAKNESS_GAP";
+      } else if (techQuestionCount >= 6 && ["STRENGTH_DEPTH", "WEAKNESS_GAP"].includes(phase)) {
+        phase = "CLOSING";
+      }
+
       await doc.save();
       const coveredTopics = [...new Set(doc.questions.map((q) => q.category))];
 
@@ -227,7 +276,6 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
         phase,
       });
 
-      // If short answer, ensure follow-up action
       if (intentInfo.intent === "SHORT_ANSWER") {
         actionType = "FOLLOW_UP";
       }
@@ -259,18 +307,41 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
   }
 }
 
-export async function endInterview(interviewId, candidateId) {
+export async function endInterview(interviewId, candidateId = null, options = {}) {
   const doc = await AiInterview.findById(interviewId);
   if (!doc) { const e = new Error("Interview not found"); e.status = 404; throw e; }
-  if (String(doc.candidateId) !== String(candidateId)) { const e = new Error("Forbidden"); e.status = 403; throw e; }
-  if (["COMPLETING", "COMPLETED", "ANALYSIS_PENDING", "ANALYZED"].includes(doc.status)) return doc;
-  if (doc.status !== "IN_PROGRESS") { const e = new Error("Interview is not in progress"); e.status = 400; throw e; }
+  if (candidateId && String(doc.candidateId) !== String(candidateId)) { const e = new Error("Forbidden"); e.status = 403; throw e; }
+  if (["COMPLETED", "ANALYZED"].includes(doc.status)) return doc;
+  if (["COMPLETING", "ANALYSIS_PENDING"].includes(doc.status)) {
+    if (options.waitForAnalysis) {
+      return await analyzeAndPersist(doc._id);
+    }
+    return doc;
+  }
+  if (!["IN_PROGRESS", "WAITING_FOR_CANDIDATE"].includes(doc.status)) {
+    const e = new Error("Interview is not in progress"); e.status = 400; throw e;
+  }
   doc.status = "COMPLETING";
-  doc.endedAt = new Date();
+  doc.endedAt = doc.endedAt || new Date();
   doc.analysisError = null;
   doc.transcript.forEach((entry, index) => { if (entry.sequence == null) entry.sequence = index; });
   await doc.save();
   logger.info(`Interview completed ${doc._id}`);
+
+  // Mark candidate status if applicable
+  try {
+    const { default: mongoose } = await import("mongoose");
+    if (mongoose.connection.readyState === 1) {
+      const { default: Candidate } = await import("../candidate/candidate.model.js");
+      await Candidate.findByIdAndUpdate(doc.candidateId, { status: "completed" });
+    }
+  } catch (cErr) {
+    logger.warn(`Could not update candidate status on interview completion: ${cErr.message}`);
+  }
+
+  if (options.waitForAnalysis) {
+    return await analyzeAndPersist(doc._id);
+  }
   analyzeAndPersist(doc._id).catch((err) => logger.error(`AI analysis failed ${doc._id}:`, err.message));
   return doc;
 }
@@ -282,6 +353,19 @@ export async function saveAdminDecision(interviewId, input) {
   if (!["selected", "rejected", "another_interview"].includes(status)) { const e = new Error("Invalid decision"); e.status = 400; throw e; }
   doc.adminDecision = { status, notes: String(notes || "").slice(0, 2000), decidedBy, decidedAt: new Date() };
   await doc.save();
+
+  // Sync candidate document status
+  try {
+    const { default: mongoose } = await import("mongoose");
+    if (mongoose.connection.readyState === 1) {
+      const { default: Candidate } = await import("../candidate/candidate.model.js");
+      const candidateStatus = status === "selected" ? "approved" : (status === "rejected" ? "rejected" : "decided");
+      await Candidate.findByIdAndUpdate(doc.candidateId, { status: candidateStatus });
+    }
+  } catch (cErr) {
+    logger.warn(`Could not update candidate status on admin decision: ${cErr.message}`);
+  }
+
   return doc;
 }
 

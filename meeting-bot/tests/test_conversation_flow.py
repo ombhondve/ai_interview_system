@@ -255,3 +255,71 @@ def test_multilingual_and_completion_states():
     mgr.set_state(ConversationState.ENDED, decision="interview_ended")
     assert mgr.state == ConversationState.ENDED
 
+
+# ------------------------------------------------------------------------------
+# Test 16: Pre-check, Adaptive Stages & Master Recording Flow
+# ------------------------------------------------------------------------------
+
+def test_interview_phases_progression():
+    """
+    Verifies that the full 10-phase states are supported in ConversationState:
+    PRECHECK -> CAMERA_CHECK -> OPENING -> PROJECT_CONFIRMATION ->
+    PROJECT_UNDERSTANDING -> QUESTIONING -> STRENGTH_DEPTH -> WEAKNESS_GAP ->
+    COMPLETING -> ENDED
+    """
+    bot = MeetingBot()
+    audio = MagicMock()
+    client = MagicMock()
+    deepgram = MagicMock()
+    mgr = ConversationManager(bot, audio, client, deepgram)
+
+    phases = [
+        ConversationState.PRECHECK,
+        ConversationState.CAMERA_CHECK,
+        ConversationState.OPENING,
+        ConversationState.PROJECT_CONFIRMATION,
+        ConversationState.PROJECT_UNDERSTANDING,
+        ConversationState.QUESTIONING,
+        ConversationState.STRENGTH_DEPTH,
+        ConversationState.WEAKNESS_GAP,
+        ConversationState.COMPLETING,
+        ConversationState.ENDED,
+    ]
+
+    for p in phases:
+        mgr.set_state(p, decision=f"transition_to_{p.value}")
+        assert mgr.state == p
+
+
+def test_master_recording_accumulation_and_export(tmp_path):
+    """
+    Verifies that AudioCaptureService accumulates audio during master recording
+    and exports a valid master WAV file without altering live VAD.
+    """
+    audio = AudioCaptureService(sample_rate=16000, channels=1)
+    audio._native_sample_rate = 16000
+    audio._native_channels = 1
+    audio._state = CaptureState.RUNNING
+
+    chunk = (np.sin(np.linspace(0, 0.05, 800, endpoint=False)) * 16000).astype(np.int16).tobytes()
+
+    # Start master recording
+    audio.start_master_recording()
+    assert audio._master_recording_active is True
+
+    # Simulate arrival of audio frames
+    with audio._lock:
+        audio._master_frames.append(chunk)
+        audio._master_frames.append(chunk)
+
+    out_file = str(tmp_path / "master_test.wav")
+    meta = audio.export_master_recording_wav(out_file)
+    assert meta is not None
+    assert meta["durationSeconds"] > 0
+    assert meta["channels"] == 1
+    assert meta["sampleRate"] == 16000
+
+    dur = audio.stop_master_recording()
+    assert audio._master_recording_active is False
+    assert dur >= 0.0
+

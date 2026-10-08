@@ -34,7 +34,13 @@ import { syncInterviewLifecycles, recordCandidatePresence } from "./interview.li
 
 router.get("/admin/reports", requireAuth, requireRole("superadmin", "recruiter", "admin"), async (_req, res) => {
   try {
-    const interviews = await AiInterview.find({ status: { $in: ["COMPLETED", "ANALYSIS_PENDING", "ANALYZED", "FAILED", "CANDIDATE_NO_SHOW", "WAITING_FOR_CANDIDATE", "IN_PROGRESS", "SCHEDULED"] } }).sort({ scheduledAt: -1 }).limit(200).populate("candidateId", "name email role").populate("projectId", "title");
+    const interviews = await AiInterview.find({
+      status: { $in: ["COMPLETED", "ANALYSIS_PENDING", "COMPLETING", "ANALYZED", "FAILED", "CANDIDATE_NO_SHOW", "WAITING_FOR_CANDIDATE", "IN_PROGRESS", "SCHEDULED"] }
+    })
+      .sort({ scheduledAt: -1 })
+      .limit(200)
+      .populate("candidateId", "name email role skills")
+      .populate("projectId", "title role technologies");
     return res.json({ success: true, interviews });
   } catch (error) { return handleError(res, error); }
 });
@@ -230,5 +236,56 @@ router.post("/internal/:interviewId/candidate-joined", validInterviewId, async (
   }
 });
 
+router.post("/internal/:interviewId/complete", validInterviewId, async (req, res) => {
+  try {
+    const candidateId = req.body?.candidateId || null;
+    const interview = await requireInternalServiceSession(req, req.params.interviewId, candidateId);
+
+    logger.info("[INTERVIEW] Bot signaled interview complete", { interviewId: String(interview._id) });
+    const waitForAnalysis = Boolean(req.body?.waitForAnalysis);
+    const updated = await answerService.endInterview(interview._id, null, { waitForAnalysis });
+
+    return res.json({
+      success: true,
+      interviewId: String(updated._id),
+      status: updated.status,
+      endedAt: updated.endedAt,
+      analysis: updated.analysis || null,
+    });
+  } catch (error) {
+    return handleError(res, error);
+  }
+});
+
+router.post("/internal/:interviewId/recording", validInterviewId, async (req, res) => {
+  try {
+    const candidateId = req.body?.candidateId || null;
+    const interview = await requireInternalServiceSession(req, req.params.interviewId, candidateId);
+    const { filePath, duration, action } = req.body || {};
+
+    const { uploadInterviewRecording, startRecordingSession } = await import("./interviewRecording.service.js");
+
+    if (action === "START") {
+      const doc = await startRecordingSession(interview._id);
+      return res.json({ success: true, recordingStatus: doc.recordingStatus, startedAt: doc.recordingStartedAt });
+    }
+
+    if (!filePath) {
+      return res.status(400).json({ success: false, message: "filePath is required for recording upload." });
+    }
+
+    const uploadResult = await uploadInterviewRecording(interview._id, filePath, { duration });
+    return res.json({
+      success: uploadResult.success,
+      recordingUrl: uploadResult.recordingUrl || null,
+      recordingPublicId: uploadResult.recordingPublicId || null,
+      error: uploadResult.error || null,
+    });
+  } catch (error) {
+    return handleError(res, error);
+  }
+});
+
 export default router;
+
 

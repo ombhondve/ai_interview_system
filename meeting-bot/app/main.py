@@ -41,7 +41,14 @@ logger = logging.getLogger("MeetingBot.Main")
 # ==============================================================================
 
 class ConversationState(str, Enum):
+    PRECHECK = "PRECHECK"
+    CAMERA_CHECK = "CAMERA_CHECK"
     OPENING = "OPENING"
+    PROJECT_CONFIRMATION = "PROJECT_CONFIRMATION"
+    PROJECT_UNDERSTANDING = "PROJECT_UNDERSTANDING"
+    QUESTIONING = "QUESTIONING"
+    STRENGTH_DEPTH = "STRENGTH_DEPTH"
+    WEAKNESS_GAP = "WEAKNESS_GAP"
     WAITING_FOR_CANDIDATE = "WAITING_FOR_CANDIDATE"
     CANDIDATE_SPEAKING = "CANDIDATE_SPEAKING"
     CANDIDATE_PAUSED = "CANDIDATE_PAUSED"
@@ -477,6 +484,11 @@ async def run_cli():
                 else:
                     logger.info("[MeetingBot] No initial question returned from backend; waiting for candidate speech.")
 
+            # Start Master Interview Recording
+            audio_capture.start_master_recording()
+            if args.interview_id:
+                recruitai_client.notify_recording_started(args.interview_id, candidate_id=args.candidate_id)
+
             # Initialize Conversation Manager
             conv_mgr = ConversationManager(
                 bot=bot_instance,
@@ -485,9 +497,13 @@ async def run_cli():
                 deepgram_client=deepgram_client,
             )
 
+            # Periodic camera check tracking
+            last_camera_check_time = time.monotonic()
+            camera_recovery_attempts = 0
+
             if first_question:
                 conv_mgr.current_question = first_question
-                conv_mgr.set_state(ConversationState.OPENING, decision="opening_question_delivered")
+                conv_mgr.set_state(ConversationState.PRECHECK, decision="precheck_question_delivered")
                 conv_mgr.last_speech_time = time.monotonic()
 
             logger.info("[PERF] candidate_listening_started")
@@ -733,8 +749,35 @@ async def run_cli():
                             logger.info(f"[PERF] total_response_time={total_response_time}s")
 
                         if is_closing:
-                            logger.info("[MeetingBot] Interview completed (closing=true). Exiting meeting gracefully.")
+                            logger.info("[MeetingBot] Interview completed (closing=true). Finalizing master recording & evaluation.")
                             conv_mgr.set_state(ConversationState.ENDED, decision="interview_ended")
+                            # Stop and upload master recording
+                            dur = audio_capture.stop_master_recording()
+                            if args.interview_id:
+                                try:
+                                    master_wav_path = str(diag_dir / f"master_interview_{args.interview_id}.wav")
+                                    saved = audio_capture.export_master_recording_wav(master_wav_path)
+                                    if saved:
+                                        recruitai_client.upload_recording(
+                                            interview_id=args.interview_id,
+                                            recording_file_path=master_wav_path,
+                                            duration_seconds=dur,
+                                            candidate_id=args.candidate_id,
+                                        )
+                                except Exception as up_err:
+                                    logger.error(f"[MeetingBot] Failed to upload master recording to Cloudinary: {up_err}")
+
+                                # Finalize interview in backend so evaluation & report are generated
+                                try:
+                                    logger.info(f"[MeetingBot] Triggering backend interview completion & evaluation for {args.interview_id}...")
+                                    recruitai_client.complete_interview(
+                                        interview_id=args.interview_id,
+                                        candidate_id=args.candidate_id,
+                                        wait_for_analysis=False,
+                                    )
+                                except Exception as comp_err:
+                                    logger.error(f"[MeetingBot] Failed to trigger backend interview completion: {comp_err}")
+
                             await asyncio.sleep(2.0)
                             break
 
@@ -745,6 +788,8 @@ async def run_cli():
             except (KeyboardInterrupt, asyncio.CancelledError):
                 pass
             finally:
+                # Ensure master recording is stopped if interrupted
+                audio_capture.stop_master_recording()
                 audio_capture.stop_capture()
                 await bot_instance.stop()
             return

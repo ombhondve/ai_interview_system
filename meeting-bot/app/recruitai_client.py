@@ -245,6 +245,116 @@ class RecruitAIClient:
         )
         return data
 
+    def notify_recording_started(
+        self,
+        interview_id: str,
+        candidate_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Notify backend that master interview recording has started.
+        """
+        endpoint = f"{self.base_url}/api/ai-interviews/internal/{interview_id}/recording"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Internal-Secret": self.internal_secret,
+        }
+        payload = {"action": "START"}
+        if candidate_id:
+            payload["candidateId"] = candidate_id
+
+        try:
+            response = requests.post(
+                endpoint,
+                json=payload,
+                headers=headers,
+                timeout=self.timeout_seconds,
+            )
+            return response.json() if response.ok else {}
+        except Exception as exc:
+            logger.warning(f"[RecruitAIClient] Error notifying recording start: {exc}")
+            return {}
+
+    def upload_recording(
+        self,
+        interview_id: str,
+        recording_file_path: str,
+        duration_seconds: float = 0.0,
+        candidate_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Upload the master interview audio recording file to the backend Cloudinary endpoint.
+        """
+        import os
+        endpoint = f"{self.base_url}/api/ai-interviews/internal/{interview_id}/recording"
+        headers = {
+            "X-Internal-Secret": self.internal_secret,
+        }
+        data = {
+            "action": "UPLOAD",
+            "duration": str(duration_seconds),
+        }
+        if candidate_id:
+            data["candidateId"] = candidate_id
+
+        if not os.path.exists(recording_file_path):
+            raise FileNotFoundError(f"Recording file not found: {recording_file_path}")
+
+        logger.info(f"[RecruitAIClient] Uploading master interview recording ({recording_file_path}) to backend Cloudinary service...")
+        with open(recording_file_path, "rb") as f:
+            files = {"recording": (os.path.basename(recording_file_path), f, "audio/wav")}
+            response = requests.post(
+                endpoint,
+                data=data,
+                files=files,
+                headers=headers,
+                timeout=120.0,  # Audio upload may take longer
+            )
+
+        if not response.ok:
+            logger.error(f"[RecruitAIClient] Failed to upload recording: HTTP {response.status_code} - {response.text}")
+            raise RuntimeError(f"Recording upload failed: HTTP {response.status_code}")
+
+        res_json = response.json()
+        logger.info(f"[RecruitAIClient] Master interview recording uploaded successfully: {res_json}")
+        return res_json
+
+    def complete_interview(
+        self,
+        interview_id: str,
+        candidate_id: Optional[str] = None,
+        wait_for_analysis: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Notify backend that interview is finished, triggering evaluation and report generation.
+        Calls POST /api/ai-interviews/internal/:interviewId/complete.
+        """
+        endpoint = f"{self.base_url}/api/ai-interviews/internal/{interview_id}/complete"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Internal-Secret": self.internal_secret,
+        }
+        payload = {"waitForAnalysis": wait_for_analysis}
+        if candidate_id:
+            payload["candidateId"] = candidate_id
+
+        try:
+            logger.info(f"[RecruitAIClient] Finalizing interview {interview_id} on backend...")
+            response = requests.post(
+                endpoint,
+                json=payload,
+                headers=headers,
+                timeout=self.timeout_seconds,
+            )
+            if not response.ok:
+                logger.error(f"[RecruitAIClient] Failed to finalize interview: HTTP {response.status_code} - {response.text}")
+                return {"success": False, "error": response.text}
+            res_data = response.json()
+            logger.info(f"[RecruitAIClient] Interview finalization acknowledged by backend: status={res_data.get('status')}")
+            return res_data
+        except Exception as exc:
+            logger.error(f"[RecruitAIClient] Error finalizing interview on backend: {exc}")
+            return {"success": False, "error": str(exc)}
+
 
 recruitai_client = RecruitAIClient()
 

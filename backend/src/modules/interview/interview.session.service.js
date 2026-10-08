@@ -59,16 +59,16 @@ export async function startInterview(interviewId, candidateId) {
   const ctx = await loadInterviewContext(doc.candidateId, doc.projectId, doc.bookingId);
   if (doc.questions.length === 0) {
     const question = {
-      category: "INTRODUCTION",
-      question: "Hello, welcome to your interview. Can you hear me clearly?",
+      category: "PRECHECK",
+      question: "Hi, welcome to your interview. Before we begin, let's quickly check your audio and video. Can you hear me clearly?",
       difficulty: "EASY",
-      reason: "Initial greeting and audio check.",
+      reason: "Initial greeting and audio/video pre-check.",
       source: "fallback",
       followUpExpected: true,
     };
-    doc.phase = "OPENING";
+    doc.phase = "PRECHECK";
     doc.questions.push({ ...question, questionId: "0", askedAt: new Date() });
-    doc.transcript.push({ speaker: "AI", text: question.question, timestamp: new Date(), questionId: "0", category: question.category, section: "OPENING" });
+    doc.transcript.push({ speaker: "AI", text: question.question, timestamp: new Date(), questionId: "0", category: question.category, section: "PRECHECK" });
   }
   if (doc.status !== "IN_PROGRESS") {
     doc.status = "IN_PROGRESS";

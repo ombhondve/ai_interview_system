@@ -404,6 +404,18 @@ class MeetingBot:
                 else:
                     logger.warning("[VOICE] AI speaking finished with failure / incomplete")
 
+    async def is_candidate_camera_on(self) -> Optional[bool]:
+        """Check if candidate camera is currently ON."""
+        if self._navigator:
+            return await self._navigator.is_candidate_camera_on()
+        return None
+
+    async def is_candidate_mic_muted(self) -> Optional[bool]:
+        """Check if candidate microphone is currently muted."""
+        if self._navigator:
+            return await self._navigator.is_candidate_mic_muted()
+        return None
+
     async def stop(self) -> None:
         """Leave the meeting gracefully, close browser, and clean up resources."""
         async with self._lock:

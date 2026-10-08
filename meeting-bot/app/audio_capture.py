@@ -58,6 +58,11 @@ class AudioCaptureService:
         self._native_sample_rate: int = 48000
         self._native_channels: int = 2
 
+        # Master recording accumulator for entire interview session
+        self._master_frames: List[bytes] = []
+        self._master_recording_active: bool = False
+        self._master_start_time: Optional[float] = None
+
     @property
     def state(self) -> CaptureState:
         with self._lock:
@@ -80,6 +85,33 @@ class AudioCaptureService:
                 "isRunning": self._state == CaptureState.RUNNING,
                 "state": self._state.value,
             }
+
+    def start_master_recording(self) -> None:
+        """Begin accumulating frames for the full interview recording."""
+        with self._lock:
+            self._master_frames.clear()
+            self._master_recording_active = True
+            self._master_start_time = time.monotonic()
+        logger.info("[AudioCapture] Master interview recording started.")
+
+    def stop_master_recording(self) -> float:
+        """Stop master recording and return elapsed duration in seconds."""
+        with self._lock:
+            self._master_recording_active = False
+            dur = (time.monotonic() - self._master_start_time) if self._master_start_time else 0.0
+        logger.info(f"[AudioCapture] Master interview recording stopped. Duration: {dur:.2f}s")
+        return dur
+
+    def export_master_recording_wav(self, file_path: str) -> Optional[Dict[str, Any]]:
+        """Export the accumulated master interview frames into a WAV file on disk."""
+        with self._lock:
+            frames_copy = list(self._master_frames)
+
+        if not frames_copy:
+            logger.warning("[AudioCapture] No master recording frames captured to export.")
+            return None
+
+        return self.save_recording(file_path, frames=frames_copy)
 
     def reset_buffer(self) -> None:
         """Clear recorded frames and pending queue chunks without restarting worker thread."""
@@ -247,6 +279,8 @@ class AudioCaptureService:
                 if data:
                     with self._lock:
                         self._recorded_frames.append(data)
+                        if self._master_recording_active:
+                            self._master_frames.append(data)
                         self._audio_queue.put(data)
 
         except Exception as e:

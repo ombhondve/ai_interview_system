@@ -91,25 +91,25 @@ describe("Interview Warmup and Spoken Question Flow", () => {
       jest.restoreAllMocks();
     });
 
-    test("Interview starts with OPENING/WARMUP greeting and audio check, not technical question", async () => {
+    test("Interview starts with PRECHECK greeting and audio/video check, not technical question", async () => {
       const started = await sessionService.startInterview("int-123", "cand-123");
-      expect(started.phase).toBe("OPENING");
+      expect(started.phase).toBe("PRECHECK");
       expect(started.questions).toHaveLength(1);
       const firstQ = started.questions[0];
-      expect(firstQ.category).toBe("INTRODUCTION");
-      expect(firstQ.question).toBe("Hello, welcome to your interview. Can you hear me clearly?");
+      expect(firstQ.category).toBe("PRECHECK");
+      expect(firstQ.question).toBe("Hi, welcome to your interview. Before we begin, let's quickly check your audio and video. Can you hear me clearly?");
       expect(started.transcript[0].text).toBe(firstQ.question);
     });
 
-    test("Warmup step 1: Candidate answers audio check -> AI asks short introduction", async () => {
+    test("Warmup step 1: Candidate answers audio check -> AI introduces itself and asks candidate introduction", async () => {
       // Setup session after startInterview
       mockSession.status = "IN_PROGRESS";
-      mockSession.phase = "OPENING";
+      mockSession.phase = "PRECHECK";
       mockSession.questions = [
         {
           questionId: "0",
-          category: "INTRODUCTION",
-          question: "Hello, welcome to your interview. Can you hear me clearly?",
+          category: "PRECHECK",
+          question: "Hi, welcome to your interview. Before we begin, let's quickly check your audio and video. Can you hear me clearly?",
           difficulty: "EASY",
         },
       ];
@@ -120,23 +120,23 @@ describe("Interview Warmup and Spoken Question Flow", () => {
       const res = await answerService.submitAnswer("int-123", "cand-123", "Yes, I can hear you clearly.");
       expect(res.interview.phase).toBe("OPENING");
       expect(res.nextQuestion.category).toBe("INTRODUCTION");
-      expect(res.nextQuestion.question).toBe("Great. Before we begin, could you briefly introduce yourself?");
+      expect(res.nextQuestion.question).toContain("could you briefly introduce yourself?");
       expect(mockSession.questions).toHaveLength(2);
     });
 
-    test("Warmup step 2: Candidate answers introduction -> Transitions to PROJECT_WALKTHROUGH", async () => {
+    test("Warmup step 2: Candidate answers introduction -> Transitions to PROJECT_CONFIRMATION", async () => {
       mockSession.status = "IN_PROGRESS";
       mockSession.phase = "OPENING";
       mockSession.questions = [
         {
           questionId: "0",
-          category: "INTRODUCTION",
-          question: "Hello, welcome to your interview. Can you hear me clearly?",
+          category: "PRECHECK",
+          question: "Hi, welcome to your interview. Before we begin, let's quickly check your audio and video. Can you hear me clearly?",
         },
         {
           questionId: "1",
           category: "INTRODUCTION",
-          question: "Great. Before we begin, could you briefly introduce yourself?",
+          question: "Great, everything looks good. I'm your AI interviewer today. Could you briefly introduce yourself?",
         },
       ];
       mockSession.transcript = [
@@ -151,10 +151,26 @@ describe("Interview Warmup and Spoken Question Flow", () => {
         "Hi, I'm a full stack developer with experience in React and Node.js."
       );
 
-      // Must have transitioned out of OPENING into PROJECT_WALKTHROUGH
-      expect(res.interview.phase).toBe("PROJECT_WALKTHROUGH");
-      expect(res.nextQuestion.category).toBe("PROJECT_WALKTHROUGH");
-      expect(res.nextQuestion.question).toContain("Let's talk about your project");
+      // Must have transitioned out of OPENING into PROJECT_CONFIRMATION
+      expect(res.interview.phase).toBe("PROJECT_CONFIRMATION");
+      expect(res.nextQuestion.category).toBe("PROJECT_CONFIRMATION");
+      expect(res.nextQuestion.question).toContain("Test Project");
+    });
+
+    test("Warmup step 3: Candidate confirms project -> Transitions to PROJECT_UNDERSTANDING", async () => {
+      mockSession.status = "IN_PROGRESS";
+      mockSession.phase = "PROJECT_CONFIRMATION";
+      mockSession.questions = [
+        { questionId: "0", category: "PROJECT_CONFIRMATION", question: "I see that you've been assigned the Test Project project. Is that the project you worked on?" },
+      ];
+      mockSession.transcript = [
+        { speaker: "AI", text: mockSession.questions[0].question, questionId: "0" },
+      ];
+
+      const res = await answerService.submitAnswer("int-123", "cand-123", "Yes, that is the project I worked on.");
+      expect(res.interview.phase).toBe("PROJECT_UNDERSTANDING");
+      expect(res.nextQuestion.category).toBe("PROJECT_UNDERSTANDING");
+      expect(res.nextQuestion.question).toContain("brief overview of what you built");
     });
 
     test("Candidate says 'I don't know' -> Acknowledges gracefully and moves on with action: MOVE_ON", async () => {
@@ -185,7 +201,7 @@ describe("Interview Warmup and Spoken Question Flow", () => {
 
       const res = await answerService.submitAnswer("int-123", "cand-123", "Can you repeat the question please?");
       expect(res.action).toBe("REPEAT");
-      expect(res.acknowledgment).toBe("No problem.");
+      expect(res.acknowledgment).toBe("Sure.");
       expect(res.nextQuestion.question).toContain("How did you implement authentication?");
       // Questions array should NOT have added a new question index
       expect(mockSession.questions).toHaveLength(1);

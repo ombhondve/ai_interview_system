@@ -11,7 +11,22 @@ const transcriptSchema = new mongoose.Schema({
   sequence: { type: Number, min: 0, default: 0 }, speaker: { type: String, enum: ["AI", "CANDIDATE", "SYSTEM"], required: true }, text: { type: String, required: true, trim: true, maxlength: 8000 },
   timestamp: { type: Date, default: Date.now }, questionId: { type: String, default: null }, requestId: { type: String, trim: true, default: null },
   answerProcessed: { type: Boolean, default: false }, answerQuality: { type: String, enum: ["WEAK", "INCOMPLETE", "POTENTIALLY_DETAILED"], default: null }, category: { type: String, enum: INTERVIEW_CATEGORIES, default: null },
-  section: { type: String, enum: ["OPENING", "QUESTIONING", "PROJECT_WALKTHROUGH", "CLOSING", "SYSTEM"], default: "OPENING" },
+  section: {
+    type: String,
+    enum: [
+      "PRECHECK",
+      "OPENING",
+      "PROJECT_CONFIRMATION",
+      "PROJECT_UNDERSTANDING",
+      "QUESTIONING",
+      "STRENGTH_DEPTH",
+      "WEAKNESS_GAP",
+      "PROJECT_WALKTHROUGH",
+      "CLOSING",
+      "SYSTEM",
+    ],
+    default: "PRECHECK",
+  },
 }, { _id: false });
 const scoreBlock = new mongoose.Schema({ score: { type: Number, min: 0, max: 100, required: true }, summary: { type: String, trim: true, default: "" } }, { _id: false });
 const analysisSchema = new mongoose.Schema({
@@ -35,10 +50,64 @@ const aiInterviewSchema = new mongoose.Schema({
   analysisError: { type: String, trim: true, default: null },
   analysisAttempts: { type: Number, min: 0, default: 0 },
   analysisUpdatedAt: { type: Date, default: null },
-  phase: { type: String, enum: ["OPENING", "QUESTIONING", "PROJECT_WALKTHROUGH", "CLOSING"], default: "OPENING" },
-  currentQuestionIndex: { type: Number, default: 0, min: 0 }, questions: { type: [questionSchema], default: [] }, transcript: { type: [transcriptSchema], default: [] },
-  startedAt: { type: Date, default: null }, endedAt: { type: Date, default: null }, analysis: { type: analysisSchema, default: null },
-  adminDecision: { status: { type: String, enum: ["pending", "selected", "rejected", "another_interview"], default: "pending" }, notes: { type: String, trim: true, default: "" }, decidedBy: { type: String, trim: true, default: null }, decidedAt: { type: Date, default: null } },
+  phase: {
+    type: String,
+    enum: [
+      "PRECHECK",
+      "OPENING",
+      "PROJECT_CONFIRMATION",
+      "PROJECT_UNDERSTANDING",
+      "QUESTIONING",
+      "STRENGTH_DEPTH",
+      "WEAKNESS_GAP",
+      "PROJECT_WALKTHROUGH",
+      "CLOSING",
+    ],
+    default: "PRECHECK",
+  },
+  currentQuestionIndex: { type: Number, default: 0, min: 0 },
+  questions: { type: [questionSchema], default: [] },
+  transcript: { type: [transcriptSchema], default: [] },
+  startedAt: { type: Date, default: null },
+  endedAt: { type: Date, default: null },
+
+  // Candidate evaluation tracking
+  candidateStrengths: { type: [String], default: [] },
+  candidateWeaknesses: { type: [String], default: [] },
+  technicalAreas: { type: [String], default: [] },
+  knowledgeGaps: { type: [String], default: [] },
+  projectOwnershipAssessment: { type: String, trim: true, default: "" },
+
+  // Cloudinary recording tracking
+  recordingStatus: {
+    type: String,
+    enum: [
+      "RECORDING_NOT_STARTED",
+      "RECORDING",
+      "UPLOADING",
+      "UPLOADED",
+      "UPLOAD_FAILED",
+    ],
+    default: "RECORDING_NOT_STARTED",
+  },
+  recordingUrl: { type: String, trim: true, default: null },
+  recordingPublicId: { type: String, trim: true, default: null },
+  recordingDuration: { type: Number, default: 0 },
+  recordingStartedAt: { type: Date, default: null },
+  recordingEndedAt: { type: Date, default: null },
+  recordingError: { type: String, trim: true, default: null },
+
+  analysis: { type: analysisSchema, default: null },
+  adminDecision: {
+    status: {
+      type: String,
+      enum: ["pending", "selected", "rejected", "another_interview"],
+      default: "pending",
+    },
+    notes: { type: String, trim: true, default: "" },
+    decidedBy: { type: String, trim: true, default: null },
+    decidedAt: { type: Date, default: null },
+  },
 }, { timestamps: true });
 aiInterviewSchema.index({ "transcript.requestId": 1 }, { sparse: true });
 aiInterviewSchema.index({ candidateId: 1, status: 1 });
