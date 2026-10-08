@@ -20,12 +20,19 @@ export function classifyCandidateIntent(text) {
   const clean = String(text || "").trim().toLowerCase();
   if (!clean) return { intent: "SILENCE", text: "" };
 
+  // Explanation request (when candidate asks what a technical term, word or question means)
+  if (
+    /\b(what does (that|this|it) mean|what do you mean by|i don't know what that means|can you explain (what|that|it)?|explain what you mean|don't understand (the word|the term|what you mean)|samajh nahi aaya|samajla nahi|samajh nahi aa raha|arth samjhla nahi|matlab kya hai)\b/i.test(clean)
+  ) {
+    return { intent: "EXPLAIN_REQUEST", text: clean };
+  }
+
   // Clarification / repeat request (English, Hindi, Marathi)
   if (
-    /^(can you (please )?repeat|could you repeat|repeat the question|can you rephrase|pardon|what do you mean|i don't understand|i do not understand|could you clarify|can you clarify)\b/i.test(clean) ||
-    /\b(repeat (the )?question|what does that mean|explain what you mean|not understand|samajh nahi aaya|samajla nahi|samajh nahi aa raha)\b/i.test(clean)
+    /^(can you (please )?repeat|could you repeat|repeat the question|can you rephrase|pardon|could you clarify|can you clarify)\b/i.test(clean) ||
+    /\b(repeat (the )?question|say that again|ekda parat sanga|phir se bolo|dobara boliye)\b/i.test(clean)
   ) {
-    return { intent: "CLARIFY_REPEAT", text: clean };
+    return { intent: "REPEAT_REQUEST", text: clean };
   }
 
   // Thinking / pause request (English, Hindi, Marathi)
@@ -184,14 +191,51 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
       const intentInfo = classifyCandidateIntent(clean);
       const lastQ = doc.questions[doc.currentQuestionIndex] || doc.questions[doc.questions.length - 1];
 
-      // 1. CLARIFY / REPEAT handling
-      if (intentInfo.intent === "CLARIFY_REPEAT") {
-        actionType = "REPEAT";
-        const repeatedText = `Sure. What I mean is: ${lastQ?.question || "can you explain how your project works?"}`;
+      // 1. EXPLAIN technical term / concept handling
+      if (intentInfo.intent === "EXPLAIN_REQUEST") {
+        actionType = "EXPLAIN";
+        let explanationText = "";
+        try {
+          const { generateStructuredAI } = await import("../ai/ai.service.js");
+          const explainPrompt = `The candidate did not understand this interview question: "${lastQ?.question || "the question"}".
+Candidate's response: "${clean}".
+Explain the technical concept in simple, conversational terms (under 25 words) with a concrete, beginner-friendly example grounded in their project (${projectName}). End by asking how they handled or approached that in their project.
+Return JSON ONLY:
+{ "explanation": "<simple explanation with example and prompt to answer>" }`;
+
+          const explainRes = await generateStructuredAI([
+            { role: "system", content: "You are a warm, supportive technical interviewer explaining a concept simply." },
+            { role: "user", content: explainPrompt },
+          ]);
+          if (explainRes?.explanation) {
+            explanationText = explainRes.explanation;
+          }
+        } catch (exErr) {
+          logger.warn(`AI concept explanation generation failed, using fallback: ${exErr.message}`);
+        }
+
+        if (!explanationText) {
+          explanationText = `No problem. By ${lastQ?.category || "this"}, I mean how did your application handle data changes or logic in ${projectName}? Can you explain that part?`;
+        }
+
         return {
           interview: doc,
           duplicate: false,
-          nextQuestion: { ...lastQ, question: repeatedText, reason: "Candidate requested repeat/clarification" },
+          nextQuestion: { ...lastQ, question: explanationText, reason: "Candidate requested explanation of term/concept" },
+          acknowledgment: "No problem. Let me explain.",
+          action: "EXPLAIN",
+          closing: false,
+        };
+      }
+
+      // 1b. REPEAT question handling
+      if (intentInfo.intent === "REPEAT_REQUEST" || intentInfo.intent === "CLARIFY_REPEAT") {
+        actionType = "REPEAT";
+        const repeatedText = `Sure. Let me repeat: ${lastQ?.question || "can you explain how your project works?"}`;
+        return {
+          interview: doc,
+          duplicate: false,
+          nextQuestion: { ...lastQ, question: repeatedText, reason: "Candidate requested question repeat" },
           acknowledgment: "Sure.",
           action: "REPEAT",
           closing: false,

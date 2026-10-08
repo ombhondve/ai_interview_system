@@ -426,7 +426,7 @@ class AudioCaptureService:
         speech_start_rms: Optional[float] = None,
         silence_rms: Optional[float] = None,
         silence_duration_sec: Optional[float] = None,
-        pause_confirmation_sec: float = 1.6,
+        pause_confirmation_sec: float = 1.8,
         min_speech_duration_sec: Optional[float] = None,
         max_utterance_sec: Optional[float] = None,
         pre_roll_sec: Optional[float] = None,
@@ -435,21 +435,16 @@ class AudioCaptureService:
         """
         Monitor continuous loopback stream and extract a single complete candidate utterance.
         Two-stage end-of-speech strategy:
-            - short silence -> CANDIDATE_PAUSED (triggers on_speech_pause)
-            - if speech resumes -> CANDIDATE_SPEAKING (triggers on_speech_resume)
-            - only sustained silence >= pause_confirmation_sec -> finalize answer
+            - short silence (0.5s - 1.5s) -> CANDIDATE_PAUSED (keeps buffer open, triggers on_speech_pause)
+            - if speech resumes -> CANDIDATE_SPEAKING (keeps buffer open, triggers on_speech_resume)
+            - only sustained silence >= confirm_limit (1.8s+) -> finalize answer
         """
         import asyncio
 
         start_thresh = speech_start_rms or settings.audio_speech_start_rms
         end_thresh = silence_rms or settings.audio_silence_rms
         silence_limit = silence_duration_sec if silence_duration_sec is not None else settings.audio_silence_duration_sec
-        # Two-stage confirmation window: candidate may pause to think for 1-2 seconds
-        # If caller explicitly provided silence_duration_sec and default pause_confirmation_sec was not overridden, honor silence_limit
-        if silence_duration_sec is not None and pause_confirmation_sec == 1.6:
-            confirm_limit = silence_duration_sec
-        else:
-            confirm_limit = max(silence_limit, pause_confirmation_sec)
+        confirm_limit = max(silence_limit, pause_confirmation_sec, 1.8)
         min_speech_limit = min_speech_duration_sec or settings.audio_min_speech_duration_sec
         max_utterance_limit = max_utterance_sec or settings.audio_max_utterance_sec
         pre_roll_time = pre_roll_sec or settings.audio_pre_roll_sec

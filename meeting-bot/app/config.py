@@ -33,10 +33,10 @@ class Settings(BaseSettings):
     # Utterance VAD & End-of-Speech Configuration
     audio_speech_start_rms: float = float(os.getenv("AUDIO_SPEECH_START_RMS", "0.012"))
     audio_silence_rms: float = float(os.getenv("AUDIO_SILENCE_RMS", "0.007"))
-    audio_silence_duration_sec: float = float(os.getenv("AUDIO_SILENCE_DURATION_SEC", "0.9"))
+    audio_silence_duration_sec: float = float(os.getenv("AUDIO_SILENCE_DURATION_SEC", "1.6"))
     audio_min_speech_duration_sec: float = float(os.getenv("AUDIO_MIN_SPEECH_DURATION_SEC", "0.4"))
-    audio_max_utterance_sec: float = float(os.getenv("AUDIO_MAX_UTTERANCE_SEC", "20.0"))
-    audio_pre_roll_sec: float = float(os.getenv("AUDIO_PRE_ROLL_SEC", "0.4"))
+    audio_max_utterance_sec: float = float(os.getenv("AUDIO_MAX_UTTERANCE_SEC", "90.0"))
+    audio_pre_roll_sec: float = float(os.getenv("AUDIO_PRE_ROLL_SEC", "0.5"))
 
     # Bot Google account identification (Phase 4.5)
     google_meet_bot_email: str = os.getenv("GOOGLE_MEET_BOT_EMAIL", "ombhondve32@gmail.com")

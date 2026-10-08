@@ -56,6 +56,7 @@ class DeepgramClient:
             "model": self.model,
             "smart_format": "true",
             "punctuate": "true",
+            "detect_language": "true",
         }
         headers = {
             "Authorization": f"Token {self.api_key.strip()}",
