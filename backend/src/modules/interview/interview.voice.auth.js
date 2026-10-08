@@ -9,7 +9,7 @@ export async function requireVerifiedVoiceSession(interviewId, candidateId) {
   return doc;
 }
 
-export async function requireInternalServiceSession(req, interviewId, candidateId = null) {
+export async function requireInternalServiceSession(req, interviewId, candidateId = null, options = {}) {
   const secretHeader = req.headers["x-internal-secret"] || req.headers["x-api-secret"] || "";
   const authHeader = req.headers.authorization || "";
   let providedSecret = "";
@@ -52,6 +52,16 @@ export async function requireInternalServiceSession(req, interviewId, candidateI
     throw error;
   }
 
+  // Pre-flight check allowed for bot inspection before joining Google Meet
+  if (options.allowPreflight) {
+    if (["CANCELLED", "COMPLETED", "CANDIDATE_NO_SHOW", "FAILED", "ANALYZED"].includes(doc.status)) {
+      const error = new Error(`Interview is already concluded or cancelled (status: ${doc.status}).`);
+      error.status = 409;
+      throw error;
+    }
+    return doc;
+  }
+
   if (doc.status !== "IN_PROGRESS") {
     const error = new Error("Interview is not in progress.");
     error.status = 409;
@@ -60,3 +70,4 @@ export async function requireInternalServiceSession(req, interviewId, candidateI
 
   return doc;
 }
+

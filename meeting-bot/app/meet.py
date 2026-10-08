@@ -382,6 +382,48 @@ class MeetNavigator:
 
         return False
 
+    async def get_participant_count(self) -> int:
+        """
+        Detect number of participants currently in Google Meet from UI badges and people panel.
+        Returns:
+            int: detected count (defaults to 1 if bot is sole participant).
+        """
+        try:
+            # Check 1: Button aria-label such as "People (2)", "Show everyone (2)"
+            people_buttons = self.page.locator(
+                'button[aria-label*="People" i], button[aria-label*="Show everyone" i]'
+            )
+            count = await people_buttons.count()
+            for i in range(count):
+                btn = people_buttons.nth(i)
+                if await btn.is_visible():
+                    aria = (await btn.get_attribute("aria-label") or "")
+                    text = (await btn.inner_text() or "")
+                    # Extract digits from e.g. "People (2)" or innerText "2"
+                    m = re.search(r"\((\d+)\)", aria) or re.search(r"\b(\d+)\b", text)
+                    if m:
+                        return int(m.group(1))
+
+            # Check 2: Participant video tiles or grid elements ([data-participant-id] or [data-allocation-index])
+            tiles = self.page.locator("[data-participant-id], [data-allocation-index]")
+            tile_count = await tiles.count()
+            if tile_count > 0:
+                return tile_count
+
+        except Exception as e:
+            logger.debug(f"[MEET] Error detecting participant count: {e}")
+
+        # Default fallback when bot is alone inside meeting
+        return 1
+
+    async def is_candidate_present(self) -> bool:
+        """
+        Check if any candidate / other participant has joined the Google Meet.
+        Distinguishes BOT_ONLY (count <= 1) from CANDIDATE_PRESENT (count >= 2).
+        """
+        count = await self.get_participant_count()
+        return count >= 2
+
     async def leave_meeting(self) -> None:
         """Attempt to click the Leave Call button gracefully only when actually inside meeting."""
         try:
@@ -394,6 +436,7 @@ class MeetNavigator:
             leave_btn = self.page.locator('button[aria-label*="Leave call" i], button[aria-label*="End call" i]')
             if await leave_btn.count() > 0 and await leave_btn.first.is_visible():
                 await leave_btn.first.click(timeout=3000)
+                logger.info("[MEET] Leaving meeting")
                 logger.info("[MeetingBot] Clicked 'Leave call' button")
         except Exception as e:
             logger.debug(f"[MeetingBot] Leave call note: {e}")

@@ -165,7 +165,22 @@ router.post("/internal/:interviewId/answer", validInterviewId, async (req, res) 
 router.get("/internal/:interviewId/session", validInterviewId, async (req, res) => {
   try {
     const candidateId = req.query?.candidateId || null;
-    const interview = await requireInternalServiceSession(req, req.params.interviewId, candidateId);
+    const interview = await requireInternalServiceSession(req, req.params.interviewId, candidateId, { allowPreflight: true });
+
+    // Validate readiness window
+    const now = Date.now();
+    const scheduledTime = new Date(interview.scheduledAt).getTime();
+    // Allow bot to join up to 15 minutes before scheduled start through end of slot
+    const earlyWindowMs = 15 * 60 * 1000;
+    const durationMs = (interview.durationMinutes || 30) * 60 * 1000;
+    const isDue = now >= (scheduledTime - earlyWindowMs) && now <= (scheduledTime + durationMs);
+
+    let readinessStatus = "READY_TO_JOIN";
+    if (["IN_PROGRESS"].includes(interview.status)) {
+      readinessStatus = "IN_PROGRESS";
+    } else if (now < (scheduledTime - earlyWindowMs)) {
+      readinessStatus = "NOT_DUE";
+    }
 
     const currentQ = interview.questions?.[interview.currentQuestionIndex] || interview.questions?.[0] || null;
     return res.json({
@@ -174,9 +189,39 @@ router.get("/internal/:interviewId/session", validInterviewId, async (req, res) 
       candidateId: String(interview.candidateId),
       status: interview.status,
       phase: interview.phase,
+      readinessStatus,
+      isDue,
+      scheduledAt: interview.scheduledAt,
+      meetLink: interview.meetLink || null,
       currentQuestionIndex: interview.currentQuestionIndex,
       totalQuestions: interview.questions.length,
       currentQuestion: currentQ?.question || null,
+    });
+  } catch (error) {
+    return handleError(res, error);
+  }
+});
+
+router.post("/internal/:interviewId/candidate-joined", validInterviewId, async (req, res) => {
+  try {
+    const candidateId = req.body?.candidateId || null;
+    // Authenticate internal bot service request
+    const interview = await requireInternalServiceSession(req, req.params.interviewId, candidateId, { allowPreflight: true });
+
+    logger.info("[INTERVIEW] Bot signaled candidate joined in Google Meet", { interviewId: String(interview._id) });
+    // Advance lifecycle to IN_PROGRESS and bootstrap first question if needed
+    const result = await recordCandidatePresence(interview._id, interview.candidateId);
+    const updated = result.interview || interview;
+    const firstQ = updated.questions?.[updated.currentQuestionIndex] || updated.questions?.[0] || null;
+
+    return res.json({
+      success: true,
+      interviewId: String(updated._id),
+      status: updated.status,
+      phase: updated.phase,
+      currentQuestionIndex: updated.currentQuestionIndex,
+      firstQuestion: firstQ?.question || null,
+      started: Boolean(result.started),
     });
   } catch (error) {
     return handleError(res, error);

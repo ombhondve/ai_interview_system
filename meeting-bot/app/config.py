@@ -30,8 +30,19 @@ class Settings(BaseSettings):
     audio_sample_rate: int = int(os.getenv("AUDIO_SAMPLE_RATE", "16000"))
     audio_channels: int = int(os.getenv("AUDIO_CHANNELS", "1"))
 
+    # Bot Google account identification (Phase 4.5)
+    google_meet_bot_email: str = os.getenv("GOOGLE_MEET_BOT_EMAIL", "ombhondve32@gmail.com")
+
     # Backend API configuration (Phase 3 Integration)
-    recruitai_backend_url: str = os.getenv("RECRUITAI_BACKEND_URL", "http://localhost:5000")
+    # Supports RECRUITAI_API_URL or RECRUITAI_BACKEND_URL; defaults to local development http://localhost:5000
+    recruitai_api_url: str = os.getenv(
+        "RECRUITAI_API_URL",
+        os.getenv("RECRUITAI_BACKEND_URL", "http://localhost:5000"),
+    )
+    recruitai_backend_url: str = os.getenv(
+        "RECRUITAI_API_URL",
+        os.getenv("RECRUITAI_BACKEND_URL", "http://localhost:5000"),
+    )
     recruitai_internal_api_secret: str = os.getenv(
         "RECRUITAI_INTERNAL_API_SECRET",
         os.getenv("MEETING_BOT_API_SECRET", "recruitai-default-bot-secret"),

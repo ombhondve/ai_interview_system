@@ -197,3 +197,71 @@ async def test_leave_call_alone_insufficient_for_joined():
     res = await nav.verify_meeting_admission()
     assert not res["is_inside"]
 
+
+@pytest.mark.asyncio
+async def test_candidate_presence_detection():
+    page = MagicMock()
+    # Mock locator for people button with "People (2)"
+    loc_people = AsyncMock()
+    loc_people.count = AsyncMock(return_value=1)
+    loc_people.is_visible = AsyncMock(return_value=True)
+    loc_people.nth = MagicMock(return_value=loc_people)
+    loc_people.get_attribute = AsyncMock(return_value="People (2)")
+    loc_people.inner_text = AsyncMock(return_value="2")
+
+    # Mock video tiles count = 2
+    loc_tiles = AsyncMock()
+    loc_tiles.count = AsyncMock(return_value=2)
+
+    def locator_side_effect(selector):
+        if "People" in selector or "Show everyone" in selector:
+            return loc_people
+        if "participant-id" in selector or "allocation-index" in selector:
+            return loc_tiles
+        empty = AsyncMock()
+        empty.count = AsyncMock(return_value=0)
+        empty.is_visible = AsyncMock(return_value=False)
+        return empty
+
+    page.locator.side_effect = locator_side_effect
+    nav = MeetNavigator(page)
+
+    count = await nav.get_participant_count()
+    assert count == 2
+
+    is_present = await nav.is_candidate_present()
+    assert is_present is True
+
+
+@pytest.mark.asyncio
+async def test_bot_only_candidate_not_present():
+    page = MagicMock()
+    loc_people = AsyncMock()
+    loc_people.count = AsyncMock(return_value=1)
+    loc_people.is_visible = AsyncMock(return_value=True)
+    loc_people.nth = MagicMock(return_value=loc_people)
+    loc_people.get_attribute = AsyncMock(return_value="People (1)")
+    loc_people.inner_text = AsyncMock(return_value="1")
+
+    loc_tiles = AsyncMock()
+    loc_tiles.count = AsyncMock(return_value=1)
+
+    def locator_side_effect(selector):
+        if "People" in selector or "Show everyone" in selector:
+            return loc_people
+        if "participant-id" in selector or "allocation-index" in selector:
+            return loc_tiles
+        empty = AsyncMock()
+        empty.count = AsyncMock(return_value=0)
+        empty.is_visible = AsyncMock(return_value=False)
+        return empty
+
+    page.locator.side_effect = locator_side_effect
+    nav = MeetNavigator(page)
+
+    count = await nav.get_participant_count()
+    assert count == 1
+
+    is_present = await nav.is_candidate_present()
+    assert is_present is False
+

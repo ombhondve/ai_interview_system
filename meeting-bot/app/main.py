@@ -237,7 +237,10 @@ async def run_cli():
         from pathlib import Path
         from datetime import datetime
 
-        logger.info(f"[MeetingBot] CLI meet requested for URL: {args.meet_url}")
+        # Log backend host safely (Phase 4.5 requirement)
+        from urllib.parse import urlparse
+        backend_host = urlparse(recruitai_client.base_url).netloc or recruitai_client.base_url
+        logger.info(f"[BACKEND] API URL: {backend_host}")
 
         # Voice test or Real interview mode pre-checks
         if args.voice_test or args.interview_id or args.speak:
@@ -246,6 +249,18 @@ async def run_cli():
                 kokoro_tts.resolve_output_device()
             except Exception as e:
                 logger.error(f"[MeetingBot] Kokoro TTS device resolution failed: {e}")
+                sys.exit(1)
+
+        # Pre-verify backend connection if interview-id is provided before opening Meet
+        if args.interview_id:
+            try:
+                logger.info(f"[BACKEND] Pre-verifying backend session access for {args.interview_id}...")
+                session_check = recruitai_client.get_interview_session(
+                    args.interview_id, candidate_id=args.candidate_id
+                )
+                logger.info(f"[BACKEND] Verified session status: {session_check.get('status')} (phase: {session_check.get('phase')})")
+            except Exception as pre_backend_err:
+                logger.error(f"[BACKEND] Backend session pre-flight failed ({pre_backend_err}). Aborting meeting join to prevent unlinked interview.")
                 sys.exit(1)
 
         success = await bot_instance.start(args.meet_url)
@@ -309,27 +324,54 @@ async def run_cli():
             diag_dir = Path(__file__).resolve().parent.parent / "diagnostics" / "audio_test"
             diag_dir.mkdir(parents=True, exist_ok=True)
 
-            # If interview_id provided, fetch first question from backend and speak it
+            # If interview_id provided, wait for candidate presence in Google Meet before starting the interview
+            first_question = None
             if args.interview_id:
+                logger.info("[MEET] Waiting for candidate")
+                # Poll Google Meet participant presence
+                candidate_detected = False
+                for wait_attempt in range(60):  # Wait up to 10 minutes (checking every 10s)
+                    if bot_instance._navigator:
+                        present = await bot_instance._navigator.is_candidate_present()
+                        if present:
+                            candidate_detected = True
+                            logger.info("[MEET] Candidate detected")
+                            break
+                    await asyncio.sleep(10)
+
+                if not candidate_detected:
+                    logger.warning("[INTERVIEW] Candidate did not join within grace period.")
+                    await bot_instance.stop()
+                    sys.exit(0)
+
                 try:
-                    logger.info(f"[BACKEND] Fetching interview session details for: {args.interview_id}")
-                    session_info = recruitai_client.get_interview_session(
+                    logger.info("[INTERVIEW] Transitioned to IN_PROGRESS")
+                    join_res = recruitai_client.notify_candidate_joined(
                         args.interview_id, candidate_id=args.candidate_id
                     )
-                    first_question = session_info.get("currentQuestion")
-                    if first_question:
-                        logger.info(f"[VOICE] First question found: '{first_question}'")
-                        logger.info("[VOICE] Speaking first question via Kokoro TTS...")
-                        await asyncio.sleep(1.5)
-                        await bot_instance.speak_text(first_question)
-                    else:
-                        logger.info("[MeetingBot] No initial question returned from backend; waiting for candidate.")
+                    first_question = join_res.get("firstQuestion")
                 except Exception as sess_err:
                     logger.warning(
-                        f"[MeetingBot] Could not fetch initial session question ({sess_err}). "
-                        "Will proceed with listening for candidate answer."
+                        f"[MeetingBot] Could not signal candidate presence ({sess_err}). "
+                        "Attempting fallback session fetch."
                     )
+                    try:
+                        session_info = recruitai_client.get_interview_session(
+                            args.interview_id, candidate_id=args.candidate_id
+                        )
+                        first_question = session_info.get("currentQuestion")
+                    except Exception:
+                        pass
 
+                if first_question:
+                    logger.info(f"[AI] First question generated: '{first_question}'")
+                    logger.info("[AI] SPEAKING")
+                    await asyncio.sleep(1.5)
+                    await bot_instance.speak_text(first_question)
+                else:
+                    logger.info("[MeetingBot] No initial question returned from backend; waiting for candidate speech.")
+
+            logger.info("[AUDIO] Listening for candidate")
             try:
                 while True:
                     # AI_SPEAKING guard: Do NOT process candidate audio if AI is speaking

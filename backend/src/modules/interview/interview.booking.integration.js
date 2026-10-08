@@ -49,7 +49,13 @@ export async function createInterviewMeeting({ session, booking, candidate, admi
 
     return result;
   } catch (error) {
-    logger.error("Interview meeting creation failed", { interviewId: String(session._id), code: error?.code || "CALENDAR_ERROR" });
+    logger.error("Interview meeting creation failed", {
+      interviewId: String(session._id),
+      code: error?.code || "CALENDAR_ERROR",
+      status: error?.status || error?.response?.status,
+      message: error?.message,
+      googleError: error?.response?.data?.error?.message || error?.errors?.[0]?.message,
+    });
     error.status = error.status || 502;
     error.code = error.code || "CALENDAR_CREATION_FAILED";
     error.safeMessage = safeMessage(error);

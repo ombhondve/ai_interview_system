@@ -299,7 +299,7 @@ export default function InterviewSchedulingPage() {
 
               {bookingResult.meetLink && (
                 <p className="mt-4 rounded-lg bg-indigo-50 p-3 text-sm text-indigo-900">
-                  Google Meet is the scheduled human meeting link. The AI interview runs separately in the authenticated interview room.
+                  Google Meet is the official AI interview room. At your scheduled time, join the Google Meet room to speak with RecruitAI.
                 </p>
               )}
 

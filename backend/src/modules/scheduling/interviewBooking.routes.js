@@ -197,6 +197,8 @@ router.post(
       let interviewSession;
       let meeting;
       try {
+        logger.info("[BOOKING_DIAG] Stage 1: Booking record created atomically", { bookingId: booking.id, startAt: booking.startAt });
+
         let bookingDocument = await InterviewBooking.findById(booking.id);
         interviewSession = await ensureSessionForBooking({
           candidateId: req.candidate._id,
@@ -206,19 +208,29 @@ router.post(
           meetLink: bookingDocument?.meetLink,
           calendarEventId: bookingDocument?.calendarEventId,
         });
+        logger.info("[BOOKING_DIAG] Stage 2: Interview session created/resolved", { sessionId: interviewSession?._id?.toString() });
+
         const candidate = await Candidate.findById(req.candidate._id);
+        logger.info("[BOOKING_DIAG] Stage 3: Resolving active calendar admin ID...");
         const calendarAdminId = await getActiveCalendarConnectionAdminId();
+        logger.info("[BOOKING_DIAG] Stage 3: Active calendar admin ID resolved", { calendarAdminId });
+
+        logger.info("[BOOKING_DIAG] Stage 4 & 5: Initiating calendar meeting creation...");
         meeting = await createInterviewMeeting({ session: interviewSession, booking: bookingDocument, candidate, adminId: calendarAdminId });
+        logger.info("[BOOKING_DIAG] Stage 6 & 7: Meet conference link returned", { eventId: meeting.eventId, hasMeetLink: Boolean(meeting.meetLink) });
+
         bookingDocument.meetLink = meeting.meetLink;
         bookingDocument.calendarEventId = meeting.eventId;
         bookingDocument.conferenceId = meeting.conferenceId || null;
         bookingDocument.calendarAdminId = meeting.adminId;
         await bookingDocument.save();
+
         interviewSession.meetLink = meeting.meetLink;
         interviewSession.calendarEventId = meeting.eventId;
         interviewSession.conferenceId = meeting.conferenceId || null;
         interviewSession.calendarAdminId = meeting.adminId;
         await interviewSession.save();
+        logger.info("[BOOKING_DIAG] Stage 8: Booking and session persistence complete", { bookingId: booking.id });
 
         return res.status(201).json({
           success: true,
@@ -227,7 +239,13 @@ router.post(
           interviewId: interviewSession._id.toString(),
         });
       } catch (integrationError) {
-        logger.error("Interview booking integration failed", { bookingId: booking.id, code: integrationError?.code || "INTEGRATION_FAILURE" });
+        logger.error("Interview booking integration failed", {
+          bookingId: booking.id,
+          code: integrationError?.code || "INTEGRATION_FAILURE",
+          status: integrationError?.status,
+          message: integrationError?.message,
+          errorStack: integrationError?.stack?.split("\n").slice(0, 3).join(" | "),
+        });
         if (meeting?.eventId && (!interviewSession?.calendarEventId || interviewSession.calendarEventId !== meeting.eventId)) {
           try {
             await deleteInterviewMeeting(meeting.eventId, interviewSession?._id, meeting.adminId);

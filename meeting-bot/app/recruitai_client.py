@@ -26,7 +26,12 @@ class RecruitAIClient:
         internal_secret: Optional[str] = None,
         timeout_seconds: float = 15.0,
     ):
-        self.base_url = (base_url or settings.recruitai_backend_url).rstrip("/")
+        raw_url = base_url or settings.recruitai_api_url or settings.recruitai_backend_url
+        if not raw_url:
+            raise ValueError(
+                "RECRUITAI_API_URL is missing. Please configure RECRUITAI_API_URL in .env (e.g. https://<backend-host> or http://localhost:5000)."
+            )
+        self.base_url = raw_url.rstrip("/")
         self.internal_secret = internal_secret or settings.recruitai_internal_api_secret
         self.timeout_seconds = timeout_seconds
 
@@ -189,6 +194,56 @@ class RecruitAIClient:
             raise RuntimeError(f"Backend error ({response.status_code}): {response.text}")
 
         return response.json()
+
+    def notify_candidate_joined(
+        self,
+        interview_id: str,
+        candidate_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Signal backend that the candidate has joined Google Meet.
+        Transitions interview status to IN_PROGRESS and bootstraps initial question.
+        Calls POST /api/ai-interviews/internal/:interviewId/candidate-joined.
+        """
+        endpoint = f"{self.base_url}/api/ai-interviews/internal/{interview_id}/candidate-joined"
+        headers = {
+            "Content-Type": "application/json",
+            "X-Internal-Secret": self.internal_secret,
+        }
+        payload = {}
+        if candidate_id:
+            payload["candidateId"] = candidate_id
+
+        logger.info(f"[RecruitAIClient] Notifying backend candidate joined for interview {interview_id}...")
+        try:
+            response = requests.post(
+                endpoint,
+                json=payload,
+                headers=headers,
+                timeout=self.timeout_seconds,
+            )
+        except requests.exceptions.Timeout:
+            logger.error(f"[RecruitAIClient] Request timed out connecting to backend ({endpoint})")
+            raise TimeoutError("Backend request timed out.")
+        except requests.exceptions.RequestException as exc:
+            logger.error(f"[RecruitAIClient] Network error connecting to backend: {exc}")
+            raise ConnectionError(f"Backend network error: {exc}")
+
+        if response.status_code == 401:
+            raise PermissionError("Unauthorized: Backend rejected internal service secret.")
+        elif response.status_code == 403:
+            raise PermissionError("Forbidden: Candidate mismatch.")
+        elif response.status_code == 404:
+            raise FileNotFoundError(f"Interview {interview_id} not found.")
+        elif not response.ok:
+            raise RuntimeError(f"Backend error ({response.status_code}): {response.text}")
+
+        data = response.json()
+        logger.info(
+            f"[RecruitAIClient] Candidate-joined recorded: status={data.get('status')}, "
+            f"started={data.get('started')}, hasFirstQuestion={bool(data.get('firstQuestion'))}"
+        )
+        return data
 
 
 recruitai_client = RecruitAIClient()

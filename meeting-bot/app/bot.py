@@ -146,6 +146,32 @@ class MeetingBot:
                 profile_path = Path(settings.meeting_bot_profile_dir).resolve()
                 profile_path.mkdir(parents=True, exist_ok=True)
 
+                # Safe Startup Diagnostics (Phase 4.5)
+                configured_bot_email = (getattr(settings, "google_meet_bot_email", None) or os.getenv("GOOGLE_MEET_BOT_EMAIL") or "").strip().lower()
+                logger.info(f"[MEET] Bot email configured: {configured_bot_email or 'not configured'}")
+                logger.info(f"[MEET] Meet URL: {self.meet_url}")
+                logger.info(f"[MEET] Persistent profile: {profile_path}")
+                logger.info("[MEET] Calendar invitation expected: true")
+
+                # Verify profile account matches configured bot email
+                try:
+                    prefs_path = profile_path / "Default" / "Preferences"
+                    if prefs_path.exists():
+                        import json
+                        with open(prefs_path, "r", encoding="utf-8", errors="ignore") as pf:
+                            prefs_data = json.load(pf)
+                        account_infos = prefs_data.get("account_info", [])
+                        logged_in_email = account_infos[0].get("email", "").strip().lower() if account_infos else ""
+                        if logged_in_email:
+                            logger.info(f"[MEET] Authenticated Chrome account in profile: {logged_in_email}")
+                            if configured_bot_email and logged_in_email != configured_bot_email:
+                                logger.warning(
+                                    f"[MEET] WARNING: Configured bot email ({configured_bot_email}) does not match "
+                                    f"authenticated Chrome account ({logged_in_email})."
+                                )
+                except Exception as pref_err:
+                    logger.debug(f"[MEET] Profile account validation note: {pref_err}")
+
                 logger.info(f"[MeetingBot] Loading persistent profile from: {profile_path}")
                 self._playwright = await async_playwright().start()
 
@@ -172,11 +198,13 @@ class MeetingBot:
                 self._navigator = MeetNavigator(self._page)
 
                 self.status = BotStatus.OPENING_MEET
+                logger.info("[MEET] Opening Google Meet")
                 logger.info(f"[MeetingBot] Opening Google Meet: {self.meet_url}")
                 await self._page.goto(self.meet_url, wait_until="networkidle", timeout=45000)
                 logger.info("[MeetingBot] Meet page loaded")
 
                 self.status = BotStatus.PRE_JOIN
+                logger.info("[MEET] Prejoin detected")
                 logger.info("[MeetingBot] Pre-join screen detected")
                 await self._page.wait_for_timeout(3000)
 
@@ -203,6 +231,8 @@ class MeetingBot:
 
                 if action == "ASK_TO_JOIN":
                     self.status = BotStatus.WAITING_FOR_ADMISSION
+                    logger.info("[MEET] Bot is waiting for host admission")
+                    logger.info("[MEET] Automatic admission was not granted by Google Meet")
                     logger.warning("[MeetingBot] 'Ask to join' was clicked. Bot is NOT directly admitted.")
                     logger.warning("[MeetingBot] State changed to: WAITING_FOR_ADMISSION. Waiting for meeting host to admit...")
 
@@ -235,6 +265,7 @@ class MeetingBot:
                         return False
 
                 elif action == "JOIN_NOW":
+                    logger.info("[MEET] Direct join available. Joining meeting...")
                     logger.info("[MeetingBot] Direct 'Join now' clicked. Waiting to confirm entry into meeting room...")
                     is_inside = await self._navigator.is_inside_meeting(timeout_ms=25000)
                     if not is_inside:
@@ -242,11 +273,13 @@ class MeetingBot:
                         self.failure_reason = "Direct 'Join now' was clicked but failed to detect in-meeting controls within timeout."
                         logger.error(f"[MeetingBot] FAILED: {self.failure_reason}")
                         return False
+                    logger.info("[MEET] Bot automatically admitted")
 
                 # At this point, in-meeting controls are strictly confirmed with multi-signal evidence
                 self.status = BotStatus.JOINED
                 self.joined_at = datetime.utcnow().isoformat() + "Z"
                 logger.info("[MEET] Bot admitted")
+                logger.info("[MEET] Confirmed inside meeting")
                 logger.info("[MeetingBot] Successfully joined Google Meet")
                 logger.info("[MeetingBot] In-meeting controls verified. Bot is now inside meeting.")
 

@@ -90,4 +90,41 @@ describe("requireInternalServiceSession unit tests", () => {
     const result = await requireInternalServiceSession(req, "507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012");
     expect(result).toBe(mockDoc);
   });
+
+  test("allows preflight when interview is SCHEDULED or WAITING_FOR_CANDIDATE", async () => {
+    const mockDoc = {
+      _id: "507f1f77bcf86cd799439011",
+      candidateId: "507f1f77bcf86cd799439012",
+      status: "SCHEDULED",
+    };
+    AiInterview.findById = async () => mockDoc;
+    const req = { headers: { "x-internal-secret": "test-internal-secret-12345" } };
+    const result = await requireInternalServiceSession(
+      req,
+      "507f1f77bcf86cd799439011",
+      "507f1f77bcf86cd799439012",
+      { allowPreflight: true }
+    );
+    expect(result).toBe(mockDoc);
+  });
+
+  test("rejects preflight when interview is cancelled or completed", async () => {
+    AiInterview.findById = async () => ({
+      _id: "507f1f77bcf86cd799439011",
+      candidateId: "507f1f77bcf86cd799439012",
+      status: "CANCELLED",
+    });
+    const req = { headers: { "x-internal-secret": "test-internal-secret-12345" } };
+    await expect(
+      requireInternalServiceSession(
+        req,
+        "507f1f77bcf86cd799439011",
+        "507f1f77bcf86cd799439012",
+        { allowPreflight: true }
+      )
+    ).rejects.toMatchObject({
+      status: 409,
+      message: expect.stringMatching(/already concluded or cancelled/i),
+    });
+  });
 });

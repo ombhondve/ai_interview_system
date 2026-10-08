@@ -152,7 +152,13 @@ class GoogleCalendarService {
       };
 
     } catch (error) {
-      logger.error('Failed to create calendar event for interview', { interviewId: String(interview._id), code: error.code || 'CALENDAR_API_ERROR' });
+      logger.error('Failed to create calendar event for interview', {
+        interviewId: String(interview._id),
+        code: error.code || error.response?.status || 'CALENDAR_API_ERROR',
+        status: error.status || error.response?.status,
+        message: error.message,
+        googleApiError: error.response?.data?.error || error.errors,
+      });
       throw error;
     }
   }
@@ -176,7 +182,7 @@ class GoogleCalendarService {
       });
 
       logger.info(`✅ Calendar event updated for interview ${interview._id}`);
-      
+
       return {
         success: true,
         eventId: response.data.id,
@@ -205,7 +211,7 @@ class GoogleCalendarService {
       });
 
       logger.info(`✅ Calendar event deleted for interview ${interviewId}`);
-      
+
       return {
         success: true,
         eventId,

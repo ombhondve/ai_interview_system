@@ -178,3 +178,28 @@ def test_secrets_are_never_logged(caplog, client):
     # Ensure secret string was never output in any log message
     for record in caplog.records:
         assert "mock-secret-xyz" not in record.message
+
+
+def test_notify_candidate_joined_success(client):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.ok = True
+    mock_resp.json.return_value = {
+        "success": True,
+        "interviewStatus": "IN_PROGRESS",
+        "firstQuestion": "Can you tell me about yourself?",
+    }
+
+    with patch("requests.post", return_value=mock_resp) as mock_post:
+        res = client.notify_candidate_joined(
+            interview_id="507f1f77bcf86cd799439011",
+            candidate_id="507f1f77bcf86cd799439012",
+        )
+
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        assert args[0] == "http://localhost:5000/api/ai-interviews/internal/507f1f77bcf86cd799439011/candidate-joined"
+        assert kwargs["headers"]["X-Internal-Secret"] == "mock-secret-xyz"
+        assert kwargs["json"]["candidateId"] == "507f1f77bcf86cd799439012"
+        assert res["interviewStatus"] == "IN_PROGRESS"
+        assert res["firstQuestion"] == "Can you tell me about yourself?"

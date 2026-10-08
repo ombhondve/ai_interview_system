@@ -374,7 +374,7 @@ export default function SettingsPage() {
                   </div>
                   <div className="flex shrink-0 flex-wrap gap-2"><button disabled={calendarBusy} onClick={() => void connectCalendar()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">{calendarBusy ? "Working…" : calendarStatus.connected ? "Reconnect Google Calendar" : "Connect Google Calendar"}</button>{calendarStatus.connected && <button disabled={calendarBusy} onClick={() => void disconnectCalendar()} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300">Disconnect</button>}</div>
                 </div>
-                <p className="mt-4 text-xs text-slate-500">Google Calendar schedules the human meeting. The AI interview runs in RecruitAI’s separate interview room; the AI does not join Google Meet.</p>
+                <p className="mt-4 text-xs text-slate-500">Google Calendar creates the event and Google Meet room. The AI meeting bot joins this room to conduct the interview directly with the candidate.</p>
               </SettingsCard>
             )}
 
