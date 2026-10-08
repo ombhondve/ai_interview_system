@@ -606,5 +606,77 @@ async def test_more_options_detects_settings_by_text_without_menu_role():
     assert loc_settings_text.evaluate.called
 
 
+@pytest.mark.asyncio
+async def test_audio_tab_already_active_skips_click():
+    """Verify that when Audio controls are already visible in dialog, no Audio tab click is performed."""
+    page = MagicMock()
+    page.wait_for_timeout = AsyncMock()
+
+    loc_settings_btn = AsyncMock()
+    loc_settings_btn.count = AsyncMock(return_value=1)
+    loc_settings_btn.is_visible = AsyncMock(return_value=True)
+    loc_settings_btn.first = AsyncMock()
+
+    loc_audio_nav = AsyncMock()
+    loc_audio_nav.click = AsyncMock()
+    loc_audio_nav.evaluate = AsyncMock()
+
+    # Dialog already contains Microphone and Speaker
+    loc_dialog = AsyncMock()
+    loc_dialog.count = AsyncMock(return_value=1)
+    loc_dialog.is_visible = AsyncMock(return_value=True)
+    loc_dialog.first = AsyncMock()
+    loc_dialog.first.inner_text = AsyncMock(return_value="Settings Audio Microphone Speakers")
+    loc_dialog.first.get_by_text = MagicMock(return_value=loc_audio_nav)
+
+    # Microphone and Speaker already have target values (read-only verification, no click needed)
+    loc_mic_box = AsyncMock()
+    loc_mic_box.count = AsyncMock(return_value=1)
+    loc_mic_box.is_visible = AsyncMock(return_value=True)
+    loc_mic_box.first = AsyncMock()
+    loc_mic_box.first.inner_text = AsyncMock(return_value="CABLE Output (VB-Audio Virtual Cable)")
+    loc_mic_box.first.click = AsyncMock()
+
+    loc_spk_box = AsyncMock()
+    loc_spk_box.count = AsyncMock(return_value=1)
+    loc_spk_box.is_visible = AsyncMock(return_value=True)
+    loc_spk_box.first = AsyncMock()
+    loc_spk_box.first.inner_text = AsyncMock(return_value="CABLE Input (VB-Audio Virtual Cable)")
+    loc_spk_box.first.click = AsyncMock()
+
+    empty = AsyncMock()
+    empty.count = AsyncMock(return_value=0)
+    empty.is_visible = AsyncMock(return_value=False)
+    empty.all = AsyncMock(return_value=[])
+
+    def locator_side_effect(selector):
+        if "dialog" in selector and ("Microphone" in selector or "Speaker" in selector):
+            if "Microphone" in selector:
+                return loc_mic_box
+            return loc_spk_box
+        if "dialog" in selector:
+            return loc_dialog
+        if "Settings" in selector:
+            return loc_settings_btn
+        return empty
+
+    page.locator.side_effect = locator_side_effect
+    nav = MeetNavigator(page)
+
+    res = await nav.configure_audio_devices(
+        target_mic="CABLE Output (VB-Audio Virtual Cable)",
+        target_speaker="CABLE Input (VB-Audio Virtual Cable)",
+    )
+
+    assert res["success"] is True
+    assert "CABLE Output" in res["selected_mic"]
+    assert "CABLE Input" in res["selected_speaker"]
+    # Neither the audio nav tab nor dropdowns should have been clicked since values match
+    assert loc_audio_nav.click.call_count == 0
+    assert loc_mic_box.first.click.call_count == 0
+    assert loc_spk_box.first.click.call_count == 0
+
+
+
 
 

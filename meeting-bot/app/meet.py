@@ -125,29 +125,64 @@ class MeetNavigator:
         logger.info("[MEET][AUDIO] Navigating to Audio tab...")
         audio_tab_opened = False
         try:
-            audio_tab = self.page.locator(
-                '[role="tab"]:has-text("Audio"), '
-                'button:has-text("Audio"), '
-                '[aria-label*="Audio" i][role="tab"], '
-                '[role="dialog"] [role="tab"]:has-text("Audio")'
-            )
-            # Check if tab is already active / selected
-            if await audio_tab.count() > 0:
-                logger.info("[MEET][AUDIO] Audio tab detected")
-                first_tab = audio_tab.first
-                is_selected = await first_tab.get_attribute("aria-selected")
-                if is_selected != "true":
-                    await first_tab.click()
-                    await self.page.wait_for_timeout(300)
-                audio_tab_opened = True
+            # Look for dialog container
+            dialog_loc = self.page.locator('[role="dialog"]')
+            if await dialog_loc.count() > 0 and await dialog_loc.first.is_visible():
+                dialog = dialog_loc.first
+
+                # Check if Audio settings controls (Microphone / Speaker) are ALREADY visible in dialog
+                dialog_text = await dialog.inner_text()
+                if "Microphone" in dialog_text and ("Speaker" in dialog_text or "Speakers" in dialog_text):
+                    logger.info("[MEET][AUDIO] Audio navigation item detected")
+                    logger.info("[MEET][AUDIO] Audio tab is already active")
+                    audio_tab_opened = True
+                else:
+                    # Scope search for exact text "Audio" navigation tab inside the settings sidebar
+                    # NEVER use button:has-text("Audio") or [aria-label*="Audio"] which match the microphone button!
+                    audio_nav_candidates = dialog.get_by_text("Audio", exact=True)
+                    count_candidates = await audio_nav_candidates.count()
+                    target_audio_nav = None
+
+                    for idx in range(count_candidates):
+                        cand = audio_nav_candidates.nth(idx)
+                        if await cand.is_visible():
+                            # Check tag and attributes
+                            tag = await cand.evaluate("el => el.tagName.toLowerCase()")
+                            role = await cand.get_attribute("role") or ""
+                            aria_selected = await cand.get_attribute("aria-selected")
+                            is_active = (
+                                aria_selected == "true"
+                                or await cand.evaluate(
+                                    "el => { const p = el.closest('[role=\"tab\"], li, button, [role=\"button\"]'); return p ? p.getAttribute('aria-selected') === 'true' || p.classList.contains('active') || p.classList.contains('selected') : false; }"
+                                )
+                            )
+
+                            logger.info(
+                                f"[MEET][AUDIO][DEBUG] Audio tab candidate #{idx}: tag={tag}, role={role}, "
+                                f"aria-selected={aria_selected}, is_active={is_active}"
+                            )
+
+                            if is_active:
+                                logger.info("[MEET][AUDIO] Audio navigation item detected")
+                                logger.info("[MEET][AUDIO] Audio tab is already active")
+                                audio_tab_opened = True
+                                break
+                            elif target_audio_nav is None:
+                                target_audio_nav = cand
+
+                    if not audio_tab_opened and target_audio_nav:
+                        logger.info("[MEET][AUDIO] Audio tab is not active. Clicking exact Audio tab navigation...")
+                        await target_audio_nav.evaluate(
+                            "el => { const p = el.closest('[role=\"tab\"], li, button, [role=\"button\"]'); if (p) p.click(); else el.click(); }"
+                        )
+                        await self.page.wait_for_timeout(500)
+                        # Verify dialog text updated
+                        dialog_text_after = await dialog.inner_text()
+                        if "Microphone" in dialog_text_after:
+                            logger.info("[MEET][AUDIO] Audio tab opened successfully")
+                            audio_tab_opened = True
             else:
-                # Some Meet versions only have Audio in pre-join settings dialog
-                dialog_body = self.page.locator('[role="dialog"]')
-                if await dialog_body.count() > 0:
-                    text_content = await dialog_body.first.inner_text()
-                    if "Microphone" in text_content or "Speakers" in text_content or "Audio" in text_content:
-                        logger.info("[MEET][AUDIO] Audio tab detected (dialog default view)")
-                        audio_tab_opened = True
+                logger.warning("[MEET][AUDIO] Settings dialog locator not found when checking Audio tab.")
         except Exception as e:
             logger.warning(f"[MEET][AUDIO] Error verifying Audio tab: {e}")
 
@@ -160,34 +195,34 @@ class MeetNavigator:
 
         logger.info("[MEET][AUDIO] Audio tab opened successfully")
 
-        # Step 3: Select Microphone device
+        # Step 3: Verify and configure Microphone device
         mic_res = await self._select_device_dropdown(
             device_type="Microphone",
             target_label=exp_mic,
             container_selectors=[
-                # Containers or listboxes near Microphone label
-                'div:has-text("Microphone") [role="combobox"]',
-                'div:has-text("Microphone") [role="listbox"]',
-                '[aria-label*="Microphone" i][role="combobox"]',
-                '[aria-label*="Microphone" i][role="listbox"]',
-                '[aria-label*="Microphone" i]',
+                # Look specifically for the dropdown/combobox for Microphone
+                '[role="dialog"] [aria-label*="Microphone" i][role="combobox"]',
+                '[role="dialog"] [aria-label*="Microphone" i][role="listbox"]',
+                '[role="dialog"] div:has-text("Microphone") [role="combobox"]',
+                '[role="dialog"] div:has-text("Microphone") [role="listbox"]',
+                '[role="dialog"] [aria-label*="Microphone" i]',
             ],
         )
 
-        # Step 4: Select Speaker device
+        # Step 4: Verify and configure Speaker device
         speaker_res = await self._select_device_dropdown(
             device_type="Speaker",
             target_label=exp_speaker,
             container_selectors=[
-                # Containers or listboxes near Speaker label
-                'div:has-text("Speakers") [role="combobox"]',
-                'div:has-text("Speakers") [role="listbox"]',
-                'div:has-text("Speaker") [role="combobox"]',
-                'div:has-text("Speaker") [role="listbox"]',
-                '[aria-label*="Speakers" i][role="combobox"]',
-                '[aria-label*="Speaker" i][role="combobox"]',
-                '[aria-label*="Speakers" i]',
-                '[aria-label*="Speaker" i]',
+                # Look specifically for the dropdown/combobox for Speaker
+                '[role="dialog"] [aria-label*="Speakers" i][role="combobox"]',
+                '[role="dialog"] [aria-label*="Speaker" i][role="combobox"]',
+                '[role="dialog"] [aria-label*="Speakers" i][role="listbox"]',
+                '[role="dialog"] [aria-label*="Speaker" i][role="listbox"]',
+                '[role="dialog"] div:has-text("Speakers") [role="combobox"]',
+                '[role="dialog"] div:has-text("Speaker") [role="combobox"]',
+                '[role="dialog"] [aria-label*="Speakers" i]',
+                '[role="dialog"] [aria-label*="Speaker" i]',
             ],
         )
 
@@ -199,10 +234,8 @@ class MeetNavigator:
         result["selected_mic"] = mic_res.get("selected_label", "")
         result["selected_speaker"] = speaker_res.get("selected_label", "")
 
-        logger.info(f"Selected microphone: {result['selected_mic']}")
-        logger.info(f"Selected speaker: {result['selected_speaker']}")
-        logger.info(f"Expected microphone: {result['expected_mic']}")
-        logger.info(f"Expected speaker: {result['expected_speaker']}")
+        logger.info(f"[MEET][AUDIO] Current microphone: {result['selected_mic']}")
+        logger.info(f"[MEET][AUDIO] Current speaker: {result['selected_speaker']}")
 
         if not mic_res.get("success"):
             err = f"Required audio device not found: Microphone '{exp_mic}' ({mic_res.get('error')})"
@@ -210,7 +243,7 @@ class MeetNavigator:
             result["error"] = err
             return result
 
-        logger.info("[MEET][AUDIO] Microphone selected successfully")
+        logger.info("[MEET][AUDIO] Microphone verification passed")
 
         if not speaker_res.get("success"):
             err = f"Required audio device not found: Speaker '{exp_speaker}' ({speaker_res.get('error')})"
@@ -218,7 +251,7 @@ class MeetNavigator:
             result["error"] = err
             return result
 
-        logger.info("[MEET][AUDIO] Speaker selected successfully")
+        logger.info("[MEET][AUDIO] Speaker verification passed")
         logger.info("[MEET][AUDIO] Audio device verification passed")
         result["success"] = True
         return result
