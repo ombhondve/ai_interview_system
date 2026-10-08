@@ -640,8 +640,23 @@ async def run_cli():
                     # Reject empty or extremely low confidence noise (allow 0.20+ for Indian accented / Hindi / Marathi code-switching)
                     if not transcript or confidence < 0.20:
                         logger.info(f"[STT] Filtered empty/low-confidence transcript (conf={round(confidence, 2)})")
-                        conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="low_confidence_filtered")
+                        conv_mgr.empty_transcript_count = getattr(conv_mgr, "empty_transcript_count", 0) + 1
+                        # If candidate spoke for >= 1.0s but transcript came back blank twice in a row, politely ask to repeat
+                        if speech_dur >= 1.0 and conv_mgr.empty_transcript_count >= 2:
+                            conv_mgr.empty_transcript_count = 0
+                            conv_mgr.set_state(ConversationState.CLARIFICATION, decision="ask_to_repeat_unheard_speech")
+                            try:
+                                await bot_instance.speak_text("Sorry, I couldn't catch that clearly. Could you say that again?")
+                            except Exception:
+                                pass
+                            audio_capture.reset_buffer()
+                            conv_mgr.last_speech_time = time.monotonic()
+                            conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="listening_after_unheard_prompt")
+                        else:
+                            conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="low_confidence_filtered")
                         continue
+
+                    conv_mgr.empty_transcript_count = 0
 
                     if bot_instance.is_ai_speaking():
                         logger.info("[STT] Ignored candidate transcript because AI_SPEAKING=true")
@@ -796,6 +811,10 @@ async def run_cli():
                         conv_mgr.last_speech_time = time.monotonic()
                         audio_capture.reset_buffer()
                         logger.info("[AUDIO] Audio buffer reset after backend submission recovery.")
+                        try:
+                            await bot_instance.speak_text("I had a brief glitch processing that. Could you please say that one more time?")
+                        except Exception:
+                            pass
 
             except (KeyboardInterrupt, asyncio.CancelledError):
                 pass

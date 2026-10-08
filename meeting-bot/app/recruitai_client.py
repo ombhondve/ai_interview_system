@@ -5,6 +5,7 @@ Handles authentication, timeouts, retries, and sanitized logging.
 """
 
 import uuid
+import time
 import logging
 from typing import Optional, Dict, Any
 import requests
@@ -98,19 +99,42 @@ class RecruitAIClient:
             f"(requestId: {req_id}, chars: {len(transcript)}) to {endpoint}"
         )
 
-        try:
-            response = requests.post(
-                endpoint,
-                json=payload,
-                headers=headers,
-                timeout=self.timeout_seconds,
-            )
-        except requests.exceptions.Timeout:
-            logger.error(f"[RecruitAIClient] Request timed out connecting to backend ({endpoint})")
-            raise TimeoutError("Backend request timed out.")
-        except requests.exceptions.RequestException as exc:
-            logger.error(f"[RecruitAIClient] Network error connecting to backend: {exc}")
-            raise ConnectionError(f"Backend network error: {exc}")
+        max_retries = 3
+        last_exception = None
+
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    endpoint,
+                    json=payload,
+                    headers=headers,
+                    timeout=self.timeout_seconds,
+                )
+            except requests.exceptions.Timeout as t_err:
+                logger.warning(f"[RecruitAIClient] Attempt {attempt + 1}/{max_retries} timed out connecting to backend ({endpoint})")
+                last_exception = TimeoutError("Backend request timed out.")
+                if attempt < max_retries - 1:
+                    time.sleep(1.0 * (attempt + 1))
+                    continue
+                raise last_exception
+            except requests.exceptions.RequestException as exc:
+                logger.warning(f"[RecruitAIClient] Attempt {attempt + 1}/{max_retries} network error: {exc}")
+                last_exception = ConnectionError(f"Backend network error: {exc}")
+                if attempt < max_retries - 1:
+                    time.sleep(1.0 * (attempt + 1))
+                    continue
+                raise last_exception
+
+            if response.status_code >= 500:
+                logger.warning(f"[RecruitAIClient] Attempt {attempt + 1}/{max_retries} received {response.status_code} from backend.")
+                last_exception = RuntimeError(f"Backend server error ({response.status_code}).")
+                if attempt < max_retries - 1:
+                    time.sleep(1.0 * (attempt + 1))
+                    continue
+                raise last_exception
+
+            # If not 5xx, break retry loop to process response
+            break
 
         if response.status_code == 401:
             logger.error("[RecruitAIClient] 401 Unauthorized: Invalid internal service secret.")
@@ -129,9 +153,6 @@ class RecruitAIClient:
             except Exception:
                 msg = "Interview not in progress."
             raise ValueError(msg)
-        elif response.status_code >= 500:
-            logger.error(f"[RecruitAIClient] {response.status_code} Internal Server Error from backend.")
-            raise RuntimeError(f"Backend server error ({response.status_code}).")
         elif not response.ok:
             logger.error(f"[RecruitAIClient] HTTP {response.status_code}: {response.text}")
             raise RuntimeError(f"Backend error ({response.status_code}): {response.text}")

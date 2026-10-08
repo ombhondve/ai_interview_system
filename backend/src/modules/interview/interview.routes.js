@@ -168,6 +168,15 @@ router.post("/internal/:interviewId/answer", validInterviewId, async (req, res) 
       closing: Boolean(result.closing),
     });
   } catch (error) {
+    logger.error("[AI_INTERVIEW_ANSWER_ERROR]", {
+      interviewId: req.params.interviewId,
+      candidateId: req.body?.candidateId,
+      transcript: req.body?.transcript || req.body?.text,
+      requestId: req.body?.requestId,
+      errorName: error.name,
+      errorMessage: error.message,
+      stack: error.stack,
+    });
     return handleError(res, error);
   }
 });
