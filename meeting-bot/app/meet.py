@@ -75,6 +75,294 @@ class MeetNavigator:
         except Exception as e:
             logger.debug(f"[MeetingBot] Microphone toggle note: {e}")
 
+    async def configure_audio_devices(
+        self,
+        target_mic: Optional[str] = None,
+        target_speaker: Optional[str] = None,
+    ) -> dict:
+        """
+        Configure Google Meet audio settings using Playwright UI selectors.
+        Selects target microphone and target speaker from Meet's Audio Settings modal.
+        Fails safely if required devices are missing.
+        Returns a dict:
+        {
+            "success": bool,
+            "selected_mic": str,
+            "selected_speaker": str,
+            "expected_mic": str,
+            "expected_speaker": str,
+            "error": Optional[str],
+        }
+        """
+        from app.config import settings
+
+        exp_mic = (target_mic or settings.meet_mic_device or "").strip()
+        exp_speaker = (target_speaker or settings.meet_speaker_device or "").strip()
+
+        logger.info("[MEET][AUDIO] Configuring Google Meet audio devices...")
+        logger.info(f"[MEET][AUDIO] Microphone target: {exp_mic}")
+        logger.info(f"[MEET][AUDIO] Speaker target: {exp_speaker}")
+
+        result = {
+            "success": False,
+            "selected_mic": "",
+            "selected_speaker": "",
+            "expected_mic": exp_mic,
+            "expected_speaker": exp_speaker,
+            "error": None,
+        }
+
+        # Step 1: Open Settings dialog
+        opened = await self._open_settings_dialog()
+        if not opened:
+            err = "Failed to locate and open Google Meet settings dialog."
+            logger.error(f"[MEET][AUDIO] {err}")
+            result["error"] = err
+            return result
+
+        await self.page.wait_for_timeout(1000)
+
+        # Step 2: Ensure "Audio" tab is active in Settings
+        try:
+            audio_tab = self.page.locator(
+                '[role="tab"]:has-text("Audio"), '
+                'button:has-text("Audio"), '
+                '[aria-label*="Audio" i][role="tab"]'
+            )
+            if await audio_tab.count() > 0 and await audio_tab.first.is_visible():
+                await audio_tab.first.click()
+                await self.page.wait_for_timeout(500)
+        except Exception as e:
+            logger.debug(f"[MEET][AUDIO] Note switching to audio tab: {e}")
+
+        # Step 3: Select Microphone device
+        mic_res = await self._select_device_dropdown(
+            device_type="Microphone",
+            target_label=exp_mic,
+            container_selectors=[
+                # Containers or listboxes near Microphone label
+                'div:has-text("Microphone") [role="combobox"]',
+                'div:has-text("Microphone") [role="listbox"]',
+                '[aria-label*="Microphone" i][role="combobox"]',
+                '[aria-label*="Microphone" i][role="listbox"]',
+                '[aria-label*="Microphone" i]',
+            ],
+        )
+
+        # Step 4: Select Speaker device
+        speaker_res = await self._select_device_dropdown(
+            device_type="Speaker",
+            target_label=exp_speaker,
+            container_selectors=[
+                # Containers or listboxes near Speaker label
+                'div:has-text("Speakers") [role="combobox"]',
+                'div:has-text("Speakers") [role="listbox"]',
+                'div:has-text("Speaker") [role="combobox"]',
+                'div:has-text("Speaker") [role="listbox"]',
+                '[aria-label*="Speakers" i][role="combobox"]',
+                '[aria-label*="Speaker" i][role="combobox"]',
+                '[aria-label*="Speakers" i]',
+                '[aria-label*="Speaker" i]',
+            ],
+        )
+
+        # Step 5: Close Settings dialog
+        await self._close_settings_dialog()
+        await self.page.wait_for_timeout(500)
+
+        # Step 6: Verify and assemble result
+        result["selected_mic"] = mic_res.get("selected_label", "")
+        result["selected_speaker"] = speaker_res.get("selected_label", "")
+
+        logger.info(f"Selected microphone: {result['selected_mic']}")
+        logger.info(f"Selected speaker: {result['selected_speaker']}")
+        logger.info(f"Expected microphone: {result['expected_mic']}")
+        logger.info(f"Expected speaker: {result['expected_speaker']}")
+
+        if not mic_res.get("success"):
+            err = f"Required audio device not found: Microphone '{exp_mic}' ({mic_res.get('error')})"
+            logger.error(f"[MEET][AUDIO] {err}")
+            result["error"] = err
+            return result
+
+        logger.info("[MEET][AUDIO] Microphone selected successfully")
+
+        if not speaker_res.get("success"):
+            err = f"Required audio device not found: Speaker '{exp_speaker}' ({speaker_res.get('error')})"
+            logger.error(f"[MEET][AUDIO] {err}")
+            result["error"] = err
+            return result
+
+        logger.info("[MEET][AUDIO] Speaker selected successfully")
+        logger.info("[MEET][AUDIO] Audio device verification passed")
+        result["success"] = True
+        return result
+
+    async def _open_settings_dialog(self) -> bool:
+        """Locate and click settings / more options button to open settings modal."""
+        # 1. Direct Settings button if available
+        settings_selectors = [
+            'button[aria-label*="Settings" i]',
+            '[role="button"][aria-label*="Settings" i]',
+            'button[data-tooltip*="Settings" i]',
+            'button:has-text("Settings")',
+        ]
+        for sel in settings_selectors:
+            loc = self.page.locator(sel)
+            try:
+                if await loc.count() > 0 and await loc.first.is_visible():
+                    await loc.first.click()
+                    logger.info(f"[MEET][AUDIO] Clicked Settings button via: {sel}")
+                    return True
+            except Exception:
+                pass
+
+        # 2. More options button (three vertical dots) -> Settings menu item
+        more_selectors = [
+            'button[aria-label*="More options" i]',
+            'div[role="button"][aria-label*="More options" i]',
+            'button[aria-label*="more settings" i]',
+            'button[data-tooltip*="More options" i]',
+        ]
+        for more_sel in more_selectors:
+            loc = self.page.locator(more_sel)
+            try:
+                if await loc.count() > 0 and await loc.first.is_visible():
+                    await loc.first.click()
+                    await self.page.wait_for_timeout(500)
+                    # Click Settings from menu
+                    menu_item = self.page.locator('[role="menuitem"]:has-text("Settings"), button:has-text("Settings"), span:has-text("Settings")')
+                    if await menu_item.count() > 0 and await menu_item.first.is_visible():
+                        await menu_item.first.click()
+                        logger.info(f"[MEET][AUDIO] Opened Settings via More options ({more_sel})")
+                        return True
+            except Exception:
+                pass
+
+        # 3. Audio & Video settings icon in prejoin preview if present
+        preview_audio_btns = [
+            'button[aria-label*="Check your audio" i]',
+            'button[aria-label*="Audio and video" i]',
+            'button[aria-label*="device settings" i]',
+        ]
+        for sel in preview_audio_btns:
+            loc = self.page.locator(sel)
+            try:
+                if await loc.count() > 0 and await loc.first.is_visible():
+                    await loc.first.click()
+                    logger.info(f"[MEET][AUDIO] Opened device settings via preview control: {sel}")
+                    return True
+            except Exception:
+                pass
+
+        return False
+
+    async def _close_settings_dialog(self) -> None:
+        """Close the Settings dialog cleanly."""
+        close_selectors = [
+            '[role="dialog"] button[aria-label*="Close" i]',
+            'button[aria-label*="Close settings" i]',
+            'button[aria-label*="Close" i]',
+            '[role="dialog"] button:has-text("Close")',
+            '[role="dialog"] button:has-text("Done")',
+        ]
+        for sel in close_selectors:
+            loc = self.page.locator(sel)
+            try:
+                if await loc.count() > 0 and await loc.first.is_visible():
+                    await loc.first.click()
+                    logger.debug(f"[MEET][AUDIO] Closed settings dialog via {sel}")
+                    return
+            except Exception:
+                pass
+        try:
+            await self.page.keyboard.press("Escape")
+        except Exception:
+            pass
+
+    async def _select_device_dropdown(
+        self,
+        device_type: str,
+        target_label: str,
+        container_selectors: list,
+    ) -> dict:
+        """
+        Find and select target_label in the specified device selector.
+        Supports HTML select elements, custom ARIA comboboxes, and listbox menus.
+        Matches with tolerance: exact match > normalized case/whitespace > substring match.
+        """
+        norm_target = " ".join(target_label.lower().split())
+
+        # Attempt A: Native <select> elements inside settings dialog
+        select_els = await self.page.locator('[role="dialog"] select').all()
+        for s_el in select_els:
+            try:
+                if not await s_el.is_visible():
+                    continue
+                # Inspect options in this select
+                options = await s_el.locator("option").all()
+                for opt in options:
+                    opt_text = (await opt.inner_text()).strip()
+                    norm_opt = " ".join(opt_text.lower().split())
+                    if norm_target in norm_opt or norm_opt in norm_target:
+                        val = await opt.get_attribute("value")
+                        if val:
+                            await s_el.select_option(value=val)
+                        else:
+                            await s_el.select_option(label=opt_text)
+                        return {"success": True, "selected_label": opt_text}
+            except Exception:
+                pass
+
+        # Attempt B: Click combobox/listbox container to reveal dropdown options
+        for sel in container_selectors:
+            loc = self.page.locator(sel)
+            try:
+                if await loc.count() == 0 or not await loc.first.is_visible():
+                    continue
+
+                # Check if current value already matches target
+                current_text = (await loc.first.inner_text() or await loc.first.get_attribute("aria-label") or "").strip()
+                norm_current = " ".join(current_text.lower().split())
+                if norm_target in norm_current or (norm_current and norm_current in norm_target):
+                    return {"success": True, "selected_label": current_text}
+
+                # Click dropdown to open option menu
+                await loc.first.click()
+                await self.page.wait_for_timeout(500)
+
+                # Look for matching option in the revealed listbox / menu / options
+                option_locators = [
+                    self.page.locator('[role="option"]'),
+                    self.page.locator('[role="listbox"] [role="option"]'),
+                    self.page.locator('li[role="option"]'),
+                    self.page.locator('[role="menuitemradio"]'),
+                ]
+                for opt_group in option_locators:
+                    count = await opt_group.count()
+                    for idx in range(count):
+                        item = opt_group.nth(idx)
+                        text = (await item.inner_text() or await item.get_attribute("aria-label") or "").strip()
+                        norm_item = " ".join(text.lower().split())
+
+                        if norm_target in norm_item or norm_item in norm_target:
+                            await item.click()
+                            await self.page.wait_for_timeout(300)
+                            return {"success": True, "selected_label": text}
+
+                # If no matching option clicked, press Escape to close this dropdown
+                await self.page.keyboard.press("Escape")
+                await self.page.wait_for_timeout(300)
+
+            except Exception as e:
+                logger.debug(f"[MEET][AUDIO] Selector attempt error on {sel}: {e}")
+
+        return {
+            "success": False,
+            "selected_label": "",
+            "error": f"Device label '{target_label}' not found among available options.",
+        }
+
     async def dump_prejoin_diagnostics(self) -> dict:
         """
         Collect safe, non-sensitive diagnostic information from the pre-join page:

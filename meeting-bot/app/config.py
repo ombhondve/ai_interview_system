@@ -30,6 +30,14 @@ class Settings(BaseSettings):
     audio_sample_rate: int = int(os.getenv("AUDIO_SAMPLE_RATE", "16000"))
     audio_channels: int = int(os.getenv("AUDIO_CHANNELS", "1"))
 
+    # Utterance VAD & End-of-Speech Configuration
+    audio_speech_start_rms: float = float(os.getenv("AUDIO_SPEECH_START_RMS", "0.012"))
+    audio_silence_rms: float = float(os.getenv("AUDIO_SILENCE_RMS", "0.007"))
+    audio_silence_duration_sec: float = float(os.getenv("AUDIO_SILENCE_DURATION_SEC", "0.9"))
+    audio_min_speech_duration_sec: float = float(os.getenv("AUDIO_MIN_SPEECH_DURATION_SEC", "0.4"))
+    audio_max_utterance_sec: float = float(os.getenv("AUDIO_MAX_UTTERANCE_SEC", "20.0"))
+    audio_pre_roll_sec: float = float(os.getenv("AUDIO_PRE_ROLL_SEC", "0.4"))
+
     # Bot Google account identification (Phase 4.5)
     google_meet_bot_email: str = os.getenv("GOOGLE_MEET_BOT_EMAIL", "ombhondve32@gmail.com")
 
@@ -54,6 +62,10 @@ class Settings(BaseSettings):
     kokoro_voice: str = os.getenv("KOKORO_VOICE", "af_heart")
     kokoro_output_device: str = os.getenv("KOKORO_OUTPUT_DEVICE", "CABLE Input (VB-Audio Virtual Cable)")
     kokoro_sample_rate: int = int(os.getenv("KOKORO_SAMPLE_RATE", "48000"))
+
+    # Google Meet in-browser audio device routing configuration
+    meet_mic_device: str = os.getenv("MEET_MIC_DEVICE", "CABLE Output (VB-Audio Virtual Cable)")
+    meet_speaker_device: str = os.getenv("MEET_SPEAKER_DEVICE", "CABLE Input (VB-Audio Virtual Cable)")
 
     class Config:
         env_file = ".env"

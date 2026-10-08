@@ -265,3 +265,113 @@ async def test_bot_only_candidate_not_present():
     is_present = await nav.is_candidate_present()
     assert is_present is False
 
+
+@pytest.mark.asyncio
+async def test_configure_audio_devices_success():
+    page = MagicMock()
+    page.wait_for_timeout = AsyncMock()
+
+    # Mock settings button
+    loc_settings_btn = AsyncMock()
+    loc_settings_btn.count = AsyncMock(return_value=1)
+    loc_settings_btn.is_visible = AsyncMock(return_value=True)
+    loc_settings_btn.first = AsyncMock()
+
+    # Mock combobox/option
+    loc_combobox = AsyncMock()
+    loc_combobox.count = AsyncMock(return_value=1)
+    loc_combobox.is_visible = AsyncMock(return_value=True)
+    loc_combobox.first = AsyncMock()
+    loc_combobox.first.inner_text = AsyncMock(return_value="Default Audio")
+
+    # Mock option elements
+    loc_mic_opt = AsyncMock()
+    loc_mic_opt.inner_text = AsyncMock(return_value="CABLE Output (VB-Audio Virtual Cable)")
+    loc_mic_opt.get_attribute = AsyncMock(return_value=None)
+    loc_mic_opt.click = AsyncMock()
+
+    loc_spk_opt = AsyncMock()
+    loc_spk_opt.inner_text = AsyncMock(return_value="CABLE Input (VB-Audio Virtual Cable)")
+    loc_spk_opt.get_attribute = AsyncMock(return_value=None)
+    loc_spk_opt.click = AsyncMock()
+
+    loc_options = AsyncMock()
+    loc_options.count = AsyncMock(return_value=2)
+    loc_options.nth = MagicMock(side_effect=lambda idx: loc_mic_opt if idx == 0 else loc_spk_opt)
+
+    def locator_side_effect(selector):
+        if "Settings" in selector or "settings" in selector:
+            return loc_settings_btn
+        if "option" in selector or "listbox" in selector:
+            return loc_options
+        if "combobox" in selector or "Microphone" in selector or "Speaker" in selector:
+            return loc_combobox
+        empty = AsyncMock()
+        empty.count = AsyncMock(return_value=0)
+        empty.is_visible = AsyncMock(return_value=False)
+        empty.all = AsyncMock(return_value=[])
+        return empty
+
+    page.locator.side_effect = locator_side_effect
+    nav = MeetNavigator(page)
+
+    res = await nav.configure_audio_devices(
+        target_mic="CABLE Output (VB-Audio Virtual Cable)",
+        target_speaker="CABLE Input (VB-Audio Virtual Cable)",
+    )
+
+    assert res["success"] is True
+    assert "CABLE Output" in res["selected_mic"]
+    assert "CABLE Input" in res["selected_speaker"]
+
+
+@pytest.mark.asyncio
+async def test_configure_audio_devices_missing_mic_fails_safely():
+    page = MagicMock()
+    page.wait_for_timeout = AsyncMock()
+
+    loc_settings_btn = AsyncMock()
+    loc_settings_btn.count = AsyncMock(return_value=1)
+    loc_settings_btn.is_visible = AsyncMock(return_value=True)
+    loc_settings_btn.first = AsyncMock()
+
+    loc_combobox = AsyncMock()
+    loc_combobox.count = AsyncMock(return_value=1)
+    loc_combobox.is_visible = AsyncMock(return_value=True)
+    loc_combobox.first = AsyncMock()
+    loc_combobox.first.inner_text = AsyncMock(return_value="Laptop Mic")
+
+    # Only returns irrelevant devices
+    loc_other_opt = AsyncMock()
+    loc_other_opt.inner_text = AsyncMock(return_value="Internal Realtek Microphone")
+    loc_other_opt.get_attribute = AsyncMock(return_value=None)
+
+    loc_options = AsyncMock()
+    loc_options.count = AsyncMock(return_value=1)
+    loc_options.nth = MagicMock(return_value=loc_other_opt)
+
+    def locator_side_effect(selector):
+        if "Settings" in selector:
+            return loc_settings_btn
+        if "option" in selector:
+            return loc_options
+        if "combobox" in selector or "Microphone" in selector:
+            return loc_combobox
+        empty = AsyncMock()
+        empty.count = AsyncMock(return_value=0)
+        empty.is_visible = AsyncMock(return_value=False)
+        empty.all = AsyncMock(return_value=[])
+        return empty
+
+    page.locator.side_effect = locator_side_effect
+    nav = MeetNavigator(page)
+
+    res = await nav.configure_audio_devices(
+        target_mic="CABLE Output (VB-Audio Virtual Cable)",
+        target_speaker="CABLE Input (VB-Audio Virtual Cable)",
+    )
+
+    assert res["success"] is False
+    assert "Required audio device not found: Microphone" in res["error"]
+
+

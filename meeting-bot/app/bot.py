@@ -208,6 +208,14 @@ class MeetingBot:
                 logger.info("[MeetingBot] Pre-join screen detected")
                 await self._page.wait_for_timeout(3000)
 
+                # Configure Google Meet audio devices (Microphone & Speaker) before joining
+                audio_config_res = await self._navigator.configure_audio_devices()
+                if not audio_config_res.get("success"):
+                    self.status = BotStatus.FAILED
+                    self.failure_reason = f"Audio device configuration failed: {audio_config_res.get('error')}"
+                    logger.error(f"[MeetingBot] FAILED: {self.failure_reason}")
+                    return False
+
                 # Prepare pre-join controls (turn off camera / configure mic)
                 await self._navigator.prepare_prejoin()
                 await self._page.wait_for_timeout(2000)

@@ -26,7 +26,7 @@ class DeepgramClient:
         model: Optional[str] = None,
         timeout_seconds: int = 30,
     ):
-        self.api_key = api_key or settings.deepgram_api_key or os.getenv("DEEPGRAM_API_KEY", "")
+        self.api_key = api_key if api_key is not None else (settings.deepgram_api_key or os.getenv("DEEPGRAM_API_KEY", ""))
         self.model = model or settings.deepgram_model or "nova-2"
         self.timeout_seconds = timeout_seconds
 
