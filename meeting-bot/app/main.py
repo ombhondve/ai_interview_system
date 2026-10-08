@@ -61,6 +61,8 @@ class ConversationState(str, Enum):
     NO_RESPONSE = "NO_RESPONSE"
     SKIPPING_QUESTION = "SKIPPING_QUESTION"
     COMPLETING = "COMPLETING"
+    ASKING_FINAL_QUESTION = "ASKING_FINAL_QUESTION"
+    WAITING_FOR_FINAL_RESPONSE = "WAITING_FOR_FINAL_RESPONSE"
     ENDED = "ENDED"
 
 
@@ -76,6 +78,7 @@ class ConversationManager:
         self.recruitai_client = recruitai_client
         self.deepgram_client = deepgram_client
         self.state: ConversationState = ConversationState.OPENING
+        self.current_phase: str = "OPENING"
         self.candidate_is_speaking: bool = False
         self.candidate_paused: bool = False
         self.answer_finalized: bool = False
@@ -534,45 +537,102 @@ async def run_cli():
                     if not utterance:
                         silence_duration = time.monotonic() - conv_mgr.last_speech_time
                         if not bot_instance.is_ai_speaking() and not conv_mgr.candidate_is_speaking:
-                            # Step 1: Candidate is silent for >= 18s -> Reassure "Take your time."
-                            if silence_duration >= 18.0 and conv_mgr.no_response_step == 0:
-                                conv_mgr.set_state(ConversationState.NO_RESPONSE, decision="reassure_candidate")
-                                conv_mgr.no_response_step = 1
-                                logger.info("[RECOVERY] reason=no_response action=reassure")
-                                await bot_instance.speak_text("Take your time.")
-                                conv_mgr.last_speech_time = time.monotonic()
-                                conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="waiting_after_reassurance")
+                            # Dedicated silence handling for CLOSING phase ("Do you have any questions?")
+                            if conv_mgr.current_phase == "CLOSING":
+                                if silence_duration >= 12.0 and conv_mgr.no_response_step == 0:
+                                    conv_mgr.set_state(ConversationState.NO_RESPONSE, decision="closing_silence_prompt")
+                                    conv_mgr.no_response_step = 1
+                                    logger.info("[RECOVERY] reason=closing_silence action=prompt_questions")
+                                    await bot_instance.speak_text("Take your time. Is there anything you'd like to ask?")
+                                    conv_mgr.last_speech_time = time.monotonic()
+                                    conv_mgr.set_state(ConversationState.WAITING_FOR_FINAL_RESPONSE, decision="waiting_after_closing_prompt")
+                                elif silence_duration >= 12.0 and conv_mgr.no_response_step == 1:
+                                    conv_mgr.set_state(ConversationState.COMPLETING, decision="closing_silence_conclude")
+                                    logger.info("[RECOVERY] reason=closing_silence action=conclude_interview")
+                                    conv_mgr.no_response_step = 0
+                                    # Candidate remained silent during closing turn -> advance with "No questions"
+                                    if args.interview_id:
+                                        try:
+                                            farewell_res = recruitai_client.submit_transcript(
+                                                interview_id=args.interview_id,
+                                                transcript="No questions.",
+                                                candidate_id=args.candidate_id,
+                                            )
+                                            closing_msg = farewell_res.get("nextQuestion") or "Thank you for your time today. That concludes the interview."
+                                            await bot_instance.speak_text(closing_msg)
+                                        except Exception as close_err:
+                                            logger.error(f"[MeetingBot] Failed to finalize on closing silence: {close_err}")
+                                            await bot_instance.speak_text("Thank you for your time today. That concludes the interview.")
 
-                            # Step 2: Still silent after another 18s -> Offer repeat
-                            elif silence_duration >= 18.0 and conv_mgr.no_response_step == 1:
-                                conv_mgr.set_state(ConversationState.NO_RESPONSE, decision="offer_repeat")
-                                conv_mgr.no_response_step = 2
-                                logger.info("[RECOVERY] reason=no_response action=repeat_question")
-                                await bot_instance.speak_text("Would you like me to repeat the question?")
-                                conv_mgr.last_speech_time = time.monotonic()
-                                conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="waiting_after_repeat_offer")
+                                    # Trigger recording & complete
+                                    conv_mgr.set_state(ConversationState.ENDED, decision="closing_silence_ended")
+                                    dur = audio_capture.stop_master_recording()
+                                    if args.interview_id:
+                                        try:
+                                            master_wav_path = str(diag_dir / f"master_interview_{args.interview_id}.wav")
+                                            saved = audio_capture.export_master_recording_wav(master_wav_path)
+                                            if saved:
+                                                recruitai_client.upload_recording(
+                                                    interview_id=args.interview_id,
+                                                    recording_file_path=master_wav_path,
+                                                    duration_seconds=dur,
+                                                    candidate_id=args.candidate_id,
+                                                )
+                                        except Exception as up_err:
+                                            logger.error(f"[MeetingBot] Failed to upload recording: {up_err}")
 
-                            # Step 3: Still silent after another 20s -> Skip question gracefully
-                            elif silence_duration >= 20.0 and conv_mgr.no_response_step == 2:
-                                conv_mgr.set_state(ConversationState.SKIPPING_QUESTION, decision="prolonged_silence_skip")
-                                logger.info("[RECOVERY] reason=no_response action=skip")
-                                conv_mgr.no_response_step = 0
-                                # Advance backend question gracefully
-                                if args.interview_id:
-                                    try:
-                                        skip_res = recruitai_client.submit_transcript(
-                                            interview_id=args.interview_id,
-                                            transcript="I don't know.",
-                                            candidate_id=args.candidate_id,
-                                        )
-                                        next_q = skip_res.get("nextQuestion")
-                                        if next_q:
-                                            conv_mgr.set_state(ConversationState.ASKING_NEXT_QUESTION, decision="skip_to_next")
-                                            await bot_instance.speak_text(f"Let's move on to the next question. {next_q}")
-                                    except Exception as skip_err:
-                                        logger.error(f"[MeetingBot] Failed to advance skipped question: {skip_err}")
-                                conv_mgr.last_speech_time = time.monotonic()
-                                conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="listening_after_skip")
+                                        try:
+                                            recruitai_client.complete_interview(
+                                                interview_id=args.interview_id,
+                                                candidate_id=args.candidate_id,
+                                                wait_for_analysis=False,
+                                            )
+                                        except Exception as comp_err:
+                                            logger.error(f"[MeetingBot] Failed to complete interview: {comp_err}")
+
+                                    await asyncio.sleep(2.0)
+                                    break
+                            else:
+                                # Normal Questioning Silence Recovery
+                                # Step 1: Candidate is silent for >= 18s -> Reassure "Take your time."
+                                if silence_duration >= 18.0 and conv_mgr.no_response_step == 0:
+                                    conv_mgr.set_state(ConversationState.NO_RESPONSE, decision="reassure_candidate")
+                                    conv_mgr.no_response_step = 1
+                                    logger.info("[RECOVERY] reason=no_response action=reassure")
+                                    await bot_instance.speak_text("Take your time.")
+                                    conv_mgr.last_speech_time = time.monotonic()
+                                    conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="waiting_after_reassurance")
+
+                                # Step 2: Still silent after another 18s -> Offer repeat
+                                elif silence_duration >= 18.0 and conv_mgr.no_response_step == 1:
+                                    conv_mgr.set_state(ConversationState.NO_RESPONSE, decision="offer_repeat")
+                                    conv_mgr.no_response_step = 2
+                                    logger.info("[RECOVERY] reason=no_response action=repeat_question")
+                                    await bot_instance.speak_text("Would you like me to repeat the question?")
+                                    conv_mgr.last_speech_time = time.monotonic()
+                                    conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="waiting_after_repeat_offer")
+
+                                # Step 3: Still silent after another 20s -> Skip question gracefully
+                                elif silence_duration >= 20.0 and conv_mgr.no_response_step == 2:
+                                    conv_mgr.set_state(ConversationState.SKIPPING_QUESTION, decision="prolonged_silence_skip")
+                                    logger.info("[RECOVERY] reason=no_response action=skip")
+                                    conv_mgr.no_response_step = 0
+                                    # Advance backend question gracefully
+                                    if args.interview_id:
+                                        try:
+                                            skip_res = recruitai_client.submit_transcript(
+                                                interview_id=args.interview_id,
+                                                transcript="I don't know.",
+                                                candidate_id=args.candidate_id,
+                                            )
+                                            next_q = skip_res.get("nextQuestion")
+                                            if next_q:
+                                                conv_mgr.set_state(ConversationState.ASKING_NEXT_QUESTION, decision="skip_to_next")
+                                                await bot_instance.speak_text(f"Let's move on to the next question. {next_q}")
+                                        except Exception as skip_err:
+                                            logger.error(f"[MeetingBot] Failed to advance skipped question: {skip_err}")
+                                    conv_mgr.last_speech_time = time.monotonic()
+                                    conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="listening_after_skip")
 
                         await asyncio.sleep(0.1)
                         continue
@@ -710,9 +770,12 @@ async def run_cli():
                         ack = backend_res.get("acknowledgment")
                         action = backend_res.get("action", "NEXT_TOPIC")
                         is_closing = backend_res.get("closing", False)
+                        res_phase = backend_res.get("phase")
+                        if res_phase:
+                            conv_mgr.current_phase = res_phase
 
                         logger.info(
-                            f"[ANSWER] transcript='{transcript}' answer_type={action} decision={action}"
+                            f"[ANSWER] transcript='{transcript}' answer_type={action} decision={action} phase={conv_mgr.current_phase} is_closing={is_closing}"
                         )
 
                         # Map backend action to conversational state
@@ -724,6 +787,8 @@ async def run_cli():
                             conv_mgr.set_state(ConversationState.ASKING_FOLLOWUP, decision="contextual_follow_up")
                         elif action == "MOVE_ON":
                             conv_mgr.set_state(ConversationState.ASKING_NEXT_QUESTION, decision="dont_know_move_on")
+                        elif conv_mgr.current_phase == "CLOSING" and not is_closing:
+                            conv_mgr.set_state(ConversationState.ASKING_FINAL_QUESTION, decision="asking_candidate_closing_questions")
                         elif is_closing:
                             conv_mgr.set_state(ConversationState.COMPLETING, decision="interview_closing")
                         else:
@@ -766,7 +831,11 @@ async def run_cli():
                             await asyncio.sleep(0.4)
                             logger.info("[PERF] candidate_listening_started")
                             conv_mgr.last_speech_time = time.monotonic()
-                            conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="listening_for_next_answer")
+
+                            if conv_mgr.current_phase == "CLOSING" and not is_closing:
+                                conv_mgr.set_state(ConversationState.WAITING_FOR_FINAL_RESPONSE, decision="listening_for_final_response")
+                            else:
+                                conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="listening_for_next_answer")
 
                             # Total response time from candidate speech end to AI question starting/completing
                             total_response_time = round(tts_end - speech_ended_timestamp, 2)

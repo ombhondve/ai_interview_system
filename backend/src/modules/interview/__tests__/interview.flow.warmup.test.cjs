@@ -318,6 +318,58 @@ describe("Interview Warmup and Spoken Question Flow", () => {
       expect(res.phase).toBe("PRECHECK");
       expect(res.nextQuestion.question).toContain("turn on your camera");
     });
+
+    test("CLOSING phase: candidate says 'No, I don't have any questions' -> concludes interview with closing: true", async () => {
+      mockSession.status = "IN_PROGRESS";
+      mockSession.phase = "CLOSING";
+      mockSession.questions = [
+        { questionId: "0", category: "CLOSING", question: "Do you have any questions for us before we finish?" },
+      ];
+      mockSession.transcript = [
+        { speaker: "AI", text: "Do you have any questions for us before we finish?", questionId: "0" },
+      ];
+
+      const res = await answerService.submitAnswer("int-123", "cand-123", "No, I don't have any questions. Thank you!");
+      expect(res.action).toBe("CLOSING");
+      expect(res.phase).toBe("CLOSING");
+      expect(res.closing).toBe(true);
+      expect(res.nextQuestion.question).toContain("Thank you for your time today. That concludes the interview.");
+    });
+
+    test("CLOSING phase: candidate says 'Yes, I have one question' -> keeps interview active with closing: false", async () => {
+      mockSession.status = "IN_PROGRESS";
+      mockSession.phase = "CLOSING";
+      mockSession.questions = [
+        { questionId: "0", category: "CLOSING", question: "Do you have any questions for us before we finish?" },
+      ];
+      mockSession.transcript = [
+        { speaker: "AI", text: "Do you have any questions for us before we finish?", questionId: "0" },
+      ];
+
+      const res = await answerService.submitAnswer("int-123", "cand-123", "Yes, I have a question.");
+      expect(res.action).toBe("FOLLOW_UP");
+      expect(res.phase).toBe("CLOSING");
+      expect(res.closing).toBe(false);
+      expect(res.nextQuestion.question).toContain("Sure, please go ahead. What would you like to ask?");
+    });
+
+    test("CLOSING phase: candidate asks substantive question -> AI responds politely and keeps closing: false", async () => {
+      mockSession.status = "IN_PROGRESS";
+      mockSession.phase = "CLOSING";
+      mockSession.questions = [
+        { questionId: "0", category: "CLOSING", question: "Sure, please go ahead. What would you like to ask?" },
+      ];
+      mockSession.transcript = [
+        { speaker: "AI", text: "Sure, please go ahead. What would you like to ask?", questionId: "0" },
+      ];
+
+      const res = await answerService.submitAnswer("int-123", "cand-123", "What technologies does the team primarily work on in production?");
+      expect(res.action).toBe("FOLLOW_UP");
+      expect(res.phase).toBe("CLOSING");
+      expect(res.closing).toBe(false);
+      expect(res.nextQuestion.question).toBeDefined();
+      expect(res.nextQuestion.question).toContain("Is there anything else you'd like to ask?");
+    });
   });
 });
 

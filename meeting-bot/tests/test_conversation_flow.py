@@ -282,6 +282,8 @@ def test_interview_phases_progression():
         ConversationState.QUESTIONING,
         ConversationState.STRENGTH_DEPTH,
         ConversationState.WEAKNESS_GAP,
+        ConversationState.ASKING_FINAL_QUESTION,
+        ConversationState.WAITING_FOR_FINAL_RESPONSE,
         ConversationState.COMPLETING,
         ConversationState.ENDED,
     ]

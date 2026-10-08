@@ -33,6 +33,9 @@ export default function InterviewPage() {
   const recognition = useRef<any>(null);
   const turnId = useRef(0);
 
+  const isEndingRef = useRef(false);
+  const autoEndTriggeredRef = useRef(false);
+
   const load = useCallback(async () => {
     try {
       const data = await api<{ interview: Session | null }>("/mine");
@@ -62,10 +65,11 @@ export default function InterviewPage() {
     const tick = () => {
       const secs = Math.max(0, Math.floor((Date.now() - new Date(session.startedAt!).getTime()) / 1000));
       setElapsed(secs);
-      // Auto-complete if 30-minute duration has expired (1800s)
-      if (secs >= 1800 && !busy) {
+      // Auto-complete if 30-minute duration has expired (1800s) - trigger once without confirm dialog
+      if (secs >= 1800 && !autoEndTriggeredRef.current && !isEndingRef.current && !busy) {
+        autoEndTriggeredRef.current = true;
         setNotice("Scheduled 30-minute interview duration reached. Concluding interview session...");
-        void end();
+        void performEndInterview(false);
       }
     };
     tick(); const timer = window.setInterval(tick, 1000); return () => window.clearInterval(timer);
@@ -179,16 +183,35 @@ export default function InterviewPage() {
     }
   };
 
-  const end = async () => {
-    if (!session || busy) return;
-    if (!window.confirm("End the interview now? Your saved transcript will be sent for analysis.")) return;
+  const performEndInterview = async (askConfirmation = true) => {
+    if (!session || busy || isEndingRef.current) return;
+    if (["COMPLETING", "COMPLETED", "ANALYSIS_PENDING", "ANALYZED", "FAILED"].includes(session.status)) {
+      return;
+    }
+
+    if (askConfirmation) {
+      const confirmed = window.confirm("End the interview now? Your saved transcript will be sent for analysis.");
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    isEndingRef.current = true;
     setBusy(true);
     try {
       const data = await api<{ interview: Session }>(`/${session._id}/end`, { method: "POST" });
-      setSession(data.interview); window.speechSynthesis?.cancel();
-    } catch (error) { setNotice(error instanceof Error ? error.message : "Unable to end interview."); }
-    finally { setBusy(false); }
+      setSession(data.interview);
+      if (typeof window !== "undefined") window.speechSynthesis?.cancel();
+    } catch (error) {
+      isEndingRef.current = false;
+      const message = error instanceof Error ? error.message : "Unable to end interview.";
+      setNotice(message);
+    } finally {
+      setBusy(false);
+    }
   };
+
+  const end = () => performEndInterview(true);
 
   if (loading) return <StudentShell><p className="p-6 text-sm text-slate-500">Loading interview…</p></StudentShell>;
   if (!session) return <StudentShell><div className="mx-auto max-w-2xl"><Card><CardHeader title="AI Interview" subtitle="A verified project and scheduled booking are required."/><CardContent><p className="text-sm text-slate-600">{notice || "No interview is currently scheduled."}</p><Button className="mt-4" onClick={() => router.push("/student/interview-scheduling")}>View interview schedule</Button></CardContent></Card></div></StudentShell>;

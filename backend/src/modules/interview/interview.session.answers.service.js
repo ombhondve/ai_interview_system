@@ -83,6 +83,37 @@ export function getNaturalAcknowledgment(index = 0) {
   return NATURAL_ACKS[index % NATURAL_ACKS.length];
 }
 
+/**
+ * Classify candidate intent specifically during the CLOSING phase:
+ * - NO_QUESTIONS: Candidate does not have questions ("No", "No questions", "Nahi", "Nothing", etc.)
+ * - WANTS_TO_ASK: Candidate indicates they have a question ("Yes", "I have a question", "Can I ask something?", etc.)
+ * - CANDIDATE_QUESTION: Candidate directly asks a substantive question ("What is the tech stack?", "When will results be out?", etc.)
+ */
+export function classifyClosingIntent(text) {
+  const clean = String(text || "").trim().toLowerCase();
+  if (!clean) return { intent: "NO_QUESTIONS", text: "" };
+
+  // Explicit negative / no questions (English, Hindi, Marathi)
+  if (
+    /^(no|nope|nah|not really|no questions?|no questions from my side|nothing|nothing else|nothing from my side|i don't have any questions?|i have no questions?|don't have any questions?|no thank you|no thanks|all good|everything is clear|nahi|nahi hai|kahi nahi|kahi nahiye)\b/i.test(clean) ||
+    /\b(no questions?|nothing (else|from my side)|no thank you|nahi hai|kahi nahi)\b/i.test(clean)
+  ) {
+    return { intent: "NO_QUESTIONS", text: clean };
+  }
+
+  // Pre-question intent / asking permission ("Yes", "Yes I have one question", "Can I ask something?", "I want to ask...")
+  if (
+    (/\b(i have (a|one|some) questions?|want to ask|can i ask|may i ask|have a query|poochna hai|vicharaycha ahe)\b/i.test(clean)) ||
+    (/^(yes|yeah|yep|sure|ha|haan)\b/i.test(clean) && clean.split(/\s+/).length <= 5) ||
+    /^(can i ask|may i ask|i want to ask|i have a question|i have one question)\b/i.test(clean)
+  ) {
+    return { intent: "WANTS_TO_ASK", text: clean };
+  }
+
+  // Direct candidate question or longer query
+  return { intent: "CANDIDATE_QUESTION", text: clean };
+}
+
 function assessAnswer(text) {
   const answer = String(text || "").trim();
   const words = answer.split(/\s+/).filter(Boolean);
@@ -209,6 +240,144 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
       };
       actionType = "FOLLOW_UP";
       acknowledgment = "Understood.";
+    } else if (phase === "CLOSING") {
+      // Dedicated final-turn / candidate question handling
+      const closingIntent = classifyClosingIntent(clean);
+      logger.info(`Candidate closing turn received ${doc._id}: intent=${closingIntent.intent}`);
+
+      if (closingIntent.intent === "NO_QUESTIONS") {
+        // Case 1: Candidate has no questions ("No", "Nothing", "Nahi", etc.)
+        actionType = "CLOSING";
+        const farewell = "That's perfectly fine. Thank you for your time today. That concludes the interview.";
+        answer.answerProcessed = true;
+        const nextQuestionId = String(doc.questions.length);
+        const closingObj = {
+          category: "CLOSING",
+          question: farewell,
+          difficulty: "EASY",
+          reason: "Candidate indicated no questions. Concluding interview gracefully.",
+          source: "fallback",
+          followUpExpected: false,
+          questionId: nextQuestionId,
+          askedAt: new Date(),
+        };
+        doc.questions.push(closingObj);
+        doc.currentQuestionIndex = doc.questions.length - 1;
+        doc.transcript.push({
+          sequence: doc.transcript.length,
+          speaker: "AI",
+          text: farewell,
+          timestamp: new Date(),
+          questionId: nextQuestionId,
+          category: "CLOSING",
+          section: "CLOSING",
+        });
+        await doc.save();
+        return {
+          interview: doc,
+          duplicate: false,
+          nextQuestion: closingObj,
+          acknowledgment: null,
+          action: "CLOSING",
+          phase: "CLOSING",
+          closing: true,
+        };
+      } else if (closingIntent.intent === "WANTS_TO_ASK") {
+        // Case 2: Candidate indicates they want to ask a question ("Yes", "I have a question", etc.)
+        actionType = "FOLLOW_UP";
+        const promptToAsk = "Sure, please go ahead. What would you like to ask?";
+        answer.answerProcessed = true;
+        const nextQuestionId = String(doc.questions.length);
+        const promptObj = {
+          category: "CLOSING",
+          question: promptToAsk,
+          difficulty: "EASY",
+          reason: "Candidate wants to ask a question; prompting them to speak.",
+          source: "fallback",
+          followUpExpected: true,
+          questionId: nextQuestionId,
+          askedAt: new Date(),
+        };
+        doc.questions.push(promptObj);
+        doc.currentQuestionIndex = doc.questions.length - 1;
+        doc.transcript.push({
+          sequence: doc.transcript.length,
+          speaker: "AI",
+          text: promptToAsk,
+          timestamp: new Date(),
+          questionId: nextQuestionId,
+          category: "CLOSING",
+          section: "CLOSING",
+        });
+        await doc.save();
+        return {
+          interview: doc,
+          duplicate: false,
+          nextQuestion: promptObj,
+          acknowledgment: "Sure.",
+          action: "FOLLOW_UP",
+          phase: "CLOSING",
+          closing: false,
+        };
+      } else {
+        // Case 3: Candidate asked a specific question ("What tech stack do you use?", "When will results be announced?", etc.)
+        actionType = "FOLLOW_UP";
+        let aiAnswerText = "";
+        try {
+          const { generateStructuredAI } = await import("../ai/ai.service.js");
+          const ansPrompt = `The candidate is asking a question at the end of their interview: "${clean}".
+Answer politely and concisely (under 30 words) as the AI interviewer. Then ask: "Is there anything else you'd like to ask?"
+Return JSON ONLY:
+{ "answer": "<concise polite answer and question>" }`;
+          const ansRes = await generateStructuredAI([
+            { role: "system", content: "You are a professional, courteous AI interviewer answering a candidate's closing question." },
+            { role: "user", content: ansPrompt },
+          ]);
+          if (ansRes?.answer) {
+            aiAnswerText = ansRes.answer;
+          }
+        } catch (qErr) {
+          logger.warn(`AI closing question response generation failed, using fallback: ${qErr.message}`);
+        }
+
+        if (!aiAnswerText) {
+          aiAnswerText = "That's a good question. Our recruitment team will review your interview results and update you on the next steps shortly. Is there anything else you'd like to ask?";
+        }
+
+        answer.answerProcessed = true;
+        const nextQuestionId = String(doc.questions.length);
+        const responseObj = {
+          category: "CLOSING",
+          question: aiAnswerText,
+          difficulty: "EASY",
+          reason: "Answering candidate question during closing phase.",
+          source: "ai",
+          followUpExpected: true,
+          questionId: nextQuestionId,
+          askedAt: new Date(),
+        };
+        doc.questions.push(responseObj);
+        doc.currentQuestionIndex = doc.questions.length - 1;
+        doc.transcript.push({
+          sequence: doc.transcript.length,
+          speaker: "AI",
+          text: aiAnswerText,
+          timestamp: new Date(),
+          questionId: nextQuestionId,
+          category: "CLOSING",
+          section: "CLOSING",
+        });
+        await doc.save();
+        return {
+          interview: doc,
+          duplicate: false,
+          nextQuestion: responseObj,
+          acknowledgment: "Good question.",
+          action: "FOLLOW_UP",
+          phase: "CLOSING",
+          closing: false,
+        };
+      }
     } else {
       const intentInfo = classifyCandidateIntent(clean);
       const lastQ = doc.questions[doc.currentQuestionIndex] || doc.questions[doc.questions.length - 1];
@@ -367,7 +536,7 @@ Return JSON ONLY:
       acknowledgment: acknowledgment || null,
       action: actionType,
       phase: doc.phase,
-      closing: next.category === "CLOSING",
+      closing: false,
     };
   } catch (error) {
     await doc.save();
