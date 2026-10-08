@@ -190,22 +190,38 @@ class AudioCaptureService:
         Calculate Root-Mean-Square (RMS) amplitude level from the most recent audio chunks.
         Returns a float between 0.0 (silence) and 1.0 (peak).
         """
+        diag = self.get_audio_diagnostics(window_chunks=window_chunks)
+        return diag["rms"]
+
+    def get_audio_diagnostics(self, window_chunks: int = 10) -> Dict[str, Any]:
+        """
+        Compute safe runtime diagnostics including RMS, peak amplitude, and speech presence
+        without logging or exposing raw candidate speech audio.
+        """
         with self._lock:
             if not self._recorded_frames:
-                return 0.0
+                return {"rms": 0.0, "peak": 0.0, "speechDetected": False, "chunkCount": 0}
             recent = self._recorded_frames[-window_chunks:]
 
         if not recent:
-            return 0.0
+            return {"rms": 0.0, "peak": 0.0, "speechDetected": False, "chunkCount": 0}
 
         raw_bytes = b"".join(recent)
         samples = np.frombuffer(raw_bytes, dtype=np.int16)
         if len(samples) == 0:
-            return 0.0
+            return {"rms": 0.0, "peak": 0.0, "speechDetected": False, "chunkCount": 0}
 
         rms = np.sqrt(np.mean(samples.astype(np.float64) ** 2))
-        # Normalize to 0.0 - 1.0 based on 16-bit max amplitude 32768
-        return min(1.0, float(rms / 32768.0))
+        normalized_rms = min(1.0, float(rms / 32768.0))
+        peak = float(np.max(np.abs(samples))) / 32768.0
+        speech_detected = normalized_rms > 0.003 or peak > 0.01
+
+        return {
+            "rms": round(normalized_rms, 4),
+            "peak": round(peak, 4),
+            "speechDetected": speech_detected,
+            "chunkCount": len(recent),
+        }
 
     def export_wav_bytes(self) -> bytes:
         """

@@ -242,6 +242,17 @@ async def run_cli():
         backend_host = urlparse(recruitai_client.base_url).netloc or recruitai_client.base_url
         logger.info(f"[BACKEND] API URL: {backend_host}")
 
+        # Safe diagnostic for Deepgram configuration without exposing key
+        deepgram_ready = deepgram_client.is_configured()
+        logger.info(f"[STT] DEEPGRAM_API_KEY configured: {deepgram_ready}")
+
+        if args.interview_id and not deepgram_ready:
+            logger.error(
+                "[STT] DEEPGRAM_API_KEY is not configured in environment or meeting-bot/.env. "
+                "Candidate voice transcription cannot operate. Please configure DEEPGRAM_API_KEY before starting."
+            )
+            sys.exit(1)
+
         # Voice test or Real interview mode pre-checks
         if args.voice_test or args.interview_id or args.speak:
             try:
@@ -392,12 +403,16 @@ async def run_cli():
                         logger.debug("[STT] Ignored because AI_SPEAKING=true")
                         continue
 
-                    lvl = audio_capture.get_audio_level()
-                    # Safe runtime audio diagnostics
-                    if lvl > 0.001:
-                        logger.info(f"[AUDIO] Candidate listening RMS level: {lvl:.4f}")
+                    diag = audio_capture.get_audio_diagnostics()
+                    lvl = diag["rms"]
+                    peak = diag["peak"]
+                    speech_detected = diag["speechDetected"]
 
-                    if lvl < 0.003:
+                    # Safe runtime audio diagnostics
+                    if lvl > 0.001 or peak > 0.005:
+                        logger.info(f"[AUDIO] Candidate listening RMS: {lvl:.4f} | Peak: {peak:.4f} | Speech Detected: {speech_detected}")
+
+                    if not speech_detected and lvl < 0.003:
                         continue
 
                     ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -405,6 +420,11 @@ async def run_cli():
                     meta = audio_capture.save_recording(seg_file)
 
                     if meta and meta["audioLevel"] > 0.0:
+                        dur = meta.get("durationSeconds", 0.0)
+                        logger.info(
+                            f"[AUDIO] Speech detected: chunk duration={dur}s, RMS={meta['audioLevel']}, file={Path(seg_file).name}"
+                        )
+
                         # Extra guard check before submitting to Deepgram
                         if bot_instance.is_ai_speaking():
                             logger.info("[STT] Ignored captured chunk because AI_SPEAKING=true")
@@ -413,10 +433,11 @@ async def run_cli():
 
                         if deepgram_client.is_configured():
                             try:
-                                logger.info(f"[AUDIO] Candidate speech detected (RMS: {meta['audioLevel']}). Transcribing...")
+                                logger.info(f"[STT] Deepgram request: sending {dur}s audio...")
                                 res = deepgram_client.transcribe_file(seg_file)
                                 transcript = (res.get("transcript") or "").strip()
                                 confidence = res.get("confidence", 0.0)
+                                logger.info(f"[STT] Deepgram response: success={res.get('success')}, confidence={round(confidence, 3)}, model={res.get('model')}")
 
                                 # Handle empty / low-confidence transcripts safely
                                 if not transcript or confidence < 0.35:
@@ -433,15 +454,21 @@ async def run_cli():
                                 print("\n" + "=" * 50)
                                 print(f"CANDIDATE TRANSCRIPT: '{transcript}'")
                                 print("=" * 50 + "\n")
-                                logger.info(f"[STT] Candidate transcript: '{transcript}'")
+                                logger.info(f"[STT] Transcript: {transcript}")
 
                                 if args.interview_id:
-                                    logger.info("[BACKEND] Sending answer...")
+                                    logger.info(f"[BACKEND] Submitting transcript (chars: {len(transcript)})...")
                                     try:
                                         backend_res = recruitai_client.submit_transcript(
                                             interview_id=args.interview_id,
                                             transcript=transcript,
                                             candidate_id=args.candidate_id,
+                                        )
+
+                                        logger.info(
+                                            f"[BACKEND] Answer submitted: accepted={backend_res.get('accepted')}, "
+                                            f"status={backend_res.get('interviewStatus')}, phase={backend_res.get('phase')}, "
+                                            f"qIndex={backend_res.get('currentQuestionIndex')}"
                                         )
 
                                         # Check if answer was accepted or filtered as filler
@@ -454,12 +481,12 @@ async def run_cli():
                                         is_closing = backend_res.get("closing", False)
 
                                         if next_q:
-                                            logger.info("[BACKEND] Next question received")
+                                            logger.info(f"[AI] Next question received: '{next_q[:60]}...'")
                                             print("\n" + "*" * 50)
                                             print(f"NEXT QUESTION: {next_q}")
                                             print("*" * 50 + "\n")
 
-                                            logger.info("[VOICE] Speaking next question")
+                                            logger.info("[AI] SPEAKING")
                                             # Speak through Kokoro TTS and VB-CABLE into Google Meet
                                             await bot_instance.speak_text(next_q)
 
