@@ -4,6 +4,7 @@ Provides robust selectors for pre-join setup, camera/mic controls, and join acti
 """
 
 import re
+import time
 import logging
 from typing import Optional
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError
@@ -115,25 +116,49 @@ class MeetNavigator:
         # Step 1: Open Settings dialog
         opened = await self._open_settings_dialog()
         if not opened:
-            err = "Failed to locate and open Google Meet settings dialog."
-            logger.error(f"[MEET][AUDIO] {err}")
+            err = "GOOGLE_MEET_SETTINGS_NOT_OPENED"
+            logger.error(f"[MEET][AUDIO] {err}: Failed to locate and open Google Meet settings dialog.")
             result["error"] = err
             return result
 
-        await self.page.wait_for_timeout(1000)
-
         # Step 2: Ensure "Audio" tab is active in Settings
+        logger.info("[MEET][AUDIO] Navigating to Audio tab...")
+        audio_tab_opened = False
         try:
             audio_tab = self.page.locator(
                 '[role="tab"]:has-text("Audio"), '
                 'button:has-text("Audio"), '
-                '[aria-label*="Audio" i][role="tab"]'
+                '[aria-label*="Audio" i][role="tab"], '
+                '[role="dialog"] [role="tab"]:has-text("Audio")'
             )
-            if await audio_tab.count() > 0 and await audio_tab.first.is_visible():
-                await audio_tab.first.click()
-                await self.page.wait_for_timeout(500)
+            # Check if tab is already active / selected
+            if await audio_tab.count() > 0:
+                logger.info("[MEET][AUDIO] Audio tab detected")
+                first_tab = audio_tab.first
+                is_selected = await first_tab.get_attribute("aria-selected")
+                if is_selected != "true":
+                    await first_tab.click()
+                    await self.page.wait_for_timeout(300)
+                audio_tab_opened = True
+            else:
+                # Some Meet versions only have Audio in pre-join settings dialog
+                dialog_body = self.page.locator('[role="dialog"]')
+                if await dialog_body.count() > 0:
+                    text_content = await dialog_body.first.inner_text()
+                    if "Microphone" in text_content or "Speakers" in text_content or "Audio" in text_content:
+                        logger.info("[MEET][AUDIO] Audio tab detected (dialog default view)")
+                        audio_tab_opened = True
         except Exception as e:
-            logger.debug(f"[MEET][AUDIO] Note switching to audio tab: {e}")
+            logger.warning(f"[MEET][AUDIO] Error verifying Audio tab: {e}")
+
+        if not audio_tab_opened:
+            err = "GOOGLE_MEET_AUDIO_TAB_NOT_OPENED"
+            logger.error(f"[MEET][AUDIO] {err}: Could not confirm Audio tab inside Settings dialog.")
+            result["error"] = err
+            await self._close_settings_dialog()
+            return result
+
+        logger.info("[MEET][AUDIO] Audio tab opened successfully")
 
         # Step 3: Select Microphone device
         mic_res = await self._select_device_dropdown(
@@ -199,8 +224,16 @@ class MeetNavigator:
         return result
 
     async def _open_settings_dialog(self) -> bool:
-        """Locate and click settings / more options button to open settings modal."""
-        # 1. Direct Settings button if available
+        """
+        Locate and click settings control to open Settings dialog with bounded timeouts.
+        Distinguishes More options menu from the actual Settings dialog.
+        PATH A: Direct Settings button -> click -> Settings dialog
+        PATH B: More options button -> wait for menu -> find Settings menu item -> click -> Settings dialog
+        PATH C: Audio & Video preview control -> click -> Settings dialog
+        """
+        logger.info("[MEET][AUDIO] Opening Google Meet settings...")
+
+        # PATH A: Direct Settings button if already visible
         settings_selectors = [
             'button[aria-label*="Settings" i]',
             '[role="button"][aria-label*="Settings" i]',
@@ -211,35 +244,100 @@ class MeetNavigator:
             loc = self.page.locator(sel)
             try:
                 if await loc.count() > 0 and await loc.first.is_visible():
+                    logger.info(f"[MEET][AUDIO] Direct Settings button found ({sel}). Clicking...")
                     await loc.first.click()
-                    logger.info(f"[MEET][AUDIO] Clicked Settings button via: {sel}")
-                    return True
-            except Exception:
-                pass
+                    if await self._wait_for_settings_dialog(timeout_ms=5000):
+                        logger.info("[MEET][AUDIO] Settings dialog detected")
+                        logger.info("[MEET][AUDIO] Settings dialog opened successfully")
+                        return True
+            except Exception as e:
+                logger.debug(f"[MEET][AUDIO] Direct settings click failed: {e}")
 
-        # 2. More options button (three vertical dots) -> Settings menu item
+        logger.info("[MEET][AUDIO] Direct Settings control not found; opening More options...")
+
+        # PATH B: More options button (three vertical dots) -> menu -> Settings menuitem
         more_selectors = [
             'button[aria-label*="More options" i]',
             'div[role="button"][aria-label*="More options" i]',
             'button[aria-label*="more settings" i]',
             'button[data-tooltip*="More options" i]',
+            '[aria-label*="More options" i]',
         ]
+        more_opened = False
         for more_sel in more_selectors:
             loc = self.page.locator(more_sel)
             try:
                 if await loc.count() > 0 and await loc.first.is_visible():
                     await loc.first.click()
-                    await self.page.wait_for_timeout(500)
-                    # Click Settings from menu
-                    menu_item = self.page.locator('[role="menuitem"]:has-text("Settings"), button:has-text("Settings"), span:has-text("Settings")')
-                    if await menu_item.count() > 0 and await menu_item.first.is_visible():
-                        await menu_item.first.click()
-                        logger.info(f"[MEET][AUDIO] Opened Settings via More options ({more_sel})")
-                        return True
-            except Exception:
-                pass
+                    # Wait for menu to appear (bounded 5s timeout)
+                    menu_loc = self.page.locator('[role="menu"], ul[role="menu"], div[role="menu"]')
+                    try:
+                        await menu_loc.first.wait_for(state="visible", timeout=5000)
+                        more_opened = True
+                        logger.info("[MEET][AUDIO] More options menu opened")
+                        break
+                    except Exception:
+                        # Fallback check if menuitems are visible directly
+                        items = self.page.locator('[role="menuitem"]')
+                        if await items.count() > 0 and await items.first.is_visible():
+                            more_opened = True
+                            logger.info("[MEET][AUDIO] More options menu opened")
+                            break
+            except Exception as e:
+                logger.debug(f"[MEET][AUDIO] Failed clicking more options on {more_sel}: {e}")
 
-        # 3. Audio & Video settings icon in prejoin preview if present
+        if more_opened:
+            # Diagnostic logging: log accessible names/text of visible menu items
+            try:
+                menu_items = await self.page.locator('[role="menuitem"], [role="menu"] [role="button"]').all()
+                menu_labels = []
+                for item in menu_items:
+                    txt = (await item.inner_text() or await item.get_attribute("aria-label") or "").strip()
+                    if txt:
+                        menu_labels.append(txt.replace("\n", " "))
+                if menu_labels:
+                    logger.info(f"[MEET][AUDIO][DEBUG] Visible menu items:\n- " + "\n- ".join(menu_labels))
+            except Exception as diag_err:
+                logger.debug(f"[MEET][AUDIO] Menu diagnostic error: {diag_err}")
+
+            # Locate Settings menu item inside menu
+            settings_item_selectors = [
+                '[role="menuitem"]:has-text("Settings")',
+                '[role="menuitem"][aria-label*="Settings" i]',
+                'li[role="menuitem"]:has-text("Settings")',
+                '[role="menu"] button:has-text("Settings")',
+                'button:has-text("Settings")',
+                'span:has-text("Settings")',
+            ]
+            settings_item = None
+            for item_sel in settings_item_selectors:
+                loc = self.page.locator(item_sel)
+                try:
+                    if await loc.count() > 0 and await loc.first.is_visible():
+                        settings_item = loc.first
+                        logger.info("[MEET][AUDIO] Settings menu item found")
+                        break
+                except Exception:
+                    pass
+
+            if settings_item:
+                logger.info("[MEET][AUDIO] Clicking Settings menu item...")
+                try:
+                    await settings_item.click()
+                    if await self._wait_for_settings_dialog(timeout_ms=7000):
+                        logger.info("[MEET][AUDIO] Settings dialog detected")
+                        logger.info("[MEET][AUDIO] Settings dialog opened successfully")
+                        return True
+                    else:
+                        logger.error("[MEET][AUDIO] ERROR: Settings dialog did not open after clicking Settings menu item")
+                        return False
+                except Exception as click_err:
+                    logger.error(f"[MEET][AUDIO] Error clicking Settings menu item: {click_err}")
+                    return False
+            else:
+                logger.error("[MEET][AUDIO] Settings menu item not found inside More options menu")
+
+        # PATH C: Audio & Video settings icon in prejoin preview if present
         preview_audio_btns = [
             'button[aria-label*="Check your audio" i]',
             'button[aria-label*="Audio and video" i]',
@@ -249,11 +347,38 @@ class MeetNavigator:
             loc = self.page.locator(sel)
             try:
                 if await loc.count() > 0 and await loc.first.is_visible():
+                    logger.info(f"[MEET][AUDIO] Attempting preview device settings: {sel}")
                     await loc.first.click()
-                    logger.info(f"[MEET][AUDIO] Opened device settings via preview control: {sel}")
-                    return True
+                    if await self._wait_for_settings_dialog(timeout_ms=5000):
+                        logger.info("[MEET][AUDIO] Settings dialog detected")
+                        logger.info("[MEET][AUDIO] Settings dialog opened successfully")
+                        return True
             except Exception:
                 pass
+
+        return False
+
+    async def _wait_for_settings_dialog(self, timeout_ms: int = 6000) -> bool:
+        """Wait for the Settings dialog/panel to appear in DOM within timeout_ms."""
+        dialog_selectors = [
+            '[role="dialog"][aria-label*="Settings" i]',
+            '[role="dialog"]:has-text("Audio")',
+            '[role="dialog"]:has-text("Microphone")',
+            '[role="dialog"]:has-text("Settings")',
+            '[role="dialog"]',
+        ]
+        start_time = time.monotonic()
+        timeout_sec = timeout_ms / 1000.0
+
+        while (time.monotonic() - start_time) < timeout_sec:
+            for sel in dialog_selectors:
+                try:
+                    loc = self.page.locator(sel)
+                    if await loc.count() > 0 and await loc.first.is_visible():
+                        return True
+                except Exception:
+                    pass
+            await self.page.wait_for_timeout(200)
 
         return False
 

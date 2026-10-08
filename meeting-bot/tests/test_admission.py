@@ -299,7 +299,23 @@ async def test_configure_audio_devices_success():
     loc_options.count = AsyncMock(return_value=2)
     loc_options.nth = MagicMock(side_effect=lambda idx: loc_mic_opt if idx == 0 else loc_spk_opt)
 
+    loc_audio_tab = AsyncMock()
+    loc_audio_tab.count = AsyncMock(return_value=1)
+    loc_audio_tab.is_visible = AsyncMock(return_value=True)
+    loc_audio_tab.first = AsyncMock()
+    loc_audio_tab.first.get_attribute = AsyncMock(return_value="true")
+
+    loc_dialog = AsyncMock()
+    loc_dialog.count = AsyncMock(return_value=1)
+    loc_dialog.is_visible = AsyncMock(return_value=True)
+    loc_dialog.first = AsyncMock()
+    loc_dialog.first.inner_text = AsyncMock(return_value="Settings Microphone Speaker")
+
     def locator_side_effect(selector):
+        if "dialog" in selector:
+            return loc_dialog
+        if "Audio" in selector:
+            return loc_audio_tab
         if "Settings" in selector or "settings" in selector:
             return loc_settings_btn
         if "option" in selector or "listbox" in selector:
@@ -350,7 +366,23 @@ async def test_configure_audio_devices_missing_mic_fails_safely():
     loc_options.count = AsyncMock(return_value=1)
     loc_options.nth = MagicMock(return_value=loc_other_opt)
 
+    loc_audio_tab = AsyncMock()
+    loc_audio_tab.count = AsyncMock(return_value=1)
+    loc_audio_tab.is_visible = AsyncMock(return_value=True)
+    loc_audio_tab.first = AsyncMock()
+    loc_audio_tab.first.get_attribute = AsyncMock(return_value="true")
+
+    loc_dialog = AsyncMock()
+    loc_dialog.count = AsyncMock(return_value=1)
+    loc_dialog.is_visible = AsyncMock(return_value=True)
+    loc_dialog.first = AsyncMock()
+    loc_dialog.first.inner_text = AsyncMock(return_value="Settings Microphone Speaker")
+
     def locator_side_effect(selector):
+        if "dialog" in selector:
+            return loc_dialog
+        if "Audio" in selector:
+            return loc_audio_tab
         if "Settings" in selector:
             return loc_settings_btn
         if "option" in selector:
@@ -373,5 +405,132 @@ async def test_configure_audio_devices_missing_mic_fails_safely():
 
     assert res["success"] is False
     assert "Required audio device not found: Microphone" in res["error"]
+
+
+@pytest.mark.asyncio
+async def test_more_options_alone_does_not_open_settings():
+    """Verify that clicking More options without the Settings dialog opening fails safely."""
+    page = MagicMock()
+    page.wait_for_timeout = AsyncMock()
+
+    # More options button is visible
+    loc_more = AsyncMock()
+    loc_more.count = AsyncMock(return_value=1)
+    loc_more.is_visible = AsyncMock(return_value=True)
+    loc_more.first = AsyncMock()
+
+    # Menu appears
+    loc_menu = AsyncMock()
+    loc_menu.first = AsyncMock()
+    loc_menu.first.wait_for = AsyncMock()
+
+    # But Settings item / dialog is not found or fails to open
+    empty = AsyncMock()
+    empty.count = AsyncMock(return_value=0)
+    empty.is_visible = AsyncMock(return_value=False)
+    empty.all = AsyncMock(return_value=[])
+
+    def locator_side_effect(selector):
+        if "More options" in selector:
+            return loc_more
+        if "role=\"menu\"" in selector:
+            return loc_menu
+        return empty
+
+    page.locator.side_effect = locator_side_effect
+    nav = MeetNavigator(page)
+
+    res = await nav.configure_audio_devices(
+        target_mic="CABLE Output (VB-Audio Virtual Cable)",
+        target_speaker="CABLE Input (VB-Audio Virtual Cable)",
+    )
+
+    assert res["success"] is False
+    assert res["error"] == "GOOGLE_MEET_SETTINGS_NOT_OPENED"
+
+
+@pytest.mark.asyncio
+async def test_more_options_to_settings_dialog_full_flow():
+    """Verify full two-step navigation: More options -> menu -> Settings item -> Settings dialog."""
+    page = MagicMock()
+    page.wait_for_timeout = AsyncMock()
+
+    # More options button
+    loc_more = AsyncMock()
+    loc_more.count = AsyncMock(return_value=1)
+    loc_more.is_visible = AsyncMock(return_value=True)
+    loc_more.first = AsyncMock()
+
+    # Menu
+    loc_menu = AsyncMock()
+    loc_menu.first = AsyncMock()
+    loc_menu.first.wait_for = AsyncMock()
+
+    # Settings menu item
+    loc_settings_item = AsyncMock()
+    loc_settings_item.count = AsyncMock(return_value=1)
+    loc_settings_item.is_visible = AsyncMock(return_value=True)
+    loc_settings_item.first = AsyncMock()
+    loc_settings_item.first.click = AsyncMock()
+
+    # Settings dialog
+    loc_dialog = AsyncMock()
+    loc_dialog.count = AsyncMock(return_value=1)
+    loc_dialog.is_visible = AsyncMock(return_value=True)
+    loc_dialog.first = AsyncMock()
+    loc_dialog.first.inner_text = AsyncMock(return_value="Audio Settings Microphone Speakers")
+
+    # Combobox & options for devices
+    loc_combobox = AsyncMock()
+    loc_combobox.count = AsyncMock(return_value=1)
+    loc_combobox.is_visible = AsyncMock(return_value=True)
+    loc_combobox.first = AsyncMock()
+    loc_combobox.first.inner_text = AsyncMock(return_value="Default Audio")
+
+    loc_mic_opt = AsyncMock()
+    loc_mic_opt.inner_text = AsyncMock(return_value="CABLE Output (VB-Audio Virtual Cable)")
+    loc_mic_opt.get_attribute = AsyncMock(return_value=None)
+    loc_mic_opt.click = AsyncMock()
+
+    loc_spk_opt = AsyncMock()
+    loc_spk_opt.inner_text = AsyncMock(return_value="CABLE Input (VB-Audio Virtual Cable)")
+    loc_spk_opt.get_attribute = AsyncMock(return_value=None)
+    loc_spk_opt.click = AsyncMock()
+
+    loc_options = AsyncMock()
+    loc_options.count = AsyncMock(return_value=2)
+    loc_options.nth = MagicMock(side_effect=lambda idx: loc_mic_opt if idx == 0 else loc_spk_opt)
+
+    def locator_side_effect(selector):
+        if "More options" in selector:
+            return loc_more
+        if "role=\"menu\"" in selector:
+            return loc_menu
+        if "Settings" in selector and "dialog" not in selector:
+            return loc_settings_item
+        if "dialog" in selector:
+            return loc_dialog
+        if "option" in selector or "listbox" in selector:
+            return loc_options
+        if "combobox" in selector or "Microphone" in selector or "Speaker" in selector:
+            return loc_combobox
+        empty = AsyncMock()
+        empty.count = AsyncMock(return_value=0)
+        empty.is_visible = AsyncMock(return_value=False)
+        empty.all = AsyncMock(return_value=[])
+        return empty
+
+    page.locator.side_effect = locator_side_effect
+    nav = MeetNavigator(page)
+
+    res = await nav.configure_audio_devices(
+        target_mic="CABLE Output (VB-Audio Virtual Cable)",
+        target_speaker="CABLE Input (VB-Audio Virtual Cable)",
+    )
+
+    assert res["success"] is True
+    assert "CABLE Output" in res["selected_mic"]
+    assert "CABLE Input" in res["selected_speaker"]
+
 
 
