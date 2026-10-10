@@ -409,6 +409,12 @@ export async function claimNextJob(workerId, { currentTime } = {}) {
     await interview.save().catch(() => { });
   }
 
+  // Sync authoritative candidateId from interview record if missing or mismatched
+  const authoritativeCandidateId = (interview && interview.candidateId) || claimedJob.candidateId;
+  if (authoritativeCandidateId && (!claimedJob.candidateId || String(claimedJob.candidateId) !== String(authoritativeCandidateId))) {
+    claimedJob.candidateId = authoritativeCandidateId;
+  }
+
   // Update execution history
   if (!claimedJob.executionHistory) {
     claimedJob.executionHistory = [];
@@ -442,7 +448,7 @@ export async function claimNextJob(workerId, { currentTime } = {}) {
     job: {
       jobId: String(claimedJob._id),
       interviewId: String(claimedJob.interviewId),
-      candidateId: String(claimedJob.candidateId),
+      candidateId: authoritativeCandidateId ? String(authoritativeCandidateId) : "",
       meetUrl: claimedJob.meetLink,
       scheduledAt: claimedJob.scheduledAt,
       leaseDurationMs: leaseMs,
@@ -509,10 +515,13 @@ export async function validateJobPreflight(jobId, workerId, { currentTime } = {}
     }
   }
 
+  const authoritativeCandidateId = (interview && interview.candidateId) || job.candidateId;
   return {
     success: true,
     eligible: true,
     jobId: String(job._id),
+    interviewId: String(job.interviewId),
+    candidateId: authoritativeCandidateId ? String(authoritativeCandidateId) : "",
     scheduledAt: job.scheduledAt,
     backendTime: now.toISOString(),
     message: "Preflight checks passed. Job is eligible for launch.",

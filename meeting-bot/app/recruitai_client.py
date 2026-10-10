@@ -97,8 +97,8 @@ class RecruitAIClient:
             "requestId": req_id,
             "source": "google-meet-bot",
         }
-        if candidate_id:
-            payload["candidateId"] = candidate_id
+        if candidate_id and str(candidate_id).strip() not in ("null", "None", ""):
+            payload["candidateId"] = str(candidate_id).strip()
         if camera_on is not None:
             payload["cameraOn"] = camera_on
 
@@ -195,8 +195,8 @@ class RecruitAIClient:
             "X-Api-Secret": self.internal_secret,
         }
         params = {}
-        if candidate_id:
-            params["candidateId"] = candidate_id
+        if candidate_id and str(candidate_id).strip() not in ("null", "None", ""):
+            params["candidateId"] = str(candidate_id).strip()
 
         try:
             response = requests.get(
@@ -244,10 +244,12 @@ class RecruitAIClient:
             "Content-Type": "application/json",
             "X-Internal-Secret": self.internal_secret,
             "X-Api-Secret": self.internal_secret,
+            "X-Bot-Control-Secret": self.internal_secret,
+            "Authorization": f"Bearer {self.internal_secret}",
         }
-        payload = {}
-        if candidate_id:
-            payload["candidateId"] = candidate_id
+        payload: Dict[str, Any] = {}
+        if candidate_id and str(candidate_id).strip() not in ("null", "None", ""):
+            payload["candidateId"] = str(candidate_id).strip()
 
         logger.info(f"[RecruitAIClient] Notifying backend candidate joined for interview {interview_id}...")
         try:
@@ -267,7 +269,12 @@ class RecruitAIClient:
         if response.status_code == 401:
             raise PermissionError("Unauthorized: Backend rejected internal service secret.")
         elif response.status_code == 403:
-            raise PermissionError("Forbidden: Candidate mismatch.")
+            err_msg = "Candidate mismatch or session forbidden."
+            try:
+                err_msg = response.json().get("message", err_msg)
+            except Exception:
+                pass
+            raise PermissionError(f"Forbidden: {err_msg}")
         elif response.status_code == 404:
             raise FileNotFoundError(f"Interview {interview_id} not found.")
         elif not response.ok:

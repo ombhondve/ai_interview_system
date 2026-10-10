@@ -166,4 +166,37 @@ describe("requireInternalServiceSession unit tests", () => {
       message: expect.stringMatching(/already concluded or cancelled/i),
     });
   });
+
+  test("rejects candidate mismatch with HTTP 403 when candidateId differs from session", async () => {
+    AiInterview.findById = async () => ({
+      _id: "507f1f77bcf86cd799439011",
+      candidateId: "507f1f77bcf86cd799439012",
+      status: "SCHEDULED",
+    });
+    const req = { headers: { "x-internal-secret": "test-internal-secret-12345" } };
+    await expect(
+      requireInternalServiceSession(req, "507f1f77bcf86cd799439011", "mismatched-cand-999", { allowPreflight: true })
+    ).rejects.toMatchObject({
+      status: 403,
+      message: "Candidate does not match interview session.",
+    });
+  });
+
+  test("accepts matching candidateId on internal service session", async () => {
+    const mockDoc = {
+      _id: "507f1f77bcf86cd799439011",
+      candidateId: "507f1f77bcf86cd799439012",
+      status: "SCHEDULED",
+    };
+    AiInterview.findById = async () => mockDoc;
+    const req = { headers: { "x-internal-secret": "test-internal-secret-12345" } };
+    const doc = await requireInternalServiceSession(
+      req,
+      "507f1f77bcf86cd799439011",
+      "507f1f77bcf86cd799439012",
+      { allowPreflight: true }
+    );
+    expect(doc).toBe(mockDoc);
+    expect(String(doc.candidateId)).toBe("507f1f77bcf86cd799439012");
+  });
 });

@@ -465,7 +465,9 @@ class BotWorkerAgent:
         """
         job_id = job.get("jobId")
         interview_id = job.get("interviewId")
-        candidate_id = job.get("candidateId")
+        candidate_id = str(job.get("candidateId") or "").strip()
+        if candidate_id in ("null", "None"):
+            candidate_id = ""
         meet_url = job.get("meetUrl")
         scheduled_at_raw = job.get("scheduledAt")
         lease_ms = job.get("leaseDurationMs", self.config.lease_ms)
@@ -482,8 +484,8 @@ class BotWorkerAgent:
             self.report_job_failure(job_id, err_msg)
             return
 
-        if not interview_id or not candidate_id:
-            err_msg = "Job missing required interviewId or candidateId."
+        if not interview_id:
+            err_msg = "Job missing required interviewId."
             logger.error(err_msg)
             self.report_job_failure(job_id, err_msg)
             return
@@ -516,6 +518,20 @@ class BotWorkerAgent:
             else:
                 self.release_job(job_id, reason=reason)
 
+            self.status = "IDLE"
+            self.current_job_id = None
+            return
+
+        # Resolve authoritative candidateId from preflight check if present
+        if preflight and preflight.get("candidateId"):
+            resolved_cand = str(preflight["candidateId"]).strip()
+            if resolved_cand and resolved_cand not in ("null", "None"):
+                candidate_id = resolved_cand
+
+        if not candidate_id:
+            err_msg = "Job missing valid candidateId after preflight check."
+            logger.error(err_msg)
+            self.report_job_failure(job_id, err_msg)
             self.status = "IDLE"
             self.current_job_id = None
             return

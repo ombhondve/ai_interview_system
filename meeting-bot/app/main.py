@@ -361,10 +361,16 @@ async def run_cli():
         if args.interview_id:
             try:
                 logger.info(f"[BACKEND] Pre-verifying backend session access for {args.interview_id}...")
+                cand_param = args.candidate_id if args.candidate_id not in ("null", "None", "") else None
                 session_check = recruitai_client.get_interview_session(
-                    args.interview_id, candidate_id=args.candidate_id
+                    args.interview_id, candidate_id=cand_param
                 )
                 logger.info(f"[BACKEND] Verified session status: {session_check.get('status')} (phase: {session_check.get('phase')})")
+                if session_check.get("candidateId"):
+                    resolved_cand = str(session_check["candidateId"]).strip()
+                    if resolved_cand and resolved_cand not in ("null", "None") and resolved_cand != args.candidate_id:
+                        logger.info(f"[BACKEND] Synchronized authoritative candidateId: {resolved_cand}")
+                        args.candidate_id = resolved_cand
             except Exception as pre_backend_err:
                 logger.error(f"[BACKEND] Backend session pre-flight failed ({pre_backend_err}). Aborting meeting join to prevent unlinked interview.")
                 sys.exit(1)
@@ -451,23 +457,20 @@ async def run_cli():
                     sys.exit(0)
 
                 try:
-                    logger.info("[INTERVIEW] Transitioned to IN_PROGRESS")
+                    logger.info("[INTERVIEW] Signaling candidate presence to backend...")
+                    cand_param = args.candidate_id if args.candidate_id not in ("null", "None", "") else None
                     join_res = recruitai_client.notify_candidate_joined(
-                        args.interview_id, candidate_id=args.candidate_id
+                        args.interview_id, candidate_id=cand_param
                     )
                     first_question = join_res.get("firstQuestion")
+                    logger.info(f"[INTERVIEW] Backend successfully transitioned to IN_PROGRESS (started={join_res.get('started')}).")
                 except Exception as sess_err:
-                    logger.warning(
-                        f"[MeetingBot] Could not signal candidate presence ({sess_err}). "
-                        "Attempting fallback session fetch."
+                    logger.error(
+                        f"[MeetingBot] Candidate-presence notification failed on backend ({sess_err}). "
+                        "Backend did not transition to IN_PROGRESS. Aborting to prevent unlinked interview."
                     )
-                    try:
-                        session_info = recruitai_client.get_interview_session(
-                            args.interview_id, candidate_id=args.candidate_id
-                        )
-                        first_question = session_info.get("currentQuestion")
-                    except Exception:
-                        pass
+                    await bot_instance.stop()
+                    sys.exit(1)
 
                 if first_question:
                     logger.info(f"[AI] First question generated: '{first_question}'")

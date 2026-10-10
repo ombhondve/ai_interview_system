@@ -192,14 +192,23 @@ class AudioCaptureService:
                 loopback_devices = list(p.get_loopback_device_info_generator())
                 target_loopback = None
 
-                # Search key: configured device_name (e.g., "CABLE Input (VB-Audio Virtual Cable)")
+                # Search key: configured device_name (e.g., "Speaker (2- Realtek(R) Audio)")
                 search_name = (self.device_name or "").strip()
 
                 if search_name:
-                    logger.info(f"[AudioCapture] Resolving configured capture device: '{search_name}'")
-                    # Clean/normalize target name (remove [Loopback] if already present in config)
                     clean_target = search_name.replace("[Loopback]", "").replace("[loopback]", "").strip().lower()
+                    tts_output_dev = (getattr(settings, "kokoro_output_device", "") or "").replace("[Loopback]", "").replace("[loopback]", "").strip().lower()
 
+                    # Warn about potential acoustic feedback if capture device is pointed to TTS output
+                    if tts_output_dev and (clean_target in tts_output_dev or tts_output_dev in clean_target):
+                        logger.warning(
+                            f"[AudioCapture] POTENTIAL_AUDIO_FEEDBACK: Configured capture device '{search_name}' "
+                            f"matches the bot TTS output device ('{settings.kokoro_output_device}'). "
+                            "Capturing this device causes the bot to transcribe its own TTS audio! "
+                            "Ensure Meet speaker routing or candidate output is separated to prevent acoustic feedback."
+                        )
+
+                    logger.info(f"[AudioCapture] Resolving configured capture device: '{search_name}'")
                     for dev in loopback_devices:
                         dev_clean = dev["name"].replace("[Loopback]", "").replace("[loopback]", "").strip().lower()
                         # Match either cleaned device name or full substring
@@ -481,7 +490,25 @@ class AudioCaptureService:
                 in_speech = False
                 speech_start_time = None
                 last_speech_time = None
+                self._last_ai_speaking_time = time.monotonic()
+                while not self._audio_queue.empty():
+                    try:
+                        self._audio_queue.get_nowait()
+                    except queue.Empty:
+                        break
                 await asyncio.sleep(0.1)
+                continue
+
+            # Cooldown guard: discard residual echo chunks for 0.4s after AI finished speaking
+            if hasattr(self, "_last_ai_speaking_time") and (time.monotonic() - self._last_ai_speaking_time < 0.4):
+                pre_roll_buffer.clear()
+                utterance_frames.clear()
+                while not self._audio_queue.empty():
+                    try:
+                        self._audio_queue.get_nowait()
+                    except queue.Empty:
+                        break
+                await asyncio.sleep(0.05)
                 continue
 
             # Read all available chunks from queue
