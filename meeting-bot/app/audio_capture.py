@@ -211,6 +211,11 @@ class AudioCaptureService:
                     logger.info(f"[AudioCapture] Resolving configured capture device: '{search_name}'")
                     for dev in loopback_devices:
                         dev_clean = dev["name"].replace("[Loopback]", "").replace("[loopback]", "").strip().lower()
+                        # Strictly differentiate 16ch virtual cable from standard VB-Cable
+                        if "16ch" in clean_target and "16ch" not in dev_clean:
+                            continue
+                        if "16ch" not in clean_target and "16ch" in dev_clean:
+                            continue
                         # Match either cleaned device name or full substring
                         if clean_target in dev_clean or dev_clean in clean_target:
                             target_loopback = dev

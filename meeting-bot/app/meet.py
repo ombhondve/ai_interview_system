@@ -77,6 +77,12 @@ def score_device_match(target_label: str, candidate_label: str, device_type: str
         if target_is_cable and not cand_is_cable:
             return 0.0
 
+    # SAFETY CHECK 3: Differentiate 16ch virtual cable from standard VB-Cable
+    if "16ch" in target_raw and "16ch" not in candidate_raw:
+        return 0.0
+    if "16ch" not in target_raw and "16ch" in candidate_raw:
+        return 0.0
+
     norm_target = normalize_audio_label(target_label)
     norm_candidate = normalize_audio_label(candidate_label)
 
@@ -878,10 +884,10 @@ class MeetNavigator:
 
     async def get_join_action(self) -> Optional[str]:
         """
-        Check if 'Join now' or 'Ask to join' is visible on the pre-join page.
+        Check if 'Join now', 'Join anyway', or 'Ask to join' is visible on the pre-join page.
         Returns 'JOIN_NOW', 'ASK_TO_JOIN', or None.
         """
-        # 1. Direct join selectors
+        # 1. Direct join selectors (including 'Join anyway')
         join_now_selectors = [
             'button:has-text("Join now")',
             'span:has-text("Join now")',
@@ -889,6 +895,12 @@ class MeetNavigator:
             'button[aria-label*="Join now" i]',
             '[role="button"][aria-label*="Join now" i]',
             'button:text-is("Join now")',
+            'button:has-text("Join anyway")',
+            'span:has-text("Join anyway")',
+            'div[role="button"]:has-text("Join anyway")',
+            'button[aria-label*="Join anyway" i]',
+            '[role="button"][aria-label*="Join anyway" i]',
+            'button:text-is("Join anyway")',
             'button:has-text("Join")',
         ]
         for sel in join_now_selectors:
@@ -920,7 +932,7 @@ class MeetNavigator:
 
     async def click_join(self) -> Optional[str]:
         """
-        Identify and click 'Join now' or 'Ask to join'.
+        Identify and click 'Join now', 'Join anyway', or 'Ask to join'.
         Returns:
             'JOIN_NOW': Clicked direct join button
             'ASK_TO_JOIN': Clicked admission request button
@@ -928,7 +940,7 @@ class MeetNavigator:
         """
         logger.info("[MeetingBot] Inspecting pre-join join control...")
 
-        # 1. First priority: Check for direct "Join now"
+        # 1. First priority: Check for direct "Join now" or "Join anyway"
         join_now_selectors = [
             'button:has-text("Join now")',
             'span:has-text("Join now")',
@@ -936,16 +948,24 @@ class MeetNavigator:
             'button[aria-label*="Join now" i]',
             '[role="button"][aria-label*="Join now" i]',
             'button:text-is("Join now")',
+            # "Join anyway" selectors
+            'button:has-text("Join anyway")',
+            'span:has-text("Join anyway")',
+            'div[role="button"]:has-text("Join anyway")',
+            'button[aria-label*="Join anyway" i]',
+            '[role="button"][aria-label*="Join anyway" i]',
+            'button:text-is("Join anyway")',
             # Fallback for plain "Join" button if present
             'button:text-matches("^Join$", "i")',
             'div[role="button"]:text-matches("^Join$", "i")',
+            'button:has-text("Join")',
         ]
         for selector in join_now_selectors:
             locator = self.page.locator(selector)
             try:
                 if await locator.count() > 0 and await locator.first.is_visible():
                     await locator.first.click(timeout=5000)
-                    logger.info(f"[MeetingBot] Detected and clicked 'Join now' via: {selector}")
+                    logger.info(f"[MeetingBot] Detected and clicked join button via: {selector}")
                     return "JOIN_NOW"
             except Exception as e:
                 logger.debug(f"[MeetingBot] Join now selector {selector} note: {e}")

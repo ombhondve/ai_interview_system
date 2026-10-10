@@ -38,6 +38,36 @@ async def test_navigator_detects_join_now():
 
 
 @pytest.mark.asyncio
+async def test_navigator_detects_join_anyway():
+    page = MagicMock()
+    # Mock locator for 'Join anyway' to be visible
+    loc_join_anyway = AsyncMock()
+    loc_join_anyway.count.return_value = 1
+    loc_join_anyway.is_visible.return_value = True
+
+    loc_empty = AsyncMock()
+    loc_empty.count.return_value = 0
+    loc_empty.is_visible.return_value = False
+
+    def locator_side_effect(selector):
+        if "Join anyway" in selector:
+            return loc_join_anyway
+        return loc_empty
+
+    page.locator.side_effect = locator_side_effect
+
+    nav = MeetNavigator(page)
+    # Check get_join_action
+    action_type = await nav.get_join_action()
+    assert action_type == "JOIN_NOW"
+
+    # Check click_join
+    action = await nav.click_join()
+    assert action == "JOIN_NOW"
+    loc_join_anyway.first.click.assert_awaited()
+
+
+@pytest.mark.asyncio
 async def test_navigator_detects_ask_to_join():
     page = MagicMock()
     loc_ask = AsyncMock()
