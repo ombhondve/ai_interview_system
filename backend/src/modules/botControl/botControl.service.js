@@ -229,7 +229,13 @@ export async function syncEligibleInterviewJobs() {
 
   let query = AiInterview.find({
     status: { $in: ["SCHEDULED", "READY", "WAITING_FOR_CANDIDATE"] },
+    /* =========================================================================
+     * [STRICT SLOT TIMING FEATURE - TEMPORARILY COMMENTED OUT FOR TESTING]
+     * In production, only interviews within preparation window are synced.
+     * Uncomment the line below when ready for production slot timing enforcement.
+     * =========================================================================
     scheduledAt: { $lte: cutoffStart },
+     * ========================================================================= */
     meetLink: { $ne: null },
   });
 
@@ -302,11 +308,17 @@ export async function claimNextJob(workerId, { currentTime } = {}) {
     await syncEligibleInterviewJobs();
   }
 
-  // 2. Atomically find and claim the earliest scheduled QUEUED job whose scheduled start time has arrived
+  // 2. Atomically find and claim the earliest scheduled QUEUED job
   const claimedJob = await BotJob.findOneAndUpdate(
     {
       status: "QUEUED",
+      /* =======================================================================
+       * [STRICT SLOT TIMING FEATURE - TEMPORARILY COMMENTED OUT FOR TESTING]
+       * Strictly enforces that scheduled start time has arrived (scheduledAt <= now).
+       * Uncomment the line below when ready for production slot timing enforcement.
+       * =======================================================================
       scheduledAt: { $lte: now },
+       * ======================================================================= */
     },
     {
       $set: {
@@ -360,6 +372,11 @@ export async function claimNextJob(workerId, { currentTime } = {}) {
       };
     }
 
+    /* =======================================================================
+     * [STRICT SLOT TIMING FEATURE - TEMPORARILY COMMENTED OUT FOR TESTING]
+     * In production, resets job to QUEUED if scheduled time is in the future.
+     * Uncomment the block below when ready for production slot timing enforcement.
+     * =======================================================================
     if (interview.scheduledAt && new Date(interview.scheduledAt).getTime() > now.getTime()) {
       // Session was rescheduled into the future: reset job to QUEUED
       claimedJob.status = "QUEUED";
@@ -374,6 +391,7 @@ export async function claimNextJob(workerId, { currentTime } = {}) {
         message: "Interview scheduled time is in the future.",
       };
     }
+     * ======================================================================= */
 
     interview.botJobId = claimedJob._id;
     interview.assignedWorkerId = workerId;
@@ -450,6 +468,11 @@ export async function validateJobPreflight(jobId, workerId, { currentTime } = {}
     return { success: false, eligible: false, message: "Execution lease has expired." };
   }
 
+  /* =========================================================================
+   * [STRICT SLOT TIMING FEATURE - TEMPORARILY COMMENTED OUT FOR TESTING]
+   * In production, aborts preflight if scheduled start time has not arrived.
+   * Uncomment the block below when ready for production slot timing enforcement.
+   * =========================================================================
   if (new Date(job.scheduledAt).getTime() > now.getTime()) {
     return {
       success: false,
@@ -460,6 +483,7 @@ export async function validateJobPreflight(jobId, workerId, { currentTime } = {}
       message: `Scheduled start time (${job.scheduledAt.toISOString()}) has not arrived. Current backend time: ${now.toISOString()}`,
     };
   }
+   * ========================================================================= */
 
   const interview = await findInterviewSafely(job.interviewId);
   if (interview) {
@@ -557,11 +581,17 @@ export async function renewJobLease(jobId, workerId, { state = "RUNNING", curren
     throw err;
   }
 
+  /* =========================================================================
+   * [STRICT SLOT TIMING FEATURE - TEMPORARILY COMMENTED OUT FOR TESTING]
+   * In production, forbids lease renewal if scheduled start is in future.
+   * Uncomment the block below when ready for production slot timing enforcement.
+   * =========================================================================
   if (new Date(existingJob.scheduledAt).getTime() > now.getTime()) {
     const err = new Error("Forbidden: Scheduled start time has not arrived yet.");
     err.status = 400;
     throw err;
   }
+   * ========================================================================= */
 
   // 2. Check underlying interview status
   const interview = await findInterviewSafely(existingJob.interviewId);
@@ -583,7 +613,12 @@ export async function renewJobLease(jobId, workerId, { state = "RUNNING", curren
       _id: jobId,
       assignedWorkerId: workerId,
       status: { $in: ["CLAIMED", "RUNNING"] },
+      /* =====================================================================
+       * [STRICT SLOT TIMING FEATURE - TEMPORARILY COMMENTED OUT FOR TESTING]
+       * Uncomment the line below when ready for production slot timing enforcement.
+       * =====================================================================
       scheduledAt: { $lte: now },
+       * ===================================================================== */
     },
     {
       $set: {
