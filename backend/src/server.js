@@ -1,3 +1,4 @@
+import "./config/suppressWarnings.js";
 import "dotenv/config";
 import bcrypt from "bcrypt";
 

@@ -57,6 +57,29 @@ export async function handleClaimJob(req, res) {
   }
 }
 
+export async function handleJobPreflight(req, res) {
+  try {
+    const { jobId } = req.params;
+    const workerId = req.workerId || req.body?.workerId || req.query?.workerId;
+    const result = await botControlService.validateJobPreflight(jobId, workerId);
+    return res.status(200).json(result);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+export async function handleJobRelease(req, res) {
+  try {
+    const { jobId } = req.params;
+    const workerId = req.workerId || req.body?.workerId;
+    const { reason } = req.body || {};
+    const result = await botControlService.releaseJobClaim(jobId, workerId, { reason });
+    return res.status(200).json(result);
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
 export async function handleJobHeartbeat(req, res) {
   try {
     const { jobId } = req.params;

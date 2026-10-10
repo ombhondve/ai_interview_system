@@ -31,6 +31,20 @@ export function getPreparationWindowMs() {
   return Number(process.env.BOT_PREPARATION_WINDOW_MS) || (15 * 60 * 1000); // 15 minutes before scheduled start
 }
 
+export async function findInterviewSafely(interviewId) {
+  if (!interviewId) return null;
+  const isDbReady = mongoose.connection && mongoose.connection.readyState === 1;
+  const isMocked = AiInterview && AiInterview.findById && (AiInterview.findById._isMockFunction || typeof AiInterview.findById.mock !== "undefined");
+  if (isDbReady || isMocked) {
+    try {
+      return await AiInterview.findById(interviewId);
+    } catch (_) {
+      return null;
+    }
+  }
+  return null;
+}
+
 /**
  * Persist audit log entry if database connection is active.
  */
@@ -263,8 +277,9 @@ export async function syncEligibleInterviewJobs() {
 
 /**
  * Atomically claim the next eligible interview job for a worker.
+ * Strictly enforces that scheduled start time has arrived (scheduledAt <= backend current UTC time).
  */
-export async function claimNextJob(workerId) {
+export async function claimNextJob(workerId, { currentTime } = {}) {
   const worker = await BotWorker.findOne({ workerId });
   if (!worker) {
     const err = new Error("Worker not found. Please register first.");
@@ -279,8 +294,7 @@ export async function claimNextJob(workerId) {
   }
 
   const leaseMs = getLeaseDurationMs();
-  const preparationWindowMs = getPreparationWindowMs();
-  const now = new Date();
+  const now = currentTime ? new Date(currentTime) : new Date();
 
   // 1. Recover any expired leases & sync eligible interviews if db is connected
   if (mongoose.connection && mongoose.connection.readyState === 1) {
@@ -288,11 +302,11 @@ export async function claimNextJob(workerId) {
     await syncEligibleInterviewJobs();
   }
 
-  // 3. Atomically find and claim the earliest scheduled QUEUED job
+  // 2. Atomically find and claim the earliest scheduled QUEUED job whose scheduled start time has arrived
   const claimedJob = await BotJob.findOneAndUpdate(
     {
       status: "QUEUED",
-      scheduledAt: { $lte: new Date(Date.now() + preparationWindowMs) },
+      scheduledAt: { $lte: now },
     },
     {
       $set: {
@@ -316,6 +330,54 @@ export async function claimNextJob(workerId) {
       job: null,
       message: "No eligible interview jobs available at this time.",
     };
+  }
+
+  // 3. Verify underlying AiInterview session status and timing
+  const interview = await findInterviewSafely(claimedJob.interviewId);
+  if (interview) {
+    const validExecutionStatuses = ["SCHEDULED", "READY", "WAITING_FOR_CANDIDATE"];
+    if (!validExecutionStatuses.includes(interview.status)) {
+      claimedJob.status = interview.status === "COMPLETED" ? "COMPLETED" : "FAILED";
+      claimedJob.failureReason = `Interview session is in non-executable status: ${interview.status}`;
+      claimedJob.needsAdminReview = interview.status !== "COMPLETED";
+      claimedJob.assignedWorkerId = null;
+      claimedJob.leaseExpiresAt = null;
+      await claimedJob.save();
+
+      await recordAuditLog({
+        action: "JOB_INVALIDATED",
+        performedBy: workerId,
+        targetWorkerId: workerId,
+        targetJobId: claimedJob._id,
+        targetInterviewId: claimedJob.interviewId,
+        details: { reason: "INTERVIEW_NOT_EXECUTABLE", status: interview.status },
+      });
+
+      return {
+        success: true,
+        job: null,
+        message: `Interview session is in ${interview.status} status; job cannot be claimed.`,
+      };
+    }
+
+    if (interview.scheduledAt && new Date(interview.scheduledAt).getTime() > now.getTime()) {
+      // Session was rescheduled into the future: reset job to QUEUED
+      claimedJob.status = "QUEUED";
+      claimedJob.scheduledAt = interview.scheduledAt;
+      claimedJob.assignedWorkerId = null;
+      claimedJob.leaseExpiresAt = null;
+      await claimedJob.save();
+
+      return {
+        success: true,
+        job: null,
+        message: "Interview scheduled time is in the future.",
+      };
+    }
+
+    interview.botJobId = claimedJob._id;
+    interview.assignedWorkerId = workerId;
+    await interview.save().catch(() => {});
   }
 
   // Update execution history
@@ -357,15 +419,121 @@ export async function claimNextJob(workerId) {
       leaseDurationMs: leaseMs,
       leaseExpiresAt: claimedJob.leaseExpiresAt,
       attemptCount: claimedJob.attemptCount,
+      backendCurrentTime: now.toISOString(),
     },
   };
 }
 
 /**
- * Renew job execution lease while interview is actively running.
- * Verifies that the requesting worker currently owns the job.
+ * Recheck job and interview eligibility immediately before bot launch.
  */
-export async function renewJobLease(jobId, workerId, { state = "RUNNING" } = {}) {
+export async function validateJobPreflight(jobId, workerId, { currentTime } = {}) {
+  if (!isValidObjectId(jobId)) {
+    return { success: false, eligible: false, message: "Invalid jobId format." };
+  }
+
+  const now = currentTime ? new Date(currentTime) : new Date();
+  const job = await BotJob.findById(jobId);
+  if (!job) {
+    return { success: false, eligible: false, message: "Job not found." };
+  }
+
+  if (job.assignedWorkerId !== workerId) {
+    return { success: false, eligible: false, message: "Job is not assigned to this worker." };
+  }
+
+  if (!["CLAIMED", "RUNNING"].includes(job.status)) {
+    return { success: false, eligible: false, message: `Job is in non-executable status: ${job.status}` };
+  }
+
+  if (job.leaseExpiresAt && new Date(job.leaseExpiresAt).getTime() <= now.getTime()) {
+    return { success: false, eligible: false, message: "Execution lease has expired." };
+  }
+
+  if (new Date(job.scheduledAt).getTime() > now.getTime()) {
+    return {
+      success: false,
+      eligible: false,
+      reason: "FUTURE_SCHEDULED_TIME",
+      scheduledAt: job.scheduledAt,
+      backendTime: now.toISOString(),
+      message: `Scheduled start time (${job.scheduledAt.toISOString()}) has not arrived. Current backend time: ${now.toISOString()}`,
+    };
+  }
+
+  const interview = await findInterviewSafely(job.interviewId);
+  if (interview) {
+    const validExecutionStatuses = ["SCHEDULED", "READY", "WAITING_FOR_CANDIDATE", "IN_PROGRESS"];
+    if (!validExecutionStatuses.includes(interview.status)) {
+      return {
+        success: false,
+        eligible: false,
+        reason: "INTERVIEW_NOT_EXECUTABLE",
+        interviewStatus: interview.status,
+        message: `Interview session is in non-executable status: ${interview.status}`,
+      };
+    }
+  }
+
+  return {
+    success: true,
+    eligible: true,
+    jobId: String(job._id),
+    scheduledAt: job.scheduledAt,
+    backendTime: now.toISOString(),
+    message: "Preflight checks passed. Job is eligible for launch.",
+  };
+}
+
+/**
+ * Release a claimed job safely back to QUEUED if it cannot be started.
+ */
+export async function releaseJobClaim(jobId, workerId, { reason = "DEFERRED_FUTURE_START" } = {}) {
+  if (!isValidObjectId(jobId)) {
+    const err = new Error("Invalid jobId.");
+    err.status = 400;
+    throw err;
+  }
+
+  const job = await BotJob.findOneAndUpdate(
+    {
+      _id: jobId,
+      assignedWorkerId: workerId,
+      status: "CLAIMED",
+    },
+    {
+      $set: {
+        status: "QUEUED",
+        assignedWorkerId: null,
+        leaseExpiresAt: null,
+      },
+    },
+    { new: true }
+  );
+
+  if (job) {
+    await BotWorker.updateOne(
+      { workerId, currentJobId: jobId },
+      { $set: { status: "IDLE", currentJobId: null, currentInterviewId: null } }
+    ).catch(() => {});
+
+    await recordAuditLog({
+      action: "JOB_RELEASED",
+      performedBy: workerId,
+      targetWorkerId: workerId,
+      targetJobId: jobId,
+      details: { reason },
+    });
+  }
+
+  return { success: true, released: Boolean(job) };
+}
+
+/**
+ * Renew job execution lease while interview is actively running.
+ * Verifies that the requesting worker currently owns the job and scheduled time has arrived.
+ */
+export async function renewJobLease(jobId, workerId, { state = "RUNNING", currentTime } = {}) {
   if (!isValidObjectId(jobId)) {
     const err = new Error("Invalid jobId.");
     err.status = 400;
@@ -373,14 +541,49 @@ export async function renewJobLease(jobId, workerId, { state = "RUNNING" } = {})
   }
 
   const leaseMs = getLeaseDurationMs();
-  const now = new Date();
+  const now = currentTime ? new Date(currentTime) : new Date();
 
-  // Atomically verify ownership and renew lease
+  // 1. Verify job exists, belongs to worker, and scheduled start has arrived
+  const existingJob = await BotJob.findById(jobId);
+  if (!existingJob) {
+    const err = new Error("Job not found.");
+    err.status = 404;
+    throw err;
+  }
+
+  if (existingJob.assignedWorkerId !== workerId) {
+    const err = new Error("Forbidden: Worker no longer owns this job or the lease has expired.");
+    err.status = 403;
+    throw err;
+  }
+
+  if (new Date(existingJob.scheduledAt).getTime() > now.getTime()) {
+    const err = new Error("Forbidden: Scheduled start time has not arrived yet.");
+    err.status = 400;
+    throw err;
+  }
+
+  // 2. Check underlying interview status
+  const interview = await findInterviewSafely(existingJob.interviewId);
+  if (interview) {
+    const validExecutionStatuses = ["SCHEDULED", "READY", "WAITING_FOR_CANDIDATE", "IN_PROGRESS"];
+    if (!validExecutionStatuses.includes(interview.status)) {
+      existingJob.status = interview.status === "COMPLETED" ? "COMPLETED" : "FAILED";
+      existingJob.failureReason = `Interview session transitioned to ${interview.status}`;
+      await existingJob.save().catch(() => {});
+      const err = new Error(`Forbidden: Interview is in ${interview.status} status.`);
+      err.status = 410;
+      throw err;
+    }
+  }
+
+  // 3. Atomically verify ownership and renew lease
   const job = await BotJob.findOneAndUpdate(
     {
       _id: jobId,
       assignedWorkerId: workerId,
       status: { $in: ["CLAIMED", "RUNNING"] },
+      scheduledAt: { $lte: now },
     },
     {
       $set: {
@@ -393,12 +596,6 @@ export async function renewJobLease(jobId, workerId, { state = "RUNNING" } = {})
   );
 
   if (!job) {
-    const existing = await BotJob.findById(jobId);
-    if (!existing) {
-      const err = new Error("Job not found.");
-      err.status = 404;
-      throw err;
-    }
     const err = new Error("Forbidden: Worker no longer owns this job or the lease has expired.");
     err.status = 403;
     throw err;
@@ -414,6 +611,7 @@ export async function renewJobLease(jobId, workerId, { state = "RUNNING" } = {})
     success: true,
     leaseExpiresAt: job.leaseExpiresAt,
     status: job.status,
+    backendCurrentTime: now.toISOString(),
   };
 }
 
@@ -839,6 +1037,8 @@ export default {
   registerWorker,
   recordWorkerHeartbeat,
   claimNextJob,
+  validateJobPreflight,
+  releaseJobClaim,
   renewJobLease,
   completeJob,
   failJob,

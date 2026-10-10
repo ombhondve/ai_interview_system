@@ -13,6 +13,8 @@ import {
   handleRegisterWorker,
   handleWorkerHeartbeat,
   handleClaimJob,
+  handleJobPreflight,
+  handleJobRelease,
   handleJobHeartbeat,
   handleJobComplete,
   handleJobFail,
@@ -28,6 +30,18 @@ const router = express.Router();
 // WORKER CONTROL ENDPOINTS
 // ==============================================================================
 
+// Method Not Allowed handler for non-POST worker registration
+router.all("/worker/register", (req, res, next) => {
+  if (req.method !== "POST") {
+    return res.status(405).json({
+      success: false,
+      message: `Method ${req.method} Not Allowed. Worker registration requires HTTP POST with valid worker credentials.`,
+      allowedMethods: ["POST"],
+    });
+  }
+  next();
+});
+
 // Worker registration
 router.post("/worker/register", limitRegistration, requireWorkerRegistrationAuth, handleRegisterWorker);
 
@@ -40,6 +54,13 @@ router.post("/worker/claim", limitClaim, requireWorkerAuth, handleClaimJob);
 
 // Active job execution lease renewal
 router.post("/worker/jobs/:jobId/heartbeat", requireWorkerAuth, handleJobHeartbeat);
+
+// Job preflight eligibility recheck immediately before launch
+router.post("/worker/jobs/:jobId/preflight", requireWorkerAuth, handleJobPreflight);
+router.get("/worker/jobs/:jobId/preflight", requireWorkerAuth, handleJobPreflight);
+
+// Worker release/defer claimed job
+router.post("/worker/jobs/:jobId/release", requireWorkerAuth, handleJobRelease);
 
 // Job completion notification
 router.post("/worker/jobs/:jobId/complete", requireWorkerAuth, handleJobComplete);

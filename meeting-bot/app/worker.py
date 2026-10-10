@@ -40,6 +40,28 @@ from app.meet import validate_meet_url
 class BotWorkerConfig:
     """Worker configuration loaded from environment variables with safe defaults."""
 
+    @staticmethod
+    def normalize_api_url(raw_url: str) -> str:
+        """
+        Normalize the bot control API base URL.
+        Accepts:
+          - Base domain: https://example.vercel.app -> https://example.vercel.app/api/bot-control
+          - API root: https://example.vercel.app/api -> https://example.vercel.app/api/bot-control
+          - Full path: https://example.vercel.app/api/bot-control -> https://example.vercel.app/api/bot-control
+          - Localhost: http://localhost:5000 -> http://localhost:5000/api/bot-control
+        """
+        if not raw_url:
+            return "http://localhost:5000/api/bot-control"
+
+        cleaned = raw_url.strip().rstrip("/")
+        if cleaned.endswith("/api/bot-control"):
+            return cleaned
+        if cleaned.endswith("/api"):
+            return f"{cleaned}/bot-control"
+        if cleaned.endswith("/bot-control"):
+            return cleaned
+        return f"{cleaned}/api/bot-control"
+
     def __init__(
         self,
         api_url: Optional[str] = None,
@@ -54,7 +76,7 @@ class BotWorkerConfig:
             or os.getenv("BOT_CONTROL_API_URL")
             or f"{os.getenv('RECRUITAI_API_URL', 'http://localhost:5000').rstrip('/')}/api/bot-control"
         )
-        self.api_url = raw_api_url.rstrip("/")
+        self.api_url = self.normalize_api_url(raw_api_url)
 
         self.api_secret = (
             api_secret
@@ -122,6 +144,7 @@ class BotWorkerAgent:
         """
         Execute an HTTP request with exponential backoff and jitter.
         Never logs sensitive authorization tokens or secrets.
+        Returns a dictionary response containing at minimum success, status_code, and message.
         """
         url = f"{self.config.api_url}{path}"
         headers = {
@@ -135,6 +158,8 @@ class BotWorkerAgent:
         else:
             headers["Authorization"] = f"Bearer {self.worker_token}"
             headers["X-Worker-Token"] = self.worker_token
+
+        last_error_info: Optional[Dict[str, Any]] = None
 
         for attempt in range(max_retries):
             try:
@@ -155,15 +180,26 @@ class BotWorkerAgent:
                         headers["X-Worker-Token"] = self.worker_token
                         continue
 
+                # Parse JSON if possible
+                body: Dict[str, Any] = {}
+                try:
+                    body = response.json()
+                except Exception:
+                    # Non-JSON responses (HTML 404/500 from CDN or plain text)
+                    snippet = response.text[:120].strip().replace("\n", " ") if response.text else ""
+                    body = {
+                        "success": False,
+                        "status_code": response.status_code,
+                        "message": f"HTTP {response.status_code} ({response.reason or 'Error'}): {snippet or 'Non-JSON response'}",
+                    }
+
+                body.setdefault("status_code", response.status_code)
+                body.setdefault("url", url)
+
                 if response.status_code in (200, 201):
-                    return response.json()
+                    return body
 
                 if response.status_code == 403:
-                    body = {}
-                    try:
-                        body = response.json()
-                    except Exception:
-                        pass
                     msg = body.get("message", "Forbidden")
                     if "disabled" in msg.lower() or "paused" in msg.lower():
                         self.enabled = False
@@ -177,23 +213,37 @@ class BotWorkerAgent:
                         f"Temporary backend error ({response.status_code}). "
                         f"Retrying in attempt {attempt + 1}/{max_retries}..."
                     )
+                    last_error_info = body
                 else:
-                    try:
-                        return response.json()
-                    except Exception:
-                        return {"success": False, "status_code": response.status_code}
+                    return body
 
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as net_err:
-                logger.warning(f"Network error communicating with backend ({net_err.__class__.__name__}). Retrying...")
+                err_type = net_err.__class__.__name__
+                logger.warning(f"Network error communicating with backend ({err_type}). Retrying {attempt + 1}/{max_retries}...")
+                last_error_info = {
+                    "success": False,
+                    "status_code": 0,
+                    "message": f"Network error ({err_type}) connecting to {url}",
+                    "url": url,
+                }
+            except Exception as unk_err:
+                logger.warning(f"Unexpected request error: {unk_err.__class__.__name__}")
+                last_error_info = {
+                    "success": False,
+                    "status_code": 0,
+                    "message": f"Unexpected error: {unk_err.__class__.__name__}",
+                    "url": url,
+                }
 
             # Exponential backoff with jitter
             backoff = (2 ** attempt) + random.uniform(0.5, 1.5)
             time.sleep(backoff)
 
-        return None
+        return last_error_info
 
     def register(self) -> bool:
         """Register the worker with the central backend."""
+        target_endpoint = f"{self.config.api_url}/worker/register"
         logger.info(f"Registering worker '{self.config.worker_id}' with central API at {self.config.api_url}...")
         payload = {
             "workerId": self.config.worker_id,
@@ -207,21 +257,36 @@ class BotWorkerAgent:
             path="/worker/register",
             payload=payload,
             use_master_secret=True,
-            max_retries=4,
+            max_retries=3,
         )
 
         if res and res.get("success"):
             self.worker_token = res.get("workerToken")
             self.enabled = res.get("enabled", True)
+            if res.get("pollIntervalMs"):
+                self.config.poll_seconds = max(5, int(res["pollIntervalMs"] / 1000))
+            if res.get("heartbeatIntervalMs"):
+                self.config.heartbeat_seconds = max(5, int(res["heartbeatIntervalMs"] / 1000))
+            if res.get("leaseDurationMs"):
+                self.config.lease_ms = int(res["leaseDurationMs"])
+
             if not self.enabled:
                 self.status = "PAUSED"
                 logger.warning("Worker is currently marked PAUSED/DISABLED in central backend.")
             else:
                 self.status = "IDLE"
-                logger.info(f"Worker '{self.config.worker_id}' registered successfully. Enabled: {self.enabled}")
+                logger.info(
+                    f"Worker '{self.config.worker_id}' registered successfully. "
+                    f"Enabled: {self.enabled}, PollInterval: {self.config.poll_seconds}s"
+                )
             return True
 
-        logger.error(f"Worker registration failed: {res.get('message') if res else 'No response from backend'}")
+        status_code = res.get("status_code", "Unknown") if res else "No response"
+        error_msg = res.get("message") if res else "Connection timed out or backend unreachable"
+        logger.error(
+            f"Worker registration failed [HTTP {status_code}]: {error_msg} "
+            f"(Target: {target_endpoint})"
+        )
         return False
 
     def send_heartbeat(self) -> bool:
@@ -271,6 +336,33 @@ class BotWorkerAgent:
             return res.get("job")
 
         return None
+
+    def verify_job_preflight(self, job_id: str) -> Optional[Dict[str, Any]]:
+        """Verify job and interview eligibility with central backend before launching bot."""
+        payload = {
+            "workerId": self.config.worker_id,
+        }
+        res = self._safe_request(
+            method="POST",
+            path=f"/worker/jobs/{job_id}/preflight",
+            payload=payload,
+            max_retries=2,
+        )
+        return res
+
+    def release_job(self, job_id: str, reason: str = "DEFERRED_FUTURE_START") -> bool:
+        """Release claimed job back to queue safely if it cannot be started."""
+        payload = {
+            "workerId": self.config.worker_id,
+            "reason": reason,
+        }
+        res = self._safe_request(
+            method="POST",
+            path=f"/worker/jobs/{job_id}/release",
+            payload=payload,
+            max_retries=2,
+        )
+        return bool(res and res.get("success"))
 
     def renew_job_lease(self, job_id: str) -> bool:
         """Renew the execution lease while the interview process is running."""
@@ -341,15 +433,19 @@ class BotWorkerAgent:
     def execute_job(self, job: Dict[str, Any]) -> None:
         """
         Validate and execute an assigned interview job using the existing Python engine.
-        Uses subprocess argument arrays without untrusted string concatenation.
+        Re-verifies scheduled start time, lease ownership, and interview status before launch.
         """
         job_id = job.get("jobId")
         interview_id = job.get("interviewId")
         candidate_id = job.get("candidateId")
         meet_url = job.get("meetUrl")
+        scheduled_at_raw = job.get("scheduledAt")
         lease_ms = job.get("leaseDurationMs", self.config.lease_ms)
 
-        logger.info(f"Received job assignment: jobId={job_id}, interviewId={interview_id}")
+        logger.info(
+            f"Received job assignment: jobId={job_id}, interviewId={interview_id}, "
+            f"scheduledAt={scheduled_at_raw}"
+        )
 
         # 1. Validate Google Meet URL
         if not meet_url or not validate_meet_url(meet_url):
@@ -364,13 +460,47 @@ class BotWorkerAgent:
             self.report_job_failure(job_id, err_msg)
             return
 
+        if not scheduled_at_raw:
+            err_msg = "Job rejected: missing scheduledAt timestamp."
+            logger.error(err_msg)
+            self.report_job_failure(job_id, err_msg)
+            return
+
+        # 2. Strict Preflight Recheck before launching subprocess
+        logger.info(f"Performing preflight eligibility recheck for job {job_id} before launch...")
+        preflight = self.verify_job_preflight(job_id)
+        if not preflight or not preflight.get("eligible"):
+            reason = preflight.get("reason") if preflight else "PREFLIGHT_FAILED"
+            msg = preflight.get("message") if preflight else "Backend preflight check failed or timed out"
+            logger.warning(f"Aborting launch for job {job_id}: {msg} (Reason: {reason})")
+
+            if reason == "FUTURE_SCHEDULED_TIME":
+                logger.info(f"Scheduled start time has not arrived. Deferring and releasing job {job_id} back to queue.")
+                self.release_job(job_id, reason="FUTURE_SCHEDULED_TIME")
+            elif reason in ("INTERVIEW_NOT_EXECUTABLE", "CANCELLED_OR_INVALID"):
+                logger.warning(f"Interview is in non-executable status ({reason}). Marking job failed.")
+                self.report_job_failure(job_id, f"Preflight rejected: {msg}")
+            else:
+                self.release_job(job_id, reason=reason)
+
+            self.status = "IDLE"
+            self.current_job_id = None
+            return
+
+        # 3. Confirm / renew initial lease before launching subprocess
+        if not self.renew_job_lease(job_id):
+            logger.error(f"Cannot start job {job_id}: initial lease renewal rejected by backend.")
+            self.status = "IDLE"
+            self.current_job_id = None
+            return
+
         self.status = "BUSY"
         self.current_job_id = job_id
 
-        # 2. Start lease renewal in background
+        # 4. Start lease renewal in background
         self._start_lease_renewal(job_id, lease_ms)
 
-        # 3. Build subprocess command array
+        # 5. Build subprocess command array
         cmd = [
             sys.executable,
             "-m",
@@ -417,11 +547,10 @@ class BotWorkerAgent:
             exit_code = self.current_process.returncode
             logger.info(f"Interview bot process finished with exit code: {exit_code}")
 
-            # 4. Stop lease renewal
+            # 6. Stop lease renewal
             self._stop_lease_renewal()
 
-            # 5. Report completion to central backend
-            # Note: Central backend will verify MongoDB interview status!
+            # 7. Report completion to central backend
             self.report_job_completion(job_id, exit_code, f"Process exited with code {exit_code}")
 
         except Exception as exc:
@@ -447,7 +576,7 @@ class BotWorkerAgent:
         self._heartbeat_thread.start()
 
     def run_polling_loop(self, once: bool = False) -> None:
-        """Main worker loop: registers, heartbeats, and polls for jobs."""
+        """Main worker loop: registers, heartbeats, and polls for jobs at strict 10s intervals."""
         logger.info(f"Starting BotWorkerAgent (workerId={self.config.worker_id})...")
 
         # Initial registration with retry
@@ -455,10 +584,11 @@ class BotWorkerAgent:
         while not registered and not self._stop_event.is_set():
             registered = self.register()
             if not registered:
+                if once:
+                    logger.error("Registration failed in --poll-once mode. Exiting without retry.")
+                    return
                 logger.warning(f"Registration failed. Retrying in {self.config.poll_seconds}s...")
                 time.sleep(self.config.poll_seconds)
-                if once:
-                    break
 
         if not registered:
             logger.error("Could not register with central backend. Exiting.")
@@ -467,13 +597,17 @@ class BotWorkerAgent:
         self.running = True
         self._start_heartbeat_loop()
 
-        logger.info(f"Worker '{self.config.worker_id}' is active and polling for jobs every {self.config.poll_seconds}s.")
+        target_interval = float(self.config.poll_seconds)
+        logger.info(f"Worker '{self.config.worker_id}' is active and polling for jobs every {target_interval}s.")
 
         try:
             while not self._stop_event.is_set():
+                poll_start_time = time.monotonic()
+
                 if not self.enabled:
                     logger.debug("Worker is paused by admin. Waiting...")
-                    time.sleep(self.config.poll_seconds)
+                    elapsed = time.monotonic() - poll_start_time
+                    self._stop_event.wait(max(0.5, target_interval - elapsed))
                     if once:
                         break
                     continue
@@ -485,11 +619,16 @@ class BotWorkerAgent:
                         if once:
                             break
                         continue
+                    elif once:
+                        logger.info("No eligible jobs found on central backend queue during --poll-once check.")
+                        break
 
                 if once:
                     break
 
-                time.sleep(self.config.poll_seconds)
+                elapsed = time.monotonic() - poll_start_time
+                sleep_time = max(0.5, target_interval - elapsed)
+                self._stop_event.wait(sleep_time)
 
         except (KeyboardInterrupt, SystemExit):
             logger.info("Shutdown requested.")

@@ -1,3 +1,4 @@
+import "./config/suppressWarnings.js";
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -112,23 +113,34 @@ app.use(cookieParser);
 // PASSPORT / SESSION INITIALIZATION
 // =====================================================
 
-// Session configuration
-app.use(
-  session({
-    secret: process.env.JWT_SECRET || "your-session-secret",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      secure: process.env.NODE_ENV === "production",
-      httpOnly: true,
-      maxAge: 8 * 60 * 60 * 1000, // 8 hours
-    },
-  })
-);
+// Session configuration (bypassed for stateless machine-to-machine bot routes)
+const sessionMiddleware = session({
+  secret: process.env.JWT_SECRET || "your-session-secret",
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === "production",
+    httpOnly: true,
+    maxAge: 8 * 60 * 60 * 1000, // 8 hours
+  },
+});
+
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/bot-control")) {
+    return next();
+  }
+  sessionMiddleware(req, res, next);
+});
 
 // Initialize passport
 app.use(passport.initialize());
-app.use(passport.session());
+const passportSessionMiddleware = passport.session();
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/bot-control")) {
+    return next();
+  }
+  passportSessionMiddleware(req, res, next);
+});
 
 // Initialize Google OAuth
 initializeGoogleOAuth();

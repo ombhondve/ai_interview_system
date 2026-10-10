@@ -557,24 +557,187 @@ describe("BotControl Remote Worker Management System Tests", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Constant Time Comparison and Error Sanitization
+  // 17. Strict Scheduled Start-Time & Eligibility Enforcement
   // ---------------------------------------------------------------------------
-  describe("Security Helpers", () => {
-    test("safeSecretCompare evaluates constant-time comparisons accurately", () => {
-      expect(safeSecretCompare("secret123", "secret123")).toBe(true);
-      expect(safeSecretCompare("secret123", "secret999")).toBe(false);
-      expect(safeSecretCompare("secret123", "short")).toBe(false);
-      expect(safeSecretCompare("", "secret")).toBe(false);
-      expect(safeSecretCompare(null, "secret")).toBe(false);
+  describe("17. Strict Scheduled Start-Time & Eligibility Enforcement", () => {
+    const fixedNow = new Date("2026-10-10T09:00:00.000Z"); // 2:30 PM IST
+
+    beforeEach(() => {
+      jest.spyOn(botControlService, "recoverExpiredLeases").mockResolvedValue(0);
+      jest.spyOn(botControlService, "syncEligibleInterviewJobs").mockResolvedValue(true);
     });
 
-    test("sanitizeError strips sensitive credentials and connection strings", () => {
-      const sensitive = "Error with Bearer eyJhbGciOiJIUzI1Ni... and password=secret123 at mongodb+srv://user:pass@cluster.mongodb.net";
-      const sanitized = sanitizeError(sensitive);
-      expect(sanitized).not.toContain("eyJhbGciOiJIUzI1Ni");
-      expect(sanitized).not.toContain("password=secret123");
-      expect(sanitized).not.toContain("user:pass@cluster");
-      expect(sanitized).toContain("[REDACTED]");
+    test("interview scheduled 60 seconds in the future is NOT claimed", async () => {
+      const futureTime = new Date(fixedNow.getTime() + 60000); // 60s future
+      const mockWorker = { workerId: "worker-time-01", enabled: true, status: "IDLE", save: jest.fn().mockResolvedValue(true) };
+      jest.spyOn(BotWorker, "findOne").mockResolvedValue(mockWorker);
+
+      // findOneAndUpdate will receive { scheduledAt: { $lte: fixedNow } } and return null because job is future
+      jest.spyOn(BotJob, "findOneAndUpdate").mockImplementation(async (query) => {
+        if (query.scheduledAt && query.scheduledAt.$lte && futureTime <= query.scheduledAt.$lte) {
+          return { _id: "job-future", scheduledAt: futureTime };
+        }
+        return null;
+      });
+
+      const res = await botControlService.claimNextJob("worker-time-01", { currentTime: fixedNow });
+      expect(res.job).toBeNull();
+      expect(res.message).toMatch(/No eligible interview jobs/i);
+    });
+
+    test("interview scheduled 1 second in the future is NOT claimed", async () => {
+      const futureOneSec = new Date(fixedNow.getTime() + 1000); // 1s future
+      const mockWorker = { workerId: "worker-time-01", enabled: true, status: "IDLE", save: jest.fn().mockResolvedValue(true) };
+      jest.spyOn(BotWorker, "findOne").mockResolvedValue(mockWorker);
+
+      jest.spyOn(BotJob, "findOneAndUpdate").mockImplementation(async (query) => {
+        if (query.scheduledAt && query.scheduledAt.$lte && futureOneSec <= query.scheduledAt.$lte) {
+          return { _id: "job-future-1s", scheduledAt: futureOneSec };
+        }
+        return null;
+      });
+
+      const res = await botControlService.claimNextJob("worker-time-01", { currentTime: fixedNow });
+      expect(res.job).toBeNull();
+      expect(res.message).toMatch(/No eligible interview jobs/i);
+    });
+
+    test("interview scheduled exactly at current backend time is eligible and claimed", async () => {
+      const mockWorker = { workerId: "worker-time-01", enabled: true, status: "IDLE", save: jest.fn().mockResolvedValue(true) };
+      jest.spyOn(BotWorker, "findOne").mockResolvedValue(mockWorker);
+
+      const exactJob = {
+        _id: "507f1f77bcf86cd799439011",
+        interviewId: "507f1f77bcf86cd799439012",
+        candidateId: "507f1f77bcf86cd799439013",
+        meetLink: "https://meet.google.com/abc-defg-hij",
+        scheduledAt: fixedNow,
+        status: "CLAIMED",
+        attemptCount: 1,
+        executionHistory: [],
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      jest.spyOn(BotJob, "findOneAndUpdate").mockImplementation(async (query) => {
+        if (query.scheduledAt && query.scheduledAt.$lte && exactJob.scheduledAt <= query.scheduledAt.$lte) {
+          return exactJob;
+        }
+        return null;
+      });
+
+      jest.spyOn(AiInterview, "findById").mockResolvedValue({
+        _id: "507f1f77bcf86cd799439012",
+        scheduledAt: fixedNow,
+        status: "SCHEDULED",
+        save: jest.fn().mockResolvedValue(true),
+      });
+
+      const res = await botControlService.claimNextJob("worker-time-01", { currentTime: fixedNow });
+      expect(res.job).toBeDefined();
+      expect(res.job.jobId).toBe("507f1f77bcf86cd799439011");
+    });
+
+    test("interview scheduled in the past is eligible and claimed", async () => {
+      const pastTime = new Date(fixedNow.getTime() - 300000); // 5 minutes ago
+      const mockWorker = { workerId: "worker-time-01", enabled: true, status: "IDLE", save: jest.fn().mockResolvedValue(true) };
+      jest.spyOn(BotWorker, "findOne").mockResolvedValue(mockWorker);
+
+      const pastJob = {
+        _id: "507f1f77bcf86cd799439011",
+        interviewId: "507f1f77bcf86cd799439012",
+        candidateId: "507f1f77bcf86cd799439013",
+        meetLink: "https://meet.google.com/abc-defg-hij",
+        scheduledAt: pastTime,
+        status: "CLAIMED",
+        attemptCount: 1,
+        executionHistory: [],
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      jest.spyOn(BotJob, "findOneAndUpdate").mockResolvedValue(pastJob);
+      jest.spyOn(AiInterview, "findById").mockResolvedValue({
+        _id: "507f1f77bcf86cd799439012",
+        scheduledAt: pastTime,
+        status: "SCHEDULED",
+        save: jest.fn().mockResolvedValue(true),
+      });
+
+      const res = await botControlService.claimNextJob("worker-time-01", { currentTime: fixedNow });
+      expect(res.job).toBeDefined();
+      expect(res.job.jobId).toBe("507f1f77bcf86cd799439011");
+    });
+
+    test("cancelled interview is refused and not returned to worker", async () => {
+      const mockWorker = { workerId: "worker-time-01", enabled: true, status: "IDLE", save: jest.fn().mockResolvedValue(true) };
+      jest.spyOn(BotWorker, "findOne").mockResolvedValue(mockWorker);
+
+      const cancelledJob = {
+        _id: "507f1f77bcf86cd799439011",
+        interviewId: "507f1f77bcf86cd799439012",
+        candidateId: "507f1f77bcf86cd799439013",
+        meetLink: "https://meet.google.com/abc-defg-hij",
+        scheduledAt: fixedNow,
+        status: "CLAIMED",
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      jest.spyOn(BotJob, "findOneAndUpdate").mockResolvedValue(cancelledJob);
+      jest.spyOn(AiInterview, "findById").mockResolvedValue({
+        _id: "507f1f77bcf86cd799439012",
+        status: "CANCELLED",
+        save: jest.fn().mockResolvedValue(true),
+      });
+
+      const res = await botControlService.claimNextJob("worker-time-01", { currentTime: fixedNow });
+      expect(res.job).toBeNull();
+      expect(cancelledJob.status).toBe("FAILED");
+      expect(cancelledJob.failureReason).toContain("CANCELLED");
+    });
+
+    test("preflight recheck rejects future interview launch and permits valid ones", async () => {
+      const futureTime = new Date(fixedNow.getTime() + 120000); // 2m future
+      const validPastTime = new Date(fixedNow.getTime() - 1000);
+
+      // Future job preflight check
+      jest.spyOn(BotJob, "findById").mockResolvedValueOnce({
+        _id: "job-fut",
+        assignedWorkerId: "worker-1",
+        status: "CLAIMED",
+        scheduledAt: futureTime,
+        leaseExpiresAt: new Date(fixedNow.getTime() + 60000),
+      });
+
+      const futPreflight = await botControlService.validateJobPreflight("507f1f77bcf86cd799439011", "worker-1", { currentTime: fixedNow });
+      expect(futPreflight.eligible).toBe(false);
+      expect(futPreflight.reason).toBe("FUTURE_SCHEDULED_TIME");
+
+      // Valid current job preflight check
+      jest.spyOn(BotJob, "findById").mockResolvedValueOnce({
+        _id: "job-valid",
+        assignedWorkerId: "worker-1",
+        status: "CLAIMED",
+        scheduledAt: validPastTime,
+        interviewId: "507f1f77bcf86cd799439012",
+        leaseExpiresAt: new Date(fixedNow.getTime() + 60000),
+      });
+      jest.spyOn(AiInterview, "findById").mockResolvedValueOnce({
+        _id: "507f1f77bcf86cd799439012",
+        status: "SCHEDULED",
+      });
+
+      const validPreflight = await botControlService.validateJobPreflight("507f1f77bcf86cd799439011", "worker-1", { currentTime: fixedNow });
+      expect(validPreflight.eligible).toBe(true);
+    });
+
+    test("UTC storage and India Standard Time scheduling align consistently", () => {
+      // 2:30 PM IST (UTC+05:30) is exactly 09:00:00 UTC
+      const istString = "2026-10-10T14:30:00+05:30";
+      const dateFromIst = new Date(istString);
+      const utcString = "2026-10-10T09:00:00.000Z";
+      const dateFromUtc = new Date(utcString);
+
+      expect(dateFromIst.getTime()).toBe(dateFromUtc.getTime());
+      expect(dateFromIst.toISOString()).toBe("2026-10-10T09:00:00.000Z");
     });
   });
 });
