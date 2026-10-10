@@ -17,6 +17,7 @@ import calendarRoutes from "./modules/calendar/calendar.routes.js";
 import googleCalendarOAuthRoutes from "./modules/calendar/googleCalendar.oauth.routes.js";
 import interviewSessionRoutes from "./modules/interview/interview.routes.js";
 import interviewVoiceRoutes from "./modules/interview/interview.voice.routes.js";
+import botControlRoutes from "./modules/botControl/botControl.routes.js";
 import cookieParser from "./middleware/cookieParser.middleware.js";
 import { initializeGoogleOAuth } from "./config/googleOAuth.js";
 import connectDatabase from "./config/database.js";
@@ -335,6 +336,9 @@ app.use(
 // AI interview sessions, transcripts, reports, and human admin decisions.
 app.use("/api/ai-interviews", interviewSessionRoutes);
 app.use("/api/ai-interviews", express.raw({ type: "audio/*", limit: "8mb" }), interviewVoiceRoutes);
+
+// Distributed bot worker management and remote interview queue
+app.use("/api/bot-control", botControlRoutes);
 
 // =====================================================
 // VERIFICATION

@@ -42,6 +42,8 @@ const aiInterviewSchema = new mongoose.Schema({
   projectId: { type: mongoose.Schema.Types.ObjectId, ref: "Project", default: null },
   scheduledAt: { type: Date, required: true }, meetLink: { type: String, trim: true, default: null }, calendarEventId: { type: String, trim: true, default: null }, calendarAdminId: { type: String, trim: true, default: null }, conferenceId: { type: String, trim: true, default: null },
   status: { type: String, enum: INTERVIEW_STATUSES, default: "SCHEDULED", index: true },
+  botJobId: { type: mongoose.Schema.Types.ObjectId, ref: "BotJob", default: null },
+  assignedWorkerId: { type: String, trim: true, default: null },
   aiSessionId: { type: String, trim: true, default: null },
   candidateJoinedAt: { type: Date, default: null },
   durationMinutes: { type: Number, default: 30 },
