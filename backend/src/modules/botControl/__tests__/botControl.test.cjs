@@ -559,11 +559,6 @@ describe("BotControl Remote Worker Management System Tests", () => {
   // ---------------------------------------------------------------------------
   // 17. Strict Scheduled Start-Time & Eligibility Enforcement
   // ---------------------------------------------------------------------------
-  /* ===========================================================================
-   * [STRICT SLOT TIMING FEATURE - TEMPORARILY COMMENTED OUT FOR TESTING]
-   * The test suite below asserts strict scheduled start-time slot enforcement.
-   * Uncomment this describe block when strict slot timing is enabled for production.
-   * ===========================================================================
   describe("17. Strict Scheduled Start-Time & Eligibility Enforcement", () => {
     const fixedNow = new Date("2026-10-10T09:00:00.000Z"); // 2:30 PM IST
 
@@ -745,5 +740,4 @@ describe("BotControl Remote Worker Management System Tests", () => {
       expect(dateFromIst.toISOString()).toBe("2026-10-10T09:00:00.000Z");
     });
   });
-   * =========================================================================== */
 });

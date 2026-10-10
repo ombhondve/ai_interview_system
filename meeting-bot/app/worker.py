@@ -460,17 +460,11 @@ class BotWorkerAgent:
             self.report_job_failure(job_id, err_msg)
             return
 
-        # =====================================================================
-        # [STRICT SLOT TIMING FEATURE - TEMPORARILY COMMENTED OUT FOR TESTING]
-        # In production, rejects jobs that lack a scheduledAt timestamp.
-        # Uncomment the block below when ready for production slot timing enforcement.
-        # =====================================================================
-        # if not scheduled_at_raw:
-        #     err_msg = "Job rejected: missing scheduledAt timestamp."
-        #     logger.error(err_msg)
-        #     self.report_job_failure(job_id, err_msg)
-        #     return
-        # =====================================================================
+        if not scheduled_at_raw:
+            err_msg = "Job rejected: missing scheduledAt timestamp."
+            logger.error(err_msg)
+            self.report_job_failure(job_id, err_msg)
+            return
 
         # 2. Strict Preflight Recheck before launching subprocess
         logger.info(f"Performing preflight eligibility recheck for job {job_id} before launch...")

@@ -333,29 +333,23 @@ def test_preflight_eligible_interview_starts_bot(worker_agent):
         mock_complete.assert_called_once_with("job-valid-01", 0, "Process exited with code 0")
 
 
-# =============================================================================
-# [STRICT SLOT TIMING FEATURE - TEMPORARILY COMMENTED OUT FOR TESTING]
-# Asserts job without scheduledAt timestamp is rejected.
-# Uncomment this test when strict slot timing is re-enabled for production.
-# =============================================================================
-# def test_job_missing_scheduled_at_rejected(worker_agent):
-#     """Job without scheduledAt timestamp is rejected without launching bot."""
-#     bad_job = {
-#         "jobId": "job-bad-01",
-#         "interviewId": "507f1f77bcf86cd799439011",
-#         "candidateId": "507f1f77bcf86cd799439012",
-#         "meetUrl": "https://meet.google.com/abc-defg-hij",
-#     }
-# 
-#     with patch.object(worker_agent, "report_job_failure") as mock_fail, \
-#          patch("subprocess.Popen") as mock_popen:
-# 
-#         worker_agent.execute_job(bad_job)
-# 
-#         mock_fail.assert_called_once()
-#         assert "scheduledAt" in mock_fail.call_args[0][1]
-#         mock_popen.assert_not_called()
-# =============================================================================
+def test_job_missing_scheduled_at_rejected(worker_agent):
+    """Job without scheduledAt timestamp is rejected without launching bot."""
+    bad_job = {
+        "jobId": "job-bad-01",
+        "interviewId": "507f1f77bcf86cd799439011",
+        "candidateId": "507f1f77bcf86cd799439012",
+        "meetUrl": "https://meet.google.com/abc-defg-hij",
+    }
+
+    with patch.object(worker_agent, "report_job_failure") as mock_fail, \
+         patch("subprocess.Popen") as mock_popen:
+
+        worker_agent.execute_job(bad_job)
+
+        mock_fail.assert_called_once()
+        assert "scheduledAt" in mock_fail.call_args[0][1]
+        mock_popen.assert_not_called()
 
 
 def test_server_configured_poll_interval_updated_on_register(worker_agent):

@@ -1,4 +1,3 @@
-import "./config/suppressWarnings.js";
 import express from "express";
 import cors from "cors";
 import path from "path";
@@ -53,10 +52,10 @@ console.log("Allowed CORS origins:", allowedOrigins);
 
 // Use cors package with proper configuration
 app.use(cors({
-  origin: function(origin, callback) {
+  origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
+
     // Use the dynamic allowedOrigins array that includes regex patterns
     for (const allowedOrigin of allowedOrigins) {
       if (typeof allowedOrigin === 'string' && allowedOrigin === origin) {
@@ -66,7 +65,7 @@ app.use(cors({
         return callback(null, true);
       }
     }
-    
+
     console.log('CORS blocked origin:', origin);
     return callback(new Error('Not allowed by CORS'));
   },
@@ -113,34 +112,23 @@ app.use(cookieParser);
 // PASSPORT / SESSION INITIALIZATION
 // =====================================================
 
-// Session configuration (bypassed for stateless machine-to-machine bot routes)
-const sessionMiddleware = session({
-  secret: process.env.JWT_SECRET || "your-session-secret",
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === "production",
-    httpOnly: true,
-    maxAge: 8 * 60 * 60 * 1000, // 8 hours
-  },
-});
-
-app.use((req, res, next) => {
-  if (req.path.startsWith("/api/bot-control")) {
-    return next();
-  }
-  sessionMiddleware(req, res, next);
-});
+// Session configuration
+app.use(
+  session({
+    secret: process.env.JWT_SECRET || "your-session-secret",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: true,
+      maxAge: 8 * 60 * 60 * 1000, // 8 hours
+    },
+  })
+);
 
 // Initialize passport
 app.use(passport.initialize());
-const passportSessionMiddleware = passport.session();
-app.use((req, res, next) => {
-  if (req.path.startsWith("/api/bot-control")) {
-    return next();
-  }
-  passportSessionMiddleware(req, res, next);
-});
+app.use(passport.session());
 
 // Initialize Google OAuth
 initializeGoogleOAuth();
@@ -194,13 +182,13 @@ app.get(
       'http://localhost:3000',
       'http://127.0.0.1:3000'
     ];
-    
+
     const origin = req.headers.origin;
     if (origin && allowedOrigins.includes(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
     }
-    
+
     // Try to check database connection but don't fail if it's down
     let dbStatus = 'unknown';
     let dbName = 'unknown';
@@ -213,7 +201,7 @@ app.get(
       dbStatus = 'error';
       console.error('Health check mongoose error:', error.message);
     }
-    
+
     res.status(200).json({
       success: true,
       message: "RecruitAI backend is running",
@@ -239,12 +227,12 @@ app.use(async (req, res, next) => {
     if (req.path === '/api/health' || req.path === '/' || req.path.startsWith('/uploads/')) {
       return next();
     }
-    
+
     await connectDatabase();
     next();
   } catch (error) {
     console.error('Database connection error in middleware:', error.message);
-    
+
     // Add CORS headers even for database errors
     const allowedOrigins = [
       'https://ai-interview-system-dqc9.vercel.app',
@@ -252,13 +240,13 @@ app.use(async (req, res, next) => {
       'http://localhost:3000',
       'http://127.0.0.1:3000'
     ];
-    
+
     const origin = req.headers.origin;
     if (origin && allowedOrigins.includes(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Credentials', 'true');
     }
-    
+
     res.status(500).json({
       success: false,
       message: 'Database connection failed',
@@ -393,7 +381,7 @@ app.use(
       'http://localhost:3000',
       'http://127.0.0.1:3000'
     ];
-    
+
     const origin = req.headers.origin;
     if (origin && allowedOrigins.includes(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
@@ -435,7 +423,7 @@ app.use(
         'http://localhost:3000',
         'http://127.0.0.1:3000'
       ];
-      
+
       const origin = req.headers.origin;
       if (origin && allowedOrigins.includes(origin)) {
         res.setHeader('Access-Control-Allow-Origin', origin);
@@ -460,7 +448,7 @@ app.use(
       'http://localhost:3000',
       'http://127.0.0.1:3000'
     ];
-    
+
     const origin = req.headers.origin;
     if (origin && allowedOrigins.includes(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
@@ -471,10 +459,10 @@ app.use(
       success: false,
       message:
         process.env.NODE_ENV ===
-        "production"
+          "production"
           ? "Internal server error"
           : err.message ||
-            "Internal server error",
+          "Internal server error",
     });
   }
 );

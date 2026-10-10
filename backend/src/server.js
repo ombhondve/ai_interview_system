@@ -1,4 +1,3 @@
-import "./config/suppressWarnings.js";
 import "dotenv/config";
 import bcrypt from "bcrypt";
 
@@ -42,9 +41,9 @@ function logGitHubConfiguration() {
   if (!configured) {
     console.warn(
       "⚠️  GITHUB_TOKEN is not set. GitHub will rate-limit anonymous access to" +
-        " 60 requests/hour per IP, and each verification uses ~27 requests." +
-        " Set GITHUB_TOKEN (a fine-grained read-only public-repo token) to avoid" +
-        " spurious NEEDS_ADMIN_REVIEW results caused by rate limiting."
+      " 60 requests/hour per IP, and each verification uses ~27 requests." +
+      " Set GITHUB_TOKEN (a fine-grained read-only public-repo token) to avoid" +
+      " spurious NEEDS_ADMIN_REVIEW results caused by rate limiting."
     );
   }
 }
@@ -88,7 +87,7 @@ async function startServer() {
       }
     }, 60 * 1000);
     console.log("✅ Interview lifecycle scheduler initialized (every 60s)");
-    
+
   } catch (error) {
     console.error("MongoDB connection failed:", error.message);
     process.exit(1);

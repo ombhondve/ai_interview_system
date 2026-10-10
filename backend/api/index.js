@@ -1,4 +1,4 @@
-import "../src/config/suppressWarnings.js";
+// Vercel Serverless Function Handler for Express App
 import app from "../src/app.js";
 
 // The Express app is already configured with CORS and routing
