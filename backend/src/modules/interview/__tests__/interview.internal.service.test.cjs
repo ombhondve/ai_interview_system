@@ -33,11 +33,50 @@ describe("requireInternalServiceSession unit tests", () => {
 
   test("rejects request when server secret is missing", async () => {
     delete process.env.RECRUITAI_INTERNAL_API_SECRET;
+    delete process.env.BOT_CONTROL_API_SECRET;
     delete process.env.MEETING_BOT_API_SECRET;
     const req = { headers: { "x-internal-secret": "some-secret" } };
     await expect(requireInternalServiceSession(req, "507f1f77bcf86cd799439011")).rejects.toMatchObject({
       status: 500,
     });
+  });
+
+  test("succeeds when X-Api-Secret matches BOT_CONTROL_API_SECRET", async () => {
+    process.env.BOT_CONTROL_API_SECRET = "bot-control-master-secret-999";
+    const mockDoc = {
+      _id: "507f1f77bcf86cd799439011",
+      candidateId: "507f1f77bcf86cd799439012",
+      status: "IN_PROGRESS",
+    };
+    AiInterview.findById = async () => mockDoc;
+    const req = { headers: { "x-api-secret": "bot-control-master-secret-999" } };
+    const result = await requireInternalServiceSession(req, "507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012");
+    expect(result).toBe(mockDoc);
+  });
+
+  test("succeeds when X-Bot-Control-Secret matches BOT_CONTROL_API_SECRET", async () => {
+    process.env.BOT_CONTROL_API_SECRET = "bot-control-master-secret-999";
+    const mockDoc = {
+      _id: "507f1f77bcf86cd799439011",
+      candidateId: "507f1f77bcf86cd799439012",
+      status: "IN_PROGRESS",
+    };
+    AiInterview.findById = async () => mockDoc;
+    const req = { headers: { "x-bot-control-secret": "bot-control-master-secret-999" } };
+    const result = await requireInternalServiceSession(req, "507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012");
+    expect(result).toBe(mockDoc);
+  });
+
+  test("succeeds when Authorization Bearer matches RECRUITAI_INTERNAL_API_SECRET", async () => {
+    const mockDoc = {
+      _id: "507f1f77bcf86cd799439011",
+      candidateId: "507f1f77bcf86cd799439012",
+      status: "IN_PROGRESS",
+    };
+    AiInterview.findById = async () => mockDoc;
+    const req = { headers: { authorization: "Bearer test-internal-secret-12345" } };
+    const result = await requireInternalServiceSession(req, "507f1f77bcf86cd799439011", "507f1f77bcf86cd799439012");
+    expect(result).toBe(mockDoc);
   });
 
   test("rejects request when interviewId does not exist", async () => {

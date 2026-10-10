@@ -203,3 +203,46 @@ def test_notify_candidate_joined_success(client):
         assert kwargs["json"]["candidateId"] == "507f1f77bcf86cd799439012"
         assert res["interviewStatus"] == "IN_PROGRESS"
         assert res["firstQuestion"] == "Can you tell me about yourself?"
+
+
+def test_get_interview_session_sends_expected_headers_and_succeeds(client):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.ok = True
+    mock_resp.json.return_value = {
+        "success": True,
+        "interviewId": "507f1f77bcf86cd799439011",
+        "status": "SCHEDULED",
+        "phase": "OPENING",
+    }
+
+    with patch("requests.get", return_value=mock_resp) as mock_get:
+        data = client.get_interview_session("507f1f77bcf86cd799439011", candidate_id="507f1f77bcf86cd799439012")
+        mock_get.assert_called_once()
+        args, kwargs = mock_get.call_args
+        assert args[0] == "http://localhost:5000/api/ai-interviews/internal/507f1f77bcf86cd799439011/session"
+        assert kwargs["headers"]["X-Internal-Secret"] == "mock-secret-xyz"
+        assert kwargs["headers"]["X-Api-Secret"] == "mock-secret-xyz"
+        assert kwargs["params"]["candidateId"] == "507f1f77bcf86cd799439012"
+        assert data["status"] == "SCHEDULED"
+
+
+def test_get_interview_session_unauthorized_raises_permission_error(client):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 401
+    mock_resp.ok = False
+
+    with patch("requests.get", return_value=mock_resp):
+        with pytest.raises(PermissionError, match="Unauthorized: Backend rejected internal service secret."):
+            client.get_interview_session("507f1f77bcf86cd799439011")
+
+
+def test_recruitai_client_secret_fallback_order():
+    import os
+    with patch.dict(os.environ, {
+        "RECRUITAI_API_URL": "http://localhost:5000",
+        "BOT_CONTROL_API_SECRET": "bot-ctrl-fallback-sec",
+    }, clear=False):
+        with patch.dict(os.environ, {"RECRUITAI_INTERNAL_API_SECRET": ""}):
+            c = RecruitAIClient(base_url="http://localhost:5000", internal_secret="bot-ctrl-fallback-sec")
+            assert c.internal_secret == "bot-ctrl-fallback-sec"

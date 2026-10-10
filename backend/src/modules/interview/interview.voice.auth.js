@@ -10,7 +10,11 @@ export async function requireVerifiedVoiceSession(interviewId, candidateId) {
 }
 
 export async function requireInternalServiceSession(req, interviewId, candidateId = null, options = {}) {
-  const secretHeader = req.headers["x-internal-secret"] || req.headers["x-api-secret"] || "";
+  const secretHeader =
+    req.headers["x-internal-secret"] ||
+    req.headers["x-api-secret"] ||
+    req.headers["x-bot-control-secret"] ||
+    "";
   const authHeader = req.headers.authorization || "";
   let providedSecret = "";
   if (secretHeader) {
@@ -19,21 +23,37 @@ export async function requireInternalServiceSession(req, interviewId, candidateI
     providedSecret = authHeader.replace(/^Bearer\s+/i, "").trim();
   }
 
-  const expectedSecret = (process.env.RECRUITAI_INTERNAL_API_SECRET || process.env.MEETING_BOT_API_SECRET || "").trim();
-  if (!expectedSecret) {
+  const candidateSecrets = [
+    process.env.RECRUITAI_INTERNAL_API_SECRET,
+    process.env.BOT_CONTROL_API_SECRET,
+    process.env.MEETING_BOT_API_SECRET,
+  ]
+    .map((s) => (s || "").trim())
+    .filter(Boolean);
+
+  if (candidateSecrets.length === 0) {
     const error = new Error("Internal service secret is not configured on the server.");
     error.status = 500;
     throw error;
   }
 
   const providedBuffer = Buffer.from(providedSecret);
-  const expectedBuffer = Buffer.from(expectedSecret);
+  let isAuthenticated = false;
 
-  if (
-    providedBuffer.length === 0 ||
-    providedBuffer.length !== expectedBuffer.length ||
-    !crypto.timingSafeEqual(providedBuffer, expectedBuffer)
-  ) {
+  if (providedBuffer.length > 0) {
+    for (const expectedSecret of candidateSecrets) {
+      const expectedBuffer = Buffer.from(expectedSecret);
+      if (
+        providedBuffer.length === expectedBuffer.length &&
+        crypto.timingSafeEqual(providedBuffer, expectedBuffer)
+      ) {
+        isAuthenticated = true;
+        break;
+      }
+    }
+  }
+
+  if (!isAuthenticated) {
     const error = new Error("Unauthorized: Invalid internal service secret.");
     error.status = 401;
     throw error;

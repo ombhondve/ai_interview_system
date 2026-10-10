@@ -4,6 +4,7 @@ Sends candidate transcripts to /api/ai-interviews/internal/:interviewId/answer.
 Handles authentication, timeouts, retries, and sanitized logging.
 """
 
+import os
 import uuid
 import time
 import logging
@@ -33,7 +34,14 @@ class RecruitAIClient:
                 "RECRUITAI_API_URL is missing. Please configure RECRUITAI_API_URL in .env (e.g. https://<backend-host> or http://localhost:5000)."
             )
         self.base_url = raw_url.rstrip("/")
-        self.internal_secret = internal_secret or settings.recruitai_internal_api_secret
+        self.internal_secret = (
+            internal_secret
+            or os.getenv("RECRUITAI_INTERNAL_API_SECRET")
+            or getattr(settings, "recruitai_internal_api_secret", None)
+            or os.getenv("BOT_CONTROL_API_SECRET")
+            or os.getenv("MEETING_BOT_API_SECRET")
+            or ""
+        ).strip()
         self.timeout_seconds = timeout_seconds
 
     def is_meaningful_transcript(self, transcript: str) -> bool:
@@ -80,6 +88,7 @@ class RecruitAIClient:
         headers = {
             "Content-Type": "application/json",
             "X-Internal-Secret": self.internal_secret,
+            "X-Api-Secret": self.internal_secret,
             "X-Request-Id": req_id,
         }
 
@@ -183,6 +192,7 @@ class RecruitAIClient:
         headers = {
             "Content-Type": "application/json",
             "X-Internal-Secret": self.internal_secret,
+            "X-Api-Secret": self.internal_secret,
         }
         params = {}
         if candidate_id:
@@ -233,6 +243,7 @@ class RecruitAIClient:
         headers = {
             "Content-Type": "application/json",
             "X-Internal-Secret": self.internal_secret,
+            "X-Api-Secret": self.internal_secret,
         }
         payload = {}
         if candidate_id:
@@ -312,6 +323,7 @@ class RecruitAIClient:
         endpoint = f"{self.base_url}/api/ai-interviews/internal/{interview_id}/recording"
         headers = {
             "X-Internal-Secret": self.internal_secret,
+            "X-Api-Secret": self.internal_secret,
         }
         data = {
             "action": "UPLOAD",
@@ -356,6 +368,7 @@ class RecruitAIClient:
         headers = {
             "Content-Type": "application/json",
             "X-Internal-Secret": self.internal_secret,
+            "X-Api-Secret": self.internal_secret,
         }
         payload = {"waitForAnalysis": wait_for_analysis}
         if candidate_id:

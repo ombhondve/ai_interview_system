@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     )
     recruitai_internal_api_secret: str = os.getenv(
         "RECRUITAI_INTERNAL_API_SECRET",
-        os.getenv("MEETING_BOT_API_SECRET", "recruitai-default-bot-secret"),
+        os.getenv("BOT_CONTROL_API_SECRET", os.getenv("MEETING_BOT_API_SECRET", "recruitai-default-bot-secret")),
     )
 
     # Kokoro TTS configuration (Phase 4 Integration)

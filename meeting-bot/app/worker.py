@@ -527,9 +527,18 @@ class BotWorkerAgent:
         base_origin = f"{parsed_api.scheme}://{parsed_api.netloc}"
         env["RECRUITAI_API_URL"] = base_origin
         env["RECRUITAI_BACKEND_URL"] = base_origin
+        # Forward internal API secrets safely to subprocess without overwriting explicit internal secrets
+        internal_secret = (
+            os.getenv("RECRUITAI_INTERNAL_API_SECRET")
+            or os.getenv("MEETING_BOT_API_SECRET")
+            or self.config.api_secret
+            or ""
+        ).strip()
+        if internal_secret:
+            env["RECRUITAI_INTERNAL_API_SECRET"] = internal_secret
+            env["MEETING_BOT_API_SECRET"] = internal_secret
         if self.config.api_secret:
-            env["RECRUITAI_INTERNAL_API_SECRET"] = self.config.api_secret
-            env["MEETING_BOT_API_SECRET"] = self.config.api_secret
+            env["BOT_CONTROL_API_SECRET"] = self.config.api_secret
 
         try:
             self.current_process = subprocess.Popen(

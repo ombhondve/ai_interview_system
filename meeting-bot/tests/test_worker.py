@@ -166,6 +166,11 @@ def test_worker_passes_correct_argument_arrays_and_cwd(worker_agent):
         expected_bot_dir = str(worker_agent.bot_dir)
         assert kwargs["cwd"] == expected_bot_dir
 
+        # Verify secrets are forwarded to subprocess environment
+        assert "RECRUITAI_INTERNAL_API_SECRET" in kwargs["env"]
+        assert "BOT_CONTROL_API_SECRET" in kwargs["env"]
+        assert kwargs["env"]["BOT_CONTROL_API_SECRET"] == worker_agent.config.api_secret
+
         # Verify completion report was sent
         mock_complete.assert_called_once_with("job-valid-1", 0, "Process exited with code 0")
 
