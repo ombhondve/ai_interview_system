@@ -20,7 +20,7 @@ const botJobSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "AiInterviewSession",
       required: true,
-      index: true,
+      unique: true,
     },
     candidateId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -77,6 +77,11 @@ const botJobSchema = new mongoose.Schema(
       type: Number,
       default: 3,
     },
+    retryAfter: {
+      type: Date,
+      default: null,
+      index: true,
+    },
     completedAt: {
       type: Date,
       default: null,
@@ -105,6 +110,7 @@ const botJobSchema = new mongoose.Schema(
 );
 
 botJobSchema.index({ status: 1, scheduledAt: 1 });
+botJobSchema.index({ status: 1, retryAfter: 1, scheduledAt: 1 });
 botJobSchema.index({ status: 1, leaseExpiresAt: 1 });
 botJobSchema.index({ interviewId: 1, status: 1 });
 botJobSchema.index({ assignedWorkerId: 1, status: 1 });

@@ -801,4 +801,144 @@ describe("BotControl Remote Worker Management System Tests", () => {
       expect(futPreflight.eligible).toBe(true);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // 19. Duplicate Job Prevention and Deliberate Retry Backoff Policy
+  // ---------------------------------------------------------------------------
+  describe("19. Duplicate Job Prevention & Deliberate Retry Backoff Policy", () => {
+    test("calculateRetryBackoffMs returns exponential backoff capped at 5 minutes", () => {
+      expect(botControlService.calculateRetryBackoffMs(1)).toBe(30000); // 30s
+      expect(botControlService.calculateRetryBackoffMs(2)).toBe(60000); // 60s
+      expect(botControlService.calculateRetryBackoffMs(3)).toBe(120000); // 120s
+      expect(botControlService.calculateRetryBackoffMs(10)).toBe(300000); // capped at 300s (5 min)
+    });
+
+    test("syncEligibleInterviewJobs does not create duplicate jobs when a job already exists (even if FAILED)", async () => {
+      const interviewId = "507f1f77bcf86cd799439099";
+      const mockInterview = {
+        _id: interviewId,
+        candidateId: "507f1f77bcf86cd799439098",
+        bookingId: "507f1f77bcf86cd799439097",
+        meetLink: "https://meet.google.com/abc-defg-hij",
+        scheduledAt: new Date(),
+        status: "SCHEDULED",
+      };
+
+      jest.spyOn(AiInterview, "find").mockReturnValue({
+        limit: jest.fn().mockResolvedValue([mockInterview]),
+      });
+
+      // Existing job exists in FAILED status
+      jest.spyOn(BotJob, "findOne").mockResolvedValue({
+        _id: "job-failed-already",
+        interviewId,
+        status: "FAILED",
+      });
+
+      const findOneAndUpdateSpy = jest.spyOn(BotJob, "findOneAndUpdate");
+
+      await botControlService.syncEligibleInterviewJobs();
+
+      // Crucial: findOneAndUpdate should NOT have been called because existingJob was found!
+      expect(findOneAndUpdateSpy).not.toHaveBeenCalled();
+    });
+
+    test("syncEligibleInterviewJobs atomically upserts with interviewId filter when no existing job found", async () => {
+      const interviewId = "507f1f77bcf86cd799439099";
+      const mockInterview = {
+        _id: interviewId,
+        candidateId: "507f1f77bcf86cd799439098",
+        bookingId: "507f1f77bcf86cd799439097",
+        meetLink: "https://meet.google.com/abc-defg-hij",
+        scheduledAt: new Date(),
+        status: "SCHEDULED",
+      };
+
+      jest.spyOn(AiInterview, "find").mockReturnValue({
+        limit: jest.fn().mockResolvedValue([mockInterview]),
+      });
+
+      jest.spyOn(BotJob, "findOne").mockResolvedValue(null);
+      const findOneAndUpdateSpy = jest.spyOn(BotJob, "findOneAndUpdate").mockResolvedValue({ _id: "new-job" });
+
+      await botControlService.syncEligibleInterviewJobs();
+
+      expect(findOneAndUpdateSpy).toHaveBeenCalledWith(
+        { interviewId },
+        expect.objectContaining({
+          $setOnInsert: expect.objectContaining({
+            interviewId,
+            status: "QUEUED",
+            retryAfter: null,
+          }),
+        }),
+        { upsert: true, new: true }
+      );
+    });
+
+    test("failJob applies deliberate retryAfter backoff and retains real error output", async () => {
+      const jobId = "507f1f77bcf86cd799439088";
+      const workerId = "worker-test-01";
+      const beforeTime = Date.now();
+
+      const mockJob = {
+        _id: jobId,
+        interviewId: "507f1f77bcf86cd799439089",
+        assignedWorkerId: workerId,
+        status: "RUNNING",
+        attemptCount: 1,
+        maxAttempts: 3,
+        executionHistory: [],
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      jest.spyOn(BotJob, "findById").mockResolvedValue(mockJob);
+      jest.spyOn(AiInterview, "findById").mockResolvedValue({
+        _id: mockJob.interviewId,
+        candidateJoinedAt: null,
+        transcript: [],
+      });
+      jest.spyOn(BotWorker, "updateOne").mockResolvedValue({ modifiedCount: 1 });
+
+      const realError = "ModuleNotFoundError: No module named 'kokoro'";
+      const res = await botControlService.failJob(jobId, workerId, {
+        error: realError,
+        exitCode: 1,
+      });
+
+      expect(res.status).toBe("QUEUED");
+      expect(mockJob.status).toBe("QUEUED");
+      expect(mockJob.assignedWorkerId).toBeNull();
+      expect(mockJob.leaseExpiresAt).toBeNull();
+      expect(mockJob.failureReason).toBe(realError);
+      expect(mockJob.retryAfter).toBeInstanceOf(Date);
+      expect(mockJob.retryAfter.getTime()).toBeGreaterThanOrEqual(beforeTime + 29000);
+      expect(mockJob.retryAfter.getTime()).toBeLessThanOrEqual(beforeTime + 35000);
+
+      expect(mockJob.executionHistory).toHaveLength(1);
+      expect(mockJob.executionHistory[0].exitCode).toBe(1);
+      expect(mockJob.executionHistory[0].error).toBe(realError);
+    });
+
+    test("claimNextJob excludes QUEUED jobs whose retryAfter has not arrived", async () => {
+      const fixedNow = new Date("2026-10-10T10:00:00.000Z");
+      const mockWorker = { workerId: "worker-test-01", enabled: true, status: "IDLE", save: jest.fn().mockResolvedValue(true) };
+      jest.spyOn(BotWorker, "findOne").mockResolvedValue(mockWorker);
+      jest.spyOn(botControlService, "recoverExpiredLeases").mockResolvedValue(0);
+      jest.spyOn(botControlService, "syncEligibleInterviewJobs").mockResolvedValue(true);
+
+      const findOneAndUpdateSpy = jest.spyOn(BotJob, "findOneAndUpdate").mockResolvedValue(null);
+
+      await botControlService.claimNextJob("worker-test-01", { currentTime: fixedNow });
+
+      expect(findOneAndUpdateSpy).toHaveBeenCalled();
+      const query = findOneAndUpdateSpy.mock.calls[0][0];
+      expect(query.status).toBe("QUEUED");
+      expect(query.$or).toEqual([
+        { retryAfter: { $exists: false } },
+        { retryAfter: null },
+        { retryAfter: { $lte: fixedNow } },
+      ]);
+    });
+  });
 });

@@ -333,6 +333,43 @@ def test_preflight_eligible_interview_starts_bot(worker_agent):
         mock_complete.assert_called_once_with("job-valid-01", 0, "Process exited with code 0")
 
 
+def test_bot_subprocess_failure_reports_failure_with_real_error(worker_agent):
+    """When bot subprocess exits with code 1, reports failure with real error output tail."""
+    job = {
+        "jobId": "job-fail-01",
+        "interviewId": "507f1f77bcf86cd799439011",
+        "candidateId": "507f1f77bcf86cd799439012",
+        "meetUrl": "https://meet.google.com/abc-defg-hij",
+        "scheduledAt": "2026-10-10T09:00:00.000Z",
+        "leaseDurationMs": 60000,
+    }
+
+    mock_proc = MagicMock()
+    mock_proc.stdout = [
+        "Starting bot...\n",
+        "Traceback (most recent call last):\n",
+        "ModuleNotFoundError: No module named 'kokoro'\n",
+    ]
+    mock_proc.returncode = 1
+    mock_proc.wait.return_value = 1
+
+    with patch.object(worker_agent, "verify_job_preflight", return_value={"eligible": True}), \
+         patch.object(worker_agent, "renew_job_lease", return_value=True), \
+         patch("subprocess.Popen", return_value=mock_proc) as mock_popen, \
+         patch.object(worker_agent, "report_job_failure") as mock_fail, \
+         patch.object(worker_agent, "report_job_completion") as mock_complete:
+
+        worker_agent.execute_job(job)
+
+        mock_popen.assert_called_once()
+        mock_complete.assert_not_called()
+        mock_fail.assert_called_once()
+        job_id_arg, err_arg = mock_fail.call_args[0][:2]
+        assert job_id_arg == "job-fail-01"
+        assert "No module named 'kokoro'" in err_arg
+        assert mock_fail.call_args[1].get("exit_code") == 1
+
+
 @pytest.mark.skip(reason="TEMPORARILY DISABLED FOR TESTING — RESTORE STRICT SLOT TIMING")
 def test_job_missing_scheduled_at_rejected(worker_agent):
     """Job without scheduledAt timestamp is rejected without launching bot."""

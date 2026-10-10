@@ -15,6 +15,7 @@ import argparse
 import logging
 import subprocess
 import threading
+from collections import deque
 from pathlib import Path
 from typing import Optional, Dict, Any
 from urllib.parse import urlparse
@@ -541,11 +542,13 @@ class BotWorkerAgent:
                 bufsize=1,
             )
 
-            # Stream output safely
+            # Stream output safely and buffer last lines for diagnostic reporting
+            output_tail = deque(maxlen=30)
             if self.current_process.stdout:
                 for line in self.current_process.stdout:
                     cleaned_line = line.rstrip()
                     if cleaned_line:
+                        output_tail.append(cleaned_line)
                         logger.info(f"[BotProcess] {cleaned_line}")
 
             self.current_process.wait()
@@ -555,8 +558,14 @@ class BotWorkerAgent:
             # 6. Stop lease renewal
             self._stop_lease_renewal()
 
-            # 7. Report completion to central backend
-            self.report_job_completion(job_id, exit_code, f"Process exited with code {exit_code}")
+            # 7. Report result to central backend
+            if exit_code != 0:
+                err_summary = "\n".join(output_tail) if output_tail else f"Process exited with code {exit_code}"
+                err_msg = f"Bot process exited with code {exit_code}: {err_summary[-400:]}"
+                logger.error(f"Job {job_id} failed with exit code {exit_code}: {err_msg}")
+                self.report_job_failure(job_id, err_msg, exit_code=exit_code)
+            else:
+                self.report_job_completion(job_id, exit_code, f"Process exited with code {exit_code}")
 
         except Exception as exc:
             logger.exception(f"Unexpected error executing interview bot: {exc}")

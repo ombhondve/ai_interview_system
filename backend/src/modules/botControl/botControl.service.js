@@ -31,6 +31,12 @@ export function getPreparationWindowMs() {
   return Number(process.env.BOT_PREPARATION_WINDOW_MS) || (15 * 60 * 1000); // 15 minutes before scheduled start
 }
 
+export function calculateRetryBackoffMs(attemptCount) {
+  const baseMs = Number(process.env.BOT_RETRY_BASE_MS) || 30000; // 30 seconds default
+  const exp = Math.max(0, (attemptCount || 1) - 1);
+  return Math.min(baseMs * Math.pow(2, exp), 300000); // capped at 5 minutes
+}
+
 export async function findInterviewSafely(interviewId) {
   if (!interviewId) return null;
   const isDbReady = mongoose.connection && mongoose.connection.readyState === 1;
@@ -181,6 +187,7 @@ export async function recoverExpiredLeases() {
       job.status = "FAILED";
       job.needsAdminReview = true;
       job.failedAt = now;
+      job.retryAfter = null;
       job.failureReason = `Lease expired on worker ${prevWorker}; maximum retry attempts (${maxAttempts}) reached.`;
       await job.save();
 
@@ -196,6 +203,7 @@ export async function recoverExpiredLeases() {
       job.status = "QUEUED";
       job.assignedWorkerId = null;
       job.leaseExpiresAt = null;
+      job.retryAfter = new Date(now.getTime() + calculateRetryBackoffMs(job.attemptCount));
       await job.save();
 
       await recordAuditLog({
@@ -204,7 +212,7 @@ export async function recoverExpiredLeases() {
         targetWorkerId: prevWorker,
         targetJobId: job._id,
         targetInterviewId: job.interviewId,
-        details: { reason: "LEASE_EXPIRED_REQUEUED", attemptCount: job.attemptCount },
+        details: { reason: "LEASE_EXPIRED_REQUEUED", attemptCount: job.attemptCount, retryAfter: job.retryAfter },
       });
     }
 
@@ -251,12 +259,11 @@ export async function syncEligibleInterviewJobs() {
 
     const existingJob = await BotJob.findOne({
       interviewId: interview._id,
-      status: { $in: ["QUEUED", "CLAIMED", "RUNNING", "COMPLETED"] },
     });
 
     if (!existingJob) {
       await BotJob.findOneAndUpdate(
-        { interviewId: interview._id, status: { $in: ["QUEUED", "CLAIMED", "RUNNING", "COMPLETED"] } },
+        { interviewId: interview._id },
         {
           $setOnInsert: {
             interviewId: interview._id,
@@ -267,6 +274,7 @@ export async function syncEligibleInterviewJobs() {
             status: "QUEUED",
             attemptCount: 0,
             maxAttempts,
+            retryAfter: null,
             needsAdminReview: false,
           },
         },
@@ -307,10 +315,15 @@ export async function claimNextJob(workerId, { currentTime } = {}) {
     await syncEligibleInterviewJobs();
   }
 
-  // 2. Atomically find and claim the earliest scheduled QUEUED job
+  // 2. Atomically find and claim the earliest scheduled QUEUED job whose retry backoff has passed
   const claimedJob = await BotJob.findOneAndUpdate(
     {
       status: "QUEUED",
+      $or: [
+        { retryAfter: { $exists: false } },
+        { retryAfter: null },
+        { retryAfter: { $lte: now } },
+      ],
       /* =======================================================================
        * TEMPORARILY DISABLED FOR TESTING — RESTORE STRICT SLOT TIMING
        * Strictly enforces that scheduled start time has arrived (scheduledAt <= now).
@@ -325,6 +338,7 @@ export async function claimNextJob(workerId, { currentTime } = {}) {
         claimedAt: now,
         lastHeartbeatAt: now,
         leaseExpiresAt: new Date(now.getTime() + leaseMs),
+        retryAfter: null,
       },
       $inc: { attemptCount: 1 },
     },
@@ -716,11 +730,13 @@ export async function completeJob(jobId, workerId, { exitCode = 0, details = "" 
         job.status = "QUEUED";
         job.assignedWorkerId = null;
         job.leaseExpiresAt = null;
+        job.retryAfter = new Date(now.getTime() + calculateRetryBackoffMs(job.attemptCount));
         job.failureReason = `Process exited without starting interview (exitCode: ${exitCode}). Re-queued for retry.`;
       } else {
         job.status = "FAILED";
         job.needsAdminReview = true;
         job.failedAt = now;
+        job.retryAfter = null;
         job.failureReason = `Process exited before session started; maximum attempts (${job.maxAttempts}) reached.`;
       }
     }
@@ -802,17 +818,20 @@ export async function failJob(jobId, workerId, { error = "", exitCode = null } =
     job.status = "FAILED";
     job.needsAdminReview = true;
     job.failedAt = now;
+    job.retryAfter = null;
     job.failureReason = `Failure after interview began: ${cleanError}`;
   } else {
     if (job.attemptCount < job.maxAttempts) {
       job.status = "QUEUED";
       job.assignedWorkerId = null;
       job.leaseExpiresAt = null;
+      job.retryAfter = new Date(now.getTime() + calculateRetryBackoffMs(job.attemptCount));
       job.failureReason = cleanError;
     } else {
       job.status = "FAILED";
       job.needsAdminReview = true;
       job.failedAt = now;
+      job.retryAfter = null;
       job.failureReason = `Max attempts (${job.maxAttempts}) reached. ${cleanError}`;
     }
   }
@@ -1042,6 +1061,7 @@ export async function adminRetryJob(jobId, adminId) {
   job.status = "QUEUED";
   job.assignedWorkerId = null;
   job.leaseExpiresAt = null;
+  job.retryAfter = null;
   job.failureReason = null;
   job.needsAdminReview = false;
   job.attemptCount = 0; // Explicit admin retry resets attempt count
