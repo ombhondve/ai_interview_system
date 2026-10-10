@@ -415,3 +415,51 @@ def test_server_configured_poll_interval_updated_on_register(worker_agent):
         assert worker_agent.config.lease_ms == 120000
 
 
+def test_claim_job_logs_when_no_eligible_job(worker_agent, caplog):
+    """Claim response with job=None logs HTTP status and reason without secrets or candidate data."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "success": True,
+        "job": None,
+        "message": "No eligible interview jobs available at this time.",
+    }
+
+    worker_agent.worker_token = "valid-token"
+    with patch("requests.request", return_value=mock_resp):
+        with caplog.at_level("INFO"):
+            job = worker_agent.claim_job()
+            assert job is None
+            assert any(
+                "Claim response [HTTP 200]: No eligible job available (jobExists=False)" in r.message
+                and "No eligible interview jobs available at this time." in r.message
+                for r in caplog.records
+            )
+
+
+def test_claim_job_logs_and_returns_job_when_available(worker_agent, caplog):
+    """Claim response with job returns job and logs jobId and interviewId safely."""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "success": True,
+        "job": {
+            "jobId": "job-abc-123",
+            "interviewId": "interview-xyz-789",
+            "meetUrl": "https://meet.google.com/abc-defg-hij",
+        },
+        "message": "Job claimed successfully.",
+    }
+
+    worker_agent.worker_token = "valid-token"
+    with patch("requests.request", return_value=mock_resp):
+        with caplog.at_level("INFO"):
+            job = worker_agent.claim_job()
+            assert job is not None
+            assert job["jobId"] == "job-abc-123"
+            assert any(
+                "Claim response [HTTP 200]: Job claimed successfully (jobExists=True, jobId=job-abc-123, interviewId=interview-xyz-789)" in r.message
+                for r in caplog.records
+            )
+
+

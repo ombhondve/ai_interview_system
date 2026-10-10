@@ -323,6 +323,7 @@ class BotWorkerAgent:
     def claim_job(self) -> Optional[Dict[str, Any]]:
         """Request and atomically claim the next scheduled interview job."""
         if not self.enabled:
+            logger.debug(f"[Worker] Claim skipped: worker '{self.config.worker_id}' is disabled or paused.")
             return None
 
         params = {"workerId": self.config.worker_id}
@@ -333,9 +334,35 @@ class BotWorkerAgent:
             max_retries=2,
         )
 
-        if res and res.get("success") and res.get("job"):
-            return res.get("job")
+        if not res:
+            logger.warning("Claim request failed: No response received from central backend.")
+            return None
 
+        status_code = res.get("status_code", 200)
+        success = res.get("success", False)
+        job = res.get("job")
+        message = res.get("message", "No message provided")
+
+        if success and job:
+            job_id = job.get("jobId")
+            interview_id = job.get("interviewId")
+            logger.info(
+                f"Claim response [HTTP {status_code}]: Job claimed successfully "
+                f"(jobExists=True, jobId={job_id}, interviewId={interview_id})."
+            )
+            return job
+
+        if success and not job:
+            logger.info(
+                f"Claim response [HTTP {status_code}]: No eligible job available "
+                f"(jobExists=False). Reason: {message}"
+            )
+            return None
+
+        logger.warning(
+            f"Claim response [HTTP {status_code}]: Claim unsuccessful "
+            f"(jobExists=False). Reason: {message}"
+        )
         return None
 
     def verify_job_preflight(self, job_id: str) -> Optional[Dict[str, Any]]:
