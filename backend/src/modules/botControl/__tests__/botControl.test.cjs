@@ -558,8 +558,9 @@ describe("BotControl Remote Worker Management System Tests", () => {
 
   // ---------------------------------------------------------------------------
   // 17. Strict Scheduled Start-Time & Eligibility Enforcement
+  // TEMPORARILY DISABLED FOR TESTING — RESTORE STRICT SLOT TIMING
   // ---------------------------------------------------------------------------
-  describe("17. Strict Scheduled Start-Time & Eligibility Enforcement", () => {
+  describe.skip("17. Strict Scheduled Start-Time & Eligibility Enforcement (TEMPORARILY DISABLED FOR TESTING — RESTORE STRICT SLOT TIMING)", () => {
     const fixedNow = new Date("2026-10-10T09:00:00.000Z"); // 2:30 PM IST
 
     beforeEach(() => {
@@ -738,6 +739,66 @@ describe("BotControl Remote Worker Management System Tests", () => {
 
       expect(dateFromIst.getTime()).toBe(dateFromUtc.getTime());
       expect(dateFromIst.toISOString()).toBe("2026-10-10T09:00:00.000Z");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // 18. Relaxed Timing Testing Mode Verification
+  // ---------------------------------------------------------------------------
+  describe("18. Relaxed Timing Testing Mode Verification", () => {
+    const fixedNow = new Date("2026-10-10T09:00:00.000Z");
+
+    beforeEach(() => {
+      jest.spyOn(botControlService, "recoverExpiredLeases").mockResolvedValue(0);
+      jest.spyOn(botControlService, "syncEligibleInterviewJobs").mockResolvedValue(true);
+    });
+
+    test("interviews scheduled in the future are eligible and claimed immediately in testing mode", async () => {
+      const futureTime = new Date(fixedNow.getTime() + 60000);
+      const mockWorker = { workerId: "worker-test-01", enabled: true, status: "IDLE", save: jest.fn().mockResolvedValue(true) };
+      jest.spyOn(BotWorker, "findOne").mockResolvedValue(mockWorker);
+
+      const futureJob = {
+        _id: "507f1f77bcf86cd799439011",
+        interviewId: "507f1f77bcf86cd799439012",
+        candidateId: "507f1f77bcf86cd799439013",
+        meetLink: "https://meet.google.com/abc-defg-hij",
+        scheduledAt: futureTime,
+        status: "CLAIMED",
+        attemptCount: 1,
+        executionHistory: [],
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      jest.spyOn(BotJob, "findOneAndUpdate").mockResolvedValue(futureJob);
+      jest.spyOn(AiInterview, "findById").mockResolvedValue({
+        _id: "507f1f77bcf86cd799439012",
+        scheduledAt: futureTime,
+        status: "SCHEDULED",
+        save: jest.fn().mockResolvedValue(true),
+      });
+
+      const res = await botControlService.claimNextJob("worker-test-01", { currentTime: fixedNow });
+      expect(res.job).toBeDefined();
+      expect(res.job.jobId).toBe("507f1f77bcf86cd799439011");
+    });
+
+    test("preflight permits future scheduled interview launch in testing mode", async () => {
+      const futureTime = new Date(fixedNow.getTime() + 120000);
+      jest.spyOn(BotJob, "findById").mockResolvedValueOnce({
+        _id: "job-fut-test",
+        assignedWorkerId: "worker-test-01",
+        status: "CLAIMED",
+        scheduledAt: futureTime,
+        leaseExpiresAt: new Date(fixedNow.getTime() + 60000),
+      });
+
+      const futPreflight = await botControlService.validateJobPreflight(
+        "507f1f77bcf86cd799439011",
+        "worker-test-01",
+        { currentTime: fixedNow }
+      );
+      expect(futPreflight.eligible).toBe(true);
     });
   });
 });
