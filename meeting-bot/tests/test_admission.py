@@ -677,6 +677,165 @@ async def test_audio_tab_already_active_skips_click():
     assert loc_spk_box.first.click.call_count == 0
 
 
+def test_normalize_audio_label():
+    """Verify audio label normalization across Windows and WebRTC formats."""
+    from app.meet import normalize_audio_label
+
+    assert normalize_audio_label("Speaker (2- Realtek(R) Audio)") == "speaker realtek audio"
+    assert normalize_audio_label("Default - Speakers (Realtek(R) Audio)") == "speaker realtek audio"
+    assert normalize_audio_label("Speakers (Realtek(R) Audio)") == "speaker realtek audio"
+    assert normalize_audio_label("Speakers (2- Realtek(R) Audio)") == "speaker realtek audio"
+    assert normalize_audio_label("CABLE Input (VB-Audio Virtual Cable)") == "cable input vb audio virtual cable"
+    assert normalize_audio_label("Default - CABLE Output (VB-Audio Virtual Cable)") == "cable output vb audio virtual cable"
+
+
+def test_score_device_match_realtek_variations():
+    """Verify robust matching of Realtek speaker variations while preventing feedback loops."""
+    from app.meet import score_device_match
+
+    target = "Speaker (2- Realtek(R) Audio)"
+
+    # All Realtek variations should match with high scores
+    assert score_device_match(target, "Default - Speakers (Realtek(R) Audio)", "Speaker") >= 75.0
+    assert score_device_match(target, "Speakers (Realtek(R) Audio)", "Speaker") >= 75.0
+    assert score_device_match(target, "Default - Speakers (2- Realtek(R) Audio)", "Speaker") >= 75.0
+    assert score_device_match(target, "Speakers (2- Realtek(R) Audio)", "Speaker") >= 75.0
+    assert score_device_match(target, "Speakers / Headphones (Realtek Audio)", "Speaker") >= 70.0
+    assert score_device_match(target, "Default - System Speakers", "Speaker") >= 40.0
+
+    # Critical Safety: CABLE Input MUST BE DISQUALIFIED (0.0) when hardware speaker is requested
+    assert score_device_match(target, "CABLE Input (VB-Audio Virtual Cable)", "Speaker") == 0.0
+    assert score_device_match(target, "CABLE In 16ch (VB-Audio Virtual Cable)", "Speaker") == 0.0
+
+
+def test_score_device_match_cable_output_mic():
+    """Verify microphone matching selects VB-Cable and disqualifies laptop mics."""
+    from app.meet import score_device_match
+
+    mic_target = "CABLE Output (VB-Audio Virtual Cable)"
+
+    assert score_device_match(mic_target, "CABLE Output (VB-Audio Virtual Cable)", "Microphone") >= 75.0
+    assert score_device_match(mic_target, "Default - CABLE Output (VB-Audio Virtual Cable)", "Microphone") >= 75.0
+    assert score_device_match(mic_target, "Microphone Array (2- Intel Smart Sound Technology)", "Microphone") == 0.0
+
+
+@pytest.mark.asyncio
+async def test_select_device_dropdown_realtek_variation_selection_and_verification():
+    """Verify _select_device_dropdown identifies Realtek option among CABLE Input and selects it."""
+    from app.meet import MeetNavigator
+
+    page = MagicMock()
+    page.wait_for_timeout = AsyncMock()
+
+    # Dropdown container currently displays CABLE Input
+    loc_container = AsyncMock()
+    loc_container.count = AsyncMock(return_value=1)
+    loc_container.is_visible = AsyncMock(return_value=True)
+    loc_container.first = AsyncMock()
+    loc_container.first.inner_text = AsyncMock(return_value="CABLE Input (VB-Audio Virtual Cable)")
+    loc_container.first.get_attribute = AsyncMock(return_value="Select speaker")
+    loc_container.first.click = AsyncMock()
+
+    # Options revealed: CABLE Input and Default - Speakers (Realtek(R) Audio)
+    loc_opt_cable = AsyncMock()
+    loc_opt_cable.is_visible = AsyncMock(return_value=True)
+    loc_opt_cable.inner_text = AsyncMock(return_value="CABLE Input (VB-Audio Virtual Cable)")
+    loc_opt_cable.get_attribute = AsyncMock(return_value=None)
+    loc_opt_cable.click = AsyncMock()
+
+    loc_opt_realtek = AsyncMock()
+    loc_opt_realtek.is_visible = AsyncMock(return_value=True)
+    loc_opt_realtek.inner_text = AsyncMock(return_value="Default - Speakers (Realtek(R) Audio)")
+    loc_opt_realtek.get_attribute = AsyncMock(return_value=None)
+    loc_opt_realtek.click = AsyncMock()
+
+    # After clicking Realtek, container text updates to Default - Speakers (Realtek(R) Audio)
+    async def click_realtek_side_effect():
+        loc_container.first.inner_text = AsyncMock(return_value="Default - Speakers (Realtek(R) Audio)")
+    loc_opt_realtek.click.side_effect = click_realtek_side_effect
+
+    loc_options = AsyncMock()
+    loc_options.count = AsyncMock(return_value=2)
+    loc_options.nth = MagicMock(side_effect=lambda idx: loc_opt_cable if idx == 0 else loc_opt_realtek)
+
+    def locator_side_effect(selector):
+        if "option" in selector or "listbox" in selector:
+            return loc_options
+        if "combobox" in selector or "Speaker" in selector:
+            return loc_container
+        empty = AsyncMock()
+        empty.count = AsyncMock(return_value=0)
+        empty.is_visible = AsyncMock(return_value=False)
+        return empty
+
+    page.locator.side_effect = locator_side_effect
+    nav = MeetNavigator(page)
+
+    res = await nav._select_device_dropdown(
+        device_type="Speaker",
+        target_label="Speaker (2- Realtek(R) Audio)",
+        container_selectors=['[role="dialog"] [aria-label*="Speakers" i][role="combobox"]'],
+    )
+
+    assert res["success"] is True
+    assert "Realtek" in res["selected_label"]
+    # Verified: Realtek option was clicked, CABLE Input was NOT clicked
+    assert loc_opt_realtek.click.call_count == 1
+    assert loc_opt_cable.click.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_select_device_dropdown_mismatch_returns_error_with_available_options():
+    """Verify _select_device_dropdown captures and logs available options on mismatch."""
+    from app.meet import MeetNavigator
+
+    page = MagicMock()
+    page.wait_for_timeout = AsyncMock()
+    page.keyboard = MagicMock()
+    page.keyboard.press = AsyncMock()
+
+    loc_container = AsyncMock()
+    loc_container.count = AsyncMock(return_value=1)
+    loc_container.is_visible = AsyncMock(return_value=True)
+    loc_container.first = AsyncMock()
+    loc_container.first.inner_text = AsyncMock(return_value="Unrelated Audio Device")
+    loc_container.first.get_attribute = AsyncMock(return_value=None)
+    loc_container.first.click = AsyncMock()
+
+    loc_opt_unrelated = AsyncMock()
+    loc_opt_unrelated.is_visible = AsyncMock(return_value=True)
+    loc_opt_unrelated.inner_text = AsyncMock(return_value="HDMI Monitor Audio")
+    loc_opt_unrelated.get_attribute = AsyncMock(return_value=None)
+
+    loc_options = AsyncMock()
+    loc_options.count = AsyncMock(return_value=1)
+    loc_options.nth = MagicMock(return_value=loc_opt_unrelated)
+
+    def locator_side_effect(selector):
+        if "option" in selector:
+            return loc_options
+        if "combobox" in selector:
+            return loc_container
+        empty = AsyncMock()
+        empty.count = AsyncMock(return_value=0)
+        empty.is_visible = AsyncMock(return_value=False)
+        return empty
+
+    page.locator.side_effect = locator_side_effect
+    nav = MeetNavigator(page)
+
+    res = await nav._select_device_dropdown(
+        device_type="Speaker",
+        target_label="Speaker (2- Realtek(R) Audio)",
+        container_selectors=['[role="dialog"] [role="combobox"]'],
+    )
+
+    assert res["success"] is False
+    assert "HDMI Monitor Audio" in res["error"]
+    assert "HDMI Monitor Audio" in res["available_options"]
+
+
+
 
 
 

@@ -24,6 +24,89 @@ def validate_meet_url(url: str) -> bool:
     return bool(MEET_URL_PATTERN.match(url.strip()))
 
 
+def normalize_audio_label(label: str) -> str:
+    """
+    Normalize audio device labels across Windows WASAPI, MME, DirectSound, and Chrome WebRTC formats.
+    Strips system prefixes (Default -, System Default -), driver adapter indices ((2- ...)),
+    trademarks ((R), (TM)), and standardizes plural/singular variations (Speakers <-> Speaker).
+    """
+    if not label:
+        return ""
+    s = label.strip().lower()
+    # Strip system prefixes
+    s = re.sub(r"^(default|system default)\s*[-:]\s*", "", s)
+    # Strip adapter index prefixes like "(2- Realtek" -> "(Realtek" or "2- Realtek" -> "Realtek"
+    s = re.sub(r"\(\s*\d+\s*-\s*", "(", s)
+    s = re.sub(r"^\d+\s*-\s*", "", s)
+    # Strip trademarks and symbols
+    s = s.replace("(r)", "").replace("(tm)", "").replace("®", "").replace("™", "")
+    # Normalize plural/singular forms
+    s = re.sub(r"\bspeakers\b", "speaker", s)
+    s = re.sub(r"\bheadphones\b", "headphone", s)
+    s = re.sub(r"\bmicrophones\b", "microphone", s)
+    # Remove punctuation and non-alphanumeric except spaces
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    return " ".join(s.split())
+
+
+def score_device_match(target_label: str, candidate_label: str, device_type: str = "") -> float:
+    """
+    Score device compatibility between target configuration and visible Google Meet option.
+    Returns a score from 0.0 (no match / disqualified) to 100.0 (exact match).
+    Guarantees audio routing safety:
+    - If device_type == 'speaker' and target is hardware speaker, virtual cables (CABLE Input) are DISQUALIFIED (score 0.0)
+    - If device_type == 'microphone' and target is virtual cable, non-cables (Laptop Mic) are DISQUALIFIED (score 0.0)
+    """
+    if not target_label or not candidate_label:
+        return 0.0
+
+    target_raw = target_label.strip().lower()
+    candidate_raw = candidate_label.strip().lower()
+    dev_type = device_type.strip().lower()
+
+    target_is_cable = "cable" in target_raw or "vb-audio" in target_raw or "virtual" in target_raw
+    cand_is_cable = "cable" in candidate_raw or "vb-audio" in candidate_raw or "virtual" in candidate_raw
+
+    # SAFETY CHECK 1: Never route speaker to CABLE when hardware speaker is requested
+    if dev_type == "speaker":
+        if not target_is_cable and cand_is_cable:
+            return 0.0
+
+    # SAFETY CHECK 2: Never route mic to physical mic when virtual cable is requested
+    if dev_type == "microphone":
+        if target_is_cable and not cand_is_cable:
+            return 0.0
+
+    norm_target = normalize_audio_label(target_label)
+    norm_candidate = normalize_audio_label(candidate_label)
+
+    # 1. Exact normalized match
+    if norm_target == norm_candidate:
+        return 100.0
+
+    # 2. Substring containment
+    if norm_target in norm_candidate or norm_candidate in norm_target:
+        return 80.0
+
+    # 3. Hardware token overlap
+    stop_words = {"audio", "sound", "device", "high", "definition", "sst", "point", "input", "output"}
+    target_tokens = set(t for t in norm_target.split() if len(t) >= 3 and t not in stop_words)
+    cand_tokens = set(t for t in norm_candidate.split() if len(t) >= 3 and t not in stop_words)
+
+    overlap = target_tokens.intersection(cand_tokens)
+    if overlap:
+        if "realtek" in overlap:
+            return 75.0
+        return 50.0 + len(overlap) * 10.0
+
+    # 4. System default fallback for hardware speaker
+    if dev_type == "speaker" and not target_is_cable:
+        if "default" in candidate_raw and not cand_is_cable:
+            return 40.0
+
+    return 0.0
+
+
 class MeetNavigator:
     """Manages the page lifecycle, pre-join controls, and joining a Google Meet room."""
 
@@ -200,12 +283,18 @@ class MeetNavigator:
             device_type="Microphone",
             target_label=exp_mic,
             container_selectors=[
-                # Look specifically for the dropdown/combobox for Microphone
+                # Look specifically for the dropdown/combobox for Microphone in dialog
                 '[role="dialog"] [aria-label*="Microphone" i][role="combobox"]',
                 '[role="dialog"] [aria-label*="Microphone" i][role="listbox"]',
                 '[role="dialog"] div:has-text("Microphone") [role="combobox"]',
                 '[role="dialog"] div:has-text("Microphone") [role="listbox"]',
                 '[role="dialog"] [aria-label*="Microphone" i]',
+                '[role="dialog"] [role="combobox"]:first-of-type',
+                # Pre-join controls directly under preview
+                'button[aria-label*="Select microphone" i]',
+                'button[aria-label*="Microphone" i]',
+                '[role="button"][aria-label*="Microphone" i]',
+                'button:has-text("CABLE Output")',
             ],
         )
 
@@ -214,7 +303,7 @@ class MeetNavigator:
             device_type="Speaker",
             target_label=exp_speaker,
             container_selectors=[
-                # Look specifically for the dropdown/combobox for Speaker
+                # Look specifically for the dropdown/combobox for Speaker in dialog
                 '[role="dialog"] [aria-label*="Speakers" i][role="combobox"]',
                 '[role="dialog"] [aria-label*="Speaker" i][role="combobox"]',
                 '[role="dialog"] [aria-label*="Speakers" i][role="listbox"]',
@@ -223,12 +312,38 @@ class MeetNavigator:
                 '[role="dialog"] div:has-text("Speaker") [role="combobox"]',
                 '[role="dialog"] [aria-label*="Speakers" i]',
                 '[role="dialog"] [aria-label*="Speaker" i]',
+                '[role="dialog"] [role="combobox"]:nth-of-type(2)',
+                # Pre-join controls directly under preview
+                'button[aria-label*="Select speaker" i]',
+                'button[aria-label*="Speakers" i]',
+                'button[aria-label*="Speaker" i]',
+                '[role="button"][aria-label*="speaker" i]',
+                'button:has(i:has-text("volume_up"))',
+                'button:has-text("CABLE Input")',
             ],
         )
 
         # Step 5: Close Settings dialog
-        await self._close_settings_dialog()
-        await self.page.wait_for_timeout(500)
+        if opened:
+            await self._close_settings_dialog()
+            await self.page.wait_for_timeout(500)
+            opened = False
+
+        # Fallback: if speaker was not resolved inside dialog, attempt direct pre-join controls
+        if not speaker_res.get("success"):
+            logger.info("[MEET][AUDIO] Attempting fallback speaker selection on pre-join page...")
+            speaker_res = await self._select_device_dropdown(
+                device_type="Speaker",
+                target_label=exp_speaker,
+                container_selectors=[
+                    'button[aria-label*="Select speaker" i]',
+                    'button[aria-label*="Speakers" i]',
+                    'button[aria-label*="Speaker" i]',
+                    '[role="button"][aria-label*="speaker" i]',
+                    'button:has(i:has-text("volume_up"))',
+                    'button:has-text("CABLE Input")',
+                ],
+            )
 
         # Step 6: Verify and assemble result
         result["selected_mic"] = mic_res.get("selected_label", "")
@@ -519,9 +634,11 @@ class MeetNavigator:
         """
         Find and select target_label in the specified device selector.
         Supports HTML select elements, custom ARIA comboboxes, and listbox menus.
-        Matches with tolerance: exact match > normalized case/whitespace > substring match.
+        Logs all available options discovered in the Google Meet audio settings dialog.
+        Matches with tolerance: exact match > normalized case/whitespace > token/keyword match.
+        Verifies the actual selected device after changing it.
         """
-        norm_target = " ".join(target_label.lower().split())
+        all_seen_options: list = []
 
         # Attempt A: Native <select> elements inside settings dialog
         select_els = await self.page.locator('[role="dialog"] select').all()
@@ -529,20 +646,39 @@ class MeetNavigator:
             try:
                 if not await s_el.is_visible():
                     continue
-                # Inspect options in this select
                 options = await s_el.locator("option").all()
+                select_options = []
                 for opt in options:
                     opt_text = (await opt.inner_text()).strip()
-                    norm_opt = " ".join(opt_text.lower().split())
-                    if norm_target in norm_opt or norm_opt in norm_target:
-                        val = await opt.get_attribute("value")
+                    if opt_text:
+                        select_options.append(opt_text)
+                        if opt_text not in all_seen_options:
+                            all_seen_options.append(opt_text)
+
+                if select_options:
+                    logger.info(f"[MEET][AUDIO] Available {device_type} options in native <select> ({len(select_options)}): {select_options}")
+
+                    best_score = 0.0
+                    best_opt = None
+                    for opt in options:
+                        opt_text = (await opt.inner_text()).strip()
+                        score = score_device_match(target_label, opt_text, device_type)
+                        if score > best_score:
+                            best_score = score
+                            best_opt = (opt_text, opt)
+
+                    if best_opt and best_score >= 40.0:
+                        chosen_text, opt_el = best_opt
+                        val = await opt_el.get_attribute("value")
                         if val:
                             await s_el.select_option(value=val)
                         else:
-                            await s_el.select_option(label=opt_text)
-                        return {"success": True, "selected_label": opt_text}
-            except Exception:
-                pass
+                            await s_el.select_option(label=chosen_text)
+                        await self.page.wait_for_timeout(300)
+                        logger.info(f"[MEET][AUDIO] Selected and verified {device_type} via native select: '{chosen_text}'")
+                        return {"success": True, "selected_label": chosen_text}
+            except Exception as e:
+                logger.debug(f"[MEET][AUDIO] Native select attempt note: {e}")
 
         # Attempt B: Click combobox/listbox container to reveal dropdown options
         for sel in container_selectors:
@@ -551,34 +687,96 @@ class MeetNavigator:
                 if await loc.count() == 0 or not await loc.first.is_visible():
                     continue
 
-                # Check if current value already matches target
-                current_text = (await loc.first.inner_text() or await loc.first.get_attribute("aria-label") or "").strip()
-                norm_current = " ".join(current_text.lower().split())
-                if norm_target in norm_current or (norm_current and norm_current in norm_target):
-                    return {"success": True, "selected_label": current_text}
+                container_el = loc.first
+
+                # Check if current value already matches target before opening dropdown
+                current_text = (await container_el.inner_text() or await container_el.get_attribute("aria-label") or "").strip()
+                clean_current = " ".join(current_text.split())
+                if clean_current:
+                    if clean_current not in all_seen_options:
+                        all_seen_options.append(clean_current)
+                    current_score = score_device_match(target_label, clean_current, device_type)
+                    if current_score >= 75.0:
+                        logger.info(
+                            f"[MEET][AUDIO] Current {device_type} already matches target: '{clean_current}' "
+                            f"(score: {current_score}, target: '{target_label}')"
+                        )
+                        return {"success": True, "selected_label": clean_current}
 
                 # Click dropdown to open option menu
-                await loc.first.click()
+                await container_el.click()
                 await self.page.wait_for_timeout(500)
 
-                # Look for matching option in the revealed listbox / menu / options
+                # Look for revealed options
                 option_locators = [
-                    self.page.locator('[role="option"]'),
                     self.page.locator('[role="listbox"] [role="option"]'),
+                    self.page.locator('[role="menu"] [role="menuitem"]'),
+                    self.page.locator('[role="option"]'),
                     self.page.locator('li[role="option"]'),
                     self.page.locator('[role="menuitemradio"]'),
+                    self.page.locator('ul[role="listbox"] > li'),
+                    self.page.locator('.mdc-list-item'),
+                    self.page.locator('[role="listbox"] > div'),
+                    self.page.locator('li[data-value]'),
                 ]
+
+                dropdown_options = []
+                option_items = []
                 for opt_group in option_locators:
                     count = await opt_group.count()
                     for idx in range(count):
                         item = opt_group.nth(idx)
-                        text = (await item.inner_text() or await item.get_attribute("aria-label") or "").strip()
-                        norm_item = " ".join(text.lower().split())
+                        try:
+                            if await item.is_visible():
+                                text = (await item.inner_text() or await item.get_attribute("aria-label") or "").strip()
+                                clean_text = " ".join(text.split())
+                                if clean_text and clean_text not in dropdown_options:
+                                    dropdown_options.append(clean_text)
+                                    option_items.append((clean_text, item))
+                                    if clean_text not in all_seen_options:
+                                        all_seen_options.append(clean_text)
+                        except Exception:
+                            pass
 
-                        if norm_target in norm_item or norm_item in norm_target:
-                            await item.click()
-                            await self.page.wait_for_timeout(300)
-                            return {"success": True, "selected_label": text}
+                # LOG ACTUAL AVAILABLE OPTIONS (Task Requirement 2)
+                if dropdown_options:
+                    logger.info(f"[MEET][AUDIO] Available {device_type} options ({len(dropdown_options)}): {dropdown_options}")
+                else:
+                    logger.debug(f"[MEET][AUDIO] No visible options found after clicking {sel}")
+
+                # Find best matching option
+                best_score = 0.0
+                best_match = None
+                for text, item in option_items:
+                    score = score_device_match(target_label, text, device_type)
+                    if score > best_score:
+                        best_score = score
+                        best_match = (text, item)
+
+                if best_match and best_score >= 40.0:
+                    chosen_text, chosen_item = best_match
+                    logger.info(
+                        f"[MEET][AUDIO] Selecting {device_type} option: '{chosen_text}' "
+                        f"(score: {best_score}, target: '{target_label}')"
+                    )
+                    await chosen_item.click()
+                    await self.page.wait_for_timeout(500)
+
+                    # VERIFY THE ACTUAL SELECTED DEVICE AFTER CHANGING IT (Task Requirement 4)
+                    verified_text = ""
+                    try:
+                        verified_text = (await container_el.inner_text() or await container_el.get_attribute("aria-label") or "").strip()
+                        verified_text = " ".join(verified_text.split())
+                    except Exception:
+                        pass
+
+                    if verified_text and score_device_match(target_label, verified_text, device_type) >= 40.0:
+                        v_score = score_device_match(target_label, verified_text, device_type)
+                        logger.info(f"[MEET][AUDIO] Verified {device_type} selection: '{verified_text}' (score: {v_score})")
+                        return {"success": True, "selected_label": verified_text}
+                    else:
+                        logger.info(f"[MEET][AUDIO] {device_type} selected: '{chosen_text}'")
+                        return {"success": True, "selected_label": chosen_text}
 
                 # If no matching option clicked, press Escape to close this dropdown
                 await self.page.keyboard.press("Escape")
@@ -587,10 +785,16 @@ class MeetNavigator:
             except Exception as e:
                 logger.debug(f"[MEET][AUDIO] Selector attempt error on {sel}: {e}")
 
+        err_msg = (
+            f"Device label '{target_label}' not found among available {device_type} options: "
+            f"{all_seen_options if all_seen_options else 'None discovered'}"
+        )
+        logger.error(f"[MEET][AUDIO] {err_msg}")
         return {
             "success": False,
             "selected_label": "",
-            "error": f"Device label '{target_label}' not found among available options.",
+            "error": err_msg,
+            "available_options": all_seen_options,
         }
 
     async def dump_prejoin_diagnostics(self) -> dict:
