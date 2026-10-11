@@ -2,14 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-
 import { StudentShell } from "@/components/student/StudentShell";
 import {
   Card,
   CardContent,
   CardHeader,
 } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import {
   interviewSchedulingService,
@@ -21,6 +19,19 @@ import type {
   InterviewSlot,
 } from "@/services/interviewScheduling.api";
 import { cn } from "@/lib/utils";
+import {
+  CalendarDays,
+  Clock,
+  Video,
+  CheckCircle2,
+  AlertCircle,
+  ArrowRight,
+  ShieldCheck,
+  Calendar,
+  Sparkles,
+  MapPin,
+  Globe,
+} from "lucide-react";
 
 type ViewState =
   | { kind: "loading" }
@@ -46,10 +57,7 @@ export default function InterviewSchedulingPage() {
   } | null>(null);
 
   /**
-   * Load the student's eligibility + the interview configuration.
-   *
-   * The backend derives eligibility from the PERSISTED verification state, so a
-   * VERIFIED student is never blocked by an admin-review step here.
+   * Load candidate interview eligibility and scheduling config
    */
   const loadConfig = useCallback(async () => {
     try {
@@ -72,8 +80,6 @@ export default function InterviewSchedulingPage() {
         setSelectedDate(data.availableDates[0]);
       }
     } catch (error) {
-      // A 401 means the session cookie was not sent or has expired. Send the
-      // student back to identity verification instead of showing a dead end.
       if (error instanceof InterviewApiError && error.status === 401) {
         router.replace("/student/verify");
         return;
@@ -84,7 +90,7 @@ export default function InterviewSchedulingPage() {
         message:
           error instanceof Error
             ? error.message
-            : "Unable to load your interview eligibility.",
+            : "Unable to load interview scheduling.",
       });
     }
   }, [router]);
@@ -94,7 +100,7 @@ export default function InterviewSchedulingPage() {
   }, [loadConfig]);
 
   /**
-   * Fetch availability whenever the selected date changes.
+   * Fetch slot availability for selected date
    */
   const loadAvailability = useCallback(async (date: string) => {
     if (!date) return;
@@ -112,7 +118,7 @@ export default function InterviewSchedulingPage() {
         text:
           error instanceof Error
             ? error.message
-            : "Unable to load interview times.",
+            : "Unable to load interview slots.",
       });
     } finally {
       setLoadingSlots(false);
@@ -126,11 +132,7 @@ export default function InterviewSchedulingPage() {
   }, [selectedDate, loadAvailability]);
 
   /**
-   * Book the selected time.
-   *
-   * On a 409 conflict the page does NOT crash or reset: availability is
-   * refreshed, the contested time becomes Already Taken, and the student can
-   * immediately choose another slot.
+   * Book selected interview slot
    */
   const handleBook = useCallback(async () => {
     if (!selectedStartAt || booking) return;
@@ -150,7 +152,7 @@ export default function InterviewSchedulingPage() {
       ) {
         setNotice({
           tone: "warning",
-          text: "This interview time was just booked by another student. Please choose another available time.",
+          text: "This time slot was just booked by another applicant. Please select another slot.",
         });
         await loadAvailability(selectedDate);
       } else if (
@@ -159,7 +161,7 @@ export default function InterviewSchedulingPage() {
       ) {
         setNotice({
           tone: "warning",
-          text: "You already have an active interview scheduled.",
+          text: "You already have an active scheduled interview.",
         });
         await loadConfig();
       } else {
@@ -168,7 +170,7 @@ export default function InterviewSchedulingPage() {
           text:
             error instanceof Error
               ? error.message
-              : "Unable to book this interview.",
+              : "Unable to complete interview booking.",
         });
       }
     } finally {
@@ -191,59 +193,61 @@ export default function InterviewSchedulingPage() {
   );
 
   // ---------------------------------------------------------------
-  // LOADING
+  // LOADING STATE
   // ---------------------------------------------------------------
-
   if (view.kind === "loading") {
     return (
       <StudentShell>
         <div className="mx-auto w-full max-w-4xl space-y-6">
-          <Skeleton className="h-8 w-64" />
-          <Skeleton className="h-40 w-full" />
-          <Skeleton className="h-64 w-full" />
+          <Skeleton className="h-10 w-64 rounded-xl bg-[#E9E4D8]" />
+          <Skeleton className="h-32 w-full rounded-2xl bg-white" />
+          <Skeleton className="h-64 w-full rounded-2xl bg-white" />
         </div>
       </StudentShell>
     );
   }
 
   // ---------------------------------------------------------------
-  // NOT ELIGIBLE (rejected / unverified / already booked upstream)
+  // INELIGIBLE / UNVERIFIED / ERROR
   // ---------------------------------------------------------------
-
   if (view.kind === "ineligible" || view.kind === "error") {
     const alreadyBooked = view.kind === "ineligible" && view.alreadyBooked;
 
     return (
       <StudentShell>
         <div className="mx-auto w-full max-w-2xl">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-start gap-4">
-                <span className="text-2xl" aria-hidden>
-                  {alreadyBooked ? "📅" : "⛔"}
-                </span>
+          <Card className="border-[#D6D3C8] bg-white shadow-sm">
+            <CardContent className="p-8 text-center space-y-4">
+              <div
+                className={`mx-auto flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold ${
+                  alreadyBooked
+                    ? "bg-[#EAF4EE] text-[#15803D]"
+                    : "bg-[#FEE2E2] text-[#B91C1C]"
+                }`}
+              >
+                {alreadyBooked ? "✓" : "!"}
+              </div>
 
-                <div>
-                  <h1 className="text-lg font-semibold text-slate-900">
-                    {alreadyBooked
-                      ? "Interview already scheduled"
-                      : view.kind === "error"
-                        ? "Unable to load scheduling"
-                        : "Project not verified"}
-                  </h1>
+              <h1 className="text-xl font-bold text-[#1B4332]">
+                {alreadyBooked
+                  ? "Interview Already Scheduled"
+                  : view.kind === "error"
+                  ? "Unable to Load Scheduling"
+                  : "Project Verification Pending"}
+              </h1>
 
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    {view.message}
-                  </p>
+              <p className="text-sm leading-relaxed text-[#64748B] max-w-md mx-auto">
+                {view.message}
+              </p>
 
-                  <Button
-                    className="mt-5"
-                    variant="outline"
-                    onClick={() => router.push("/student/status")}
-                  >
-                    Back to application status
-                  </Button>
-                </div>
+              <div className="pt-4">
+                <button
+                  type="button"
+                  onClick={() => router.push(alreadyBooked ? "/student/interview" : "/student/status")}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#1B4332] text-white text-sm font-semibold hover:bg-[#143326] cursor-pointer"
+                >
+                  {alreadyBooked ? "Go to Interview Details" : "Back to Application Status"}
+                </button>
               </div>
             </CardContent>
           </Card>
@@ -253,148 +257,144 @@ export default function InterviewSchedulingPage() {
   }
 
   // ---------------------------------------------------------------
-  // ALREADY BOOKED
+  // CONFIRMED BOOKING VIEW
   // ---------------------------------------------------------------
-
   if (bookingResult) {
     return (
       <StudentShell>
         <div className="mx-auto w-full max-w-2xl space-y-6">
-          <Card className="border-emerald-200 bg-emerald-50/60">
-            <CardContent className="p-6">
-              <p className="text-lg font-semibold text-emerald-900">
-                Interview Scheduled Successfully ✓
-              </p>
-
-              <dl className="mt-5 grid gap-4 sm:grid-cols-2">
-                <Field
-                  label="Student"
-                  value={eligibleData?.candidate.name}
-                />
-                <Field label="Date" value={bookingResult.date} />
-                <Field label="Time" value={bookingResult.time} />
-                <Field label="Status" value="Scheduled" />
-                <Field
-                  label="Interview duration"
-                  value={`${bookingResult.durationMinutes} minutes`}
-                />
-                <Field label="Timezone" value={bookingResult.timezone} />
-                <Field label="Mode" value={bookingResult.mode} />
-                <Field label="Location" value={bookingResult.location} />
-              </dl>
-
-              {bookingResult.meetLink && (
-                <p className="mt-5 text-sm text-slate-700">
-                  Meeting link:{" "}
-                  <a
-                    className="font-medium underline"
-                    href={bookingResult.meetLink}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {bookingResult.meetLink}
-                  </a>
+          <div className="rounded-2xl border border-[#40916C]/40 bg-[#EAF4EE] p-6 sm:p-8 shadow-sm space-y-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#15803D] text-white">
+                <CheckCircle2 className="h-6 w-6" />
+              </div>
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold text-[#1B4332]">
+                  Interview Scheduled Successfully
+                </h1>
+                <p className="text-sm text-[#1F2937] mt-1">
+                  Your interview slot has been confirmed with our team and synchronized with Google Calendar.
                 </p>
-              )}
+              </div>
+            </div>
 
-              {bookingResult.meetLink && (
-                <p className="mt-4 rounded-lg bg-indigo-50 p-3 text-sm text-indigo-900">
-                  Google Meet is the official AI interview room. At your scheduled time, join the Google Meet room to speak with RecruitAI.
-                </p>
-              )}
+            <div className="grid gap-4 sm:grid-cols-2 bg-white p-5 rounded-xl border border-[#D6D3C8]">
+              <Field label="Candidate" value={eligibleData?.candidate.name} />
+              <Field label="Date" value={bookingResult.date} />
+              <Field label="Time" value={bookingResult.time} />
+              <Field label="Duration" value={`${bookingResult.durationMinutes} minutes`} />
+              <Field label="Timezone" value={bookingResult.timezone} />
+              <Field label="Format" value={bookingResult.mode || "Google Meet Video"} />
+            </div>
 
-              <p className="mt-6 rounded-lg bg-white/70 p-3 text-sm text-slate-600">
-                You already have an active interview scheduled, so no further
-                booking is possible.
-              </p>
+            {bookingResult.meetLink && (
+              <div className="rounded-xl bg-[#1B4332] text-white p-4 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#D8CDBB]">
+                  <Video className="h-4 w-4 text-[#40916C]" />
+                  Official Google Meet Video Room
+                </div>
+                <a
+                  href={bookingResult.meetLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-[#F5F1E8] hover:text-[#40916C] break-all underline"
+                >
+                  {bookingResult.meetLink}
+                </a>
+              </div>
+            )}
 
-              <Button
-                className="mt-5"
-                variant="outline"
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <button
+                type="button"
                 onClick={() => router.push("/student/interview")}
+                className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-[#40916C] hover:bg-[#347959] text-white text-sm font-semibold shadow-sm transition-all cursor-pointer"
               >
-                Go to interview room
-              </Button>
-            </CardContent>
-          </Card>
+                <Video className="h-4 w-4" />
+                <span>Go to Interview Room</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/student/status")}
+                className="inline-flex items-center justify-center px-4 py-2.5 rounded-xl bg-white border border-[#D6D3C8] text-[#1F2937] text-sm font-medium hover:bg-[#F5F1E8] cursor-pointer"
+              >
+                Back to Dashboard
+              </button>
+            </div>
+          </div>
         </div>
       </StudentShell>
     );
   }
 
   // ---------------------------------------------------------------
-  // SCHEDULING
+  // SCHEDULING SELECTION VIEW
   // ---------------------------------------------------------------
-
   return (
     <StudentShell>
       <div className="mx-auto w-full max-w-4xl space-y-6">
-        <header>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-            Interview Scheduling
+        {/* Page Header */}
+        <div className="space-y-1">
+          <p className="text-xs font-bold uppercase tracking-wider text-[#40916C]">
+            Phase 3 Milestone
+          </p>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#1B4332]">
+            Schedule Your Technical Interview
           </h1>
-        </header>
+          <p className="max-w-2xl text-sm leading-6 text-[#64748B]">
+            Your project passed automated verification. Choose an available date and time slot to complete your recruiter discussion.
+          </p>
+        </div>
 
-        {/* --- Project verified confirmation --- */}
-        <Card className="border-emerald-200 bg-emerald-50/60">
-          <CardContent className="p-5">
-            <p className="flex items-center gap-2 text-base font-semibold text-emerald-900">
-              <span aria-hidden>✓</span>
-              Project Verified
-            </p>
-            <p className="mt-2 text-sm leading-6 text-emerald-900/80">
-              Your project has been successfully verified. You are eligible to
-              schedule your interview.
-            </p>
-          </CardContent>
-        </Card>
+        {/* Verification Status Pill */}
+        <div className="rounded-xl border border-[#40916C]/40 bg-[#EAF4EE] p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#15803D] text-white text-sm font-bold">
+              ✓
+            </div>
+            <div>
+              <p className="text-sm font-bold text-[#1B4332]">
+                Project Verified & Eligible
+              </p>
+              <p className="text-xs text-[#1F2937]">
+                Live Google Meet room invite will be automatically dispatched upon slot selection.
+              </p>
+            </div>
+          </div>
+          {config && (
+            <span className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded bg-white text-[#1B4332] border border-[#D6D3C8]">
+              <Clock className="h-3.5 w-3.5 text-[#40916C]" />
+              {config.interviewDurationMinutes} min session
+            </span>
+          )}
+        </div>
 
-        {/* --- Booking configuration summary --- */}
-        {config && (
-          <Card>
-            <CardContent className="grid gap-4 p-5 sm:grid-cols-3">
-              <Field
-                label="Interview duration"
-                value={`${config.interviewDurationMinutes} minutes`}
-              />
-              <Field label="Timezone" value={config.timezone} />
-              <Field
-                label="Available hours"
-                value={
-                  config.workingHours.startHour === 0 && config.workingHours.endHour === 24
-                    ? "All day (24/7)"
-                    : `${String(config.workingHours.startHour).padStart(2, "0")}:00 – ${String(config.workingHours.endHour).padStart(2, "0")}:00`
-                }
-              />
-            </CardContent>
-          </Card>
-        )}
-
+        {/* Notice Alert */}
         {notice && (
           <div
             role="alert"
             className={cn(
-              "rounded-xl border px-4 py-3 text-sm",
+              "rounded-xl border px-4 py-3 text-xs sm:text-sm font-medium flex items-center gap-2",
               notice.tone === "error"
-                ? "border-red-200 bg-red-50 text-red-700"
-                : "border-amber-200 bg-amber-50 text-amber-800"
+                ? "border-[#B91C1C]/30 bg-[#FEE2E2] text-[#B91C1C]"
+                : "border-[#B45309]/30 bg-[#FEF3C7] text-[#B45309]"
             )}
           >
-            {notice.text}
+            <AlertCircle className="h-4 w-4 shrink-0" />
+            <span>{notice.text}</span>
           </div>
         )}
 
-        {/* --- Date selection --- */}
-        <Card>
+        {/* Date Selection Card */}
+        <Card className="border-[#D6D3C8] bg-white shadow-sm">
           <CardHeader
-            title="Select Interview Date"
-            subtitle="Only dates with interview availability are shown."
+            title="1. Select Interview Date"
+            subtitle="Available interview dates based on recruiter schedule."
           />
           <CardContent>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2.5">
               {(eligibleData?.availableDates ?? []).map((date) => {
                 const active = date === selectedDate;
-
                 return (
                   <button
                     key={date}
@@ -402,10 +402,10 @@ export default function InterviewSchedulingPage() {
                     onClick={() => setSelectedDate(date)}
                     aria-pressed={active}
                     className={cn(
-                      "rounded-lg border px-3 py-2 text-sm font-medium transition-colors",
+                      "rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all cursor-pointer focus:outline-none",
                       active
-                        ? "border-accent-600 bg-accent-600 text-white"
-                        : "border-slate-200 bg-white text-slate-700 hover:border-accent-400 hover:bg-slate-50"
+                        ? "border-[#1B4332] bg-[#1B4332] text-white shadow-sm"
+                        : "border-[#D6D3C8] bg-white text-[#1F2937] hover:border-[#40916C] hover:bg-[#F5F1E8]"
                     )}
                   >
                     {formatDateLabel(date)}
@@ -414,44 +414,44 @@ export default function InterviewSchedulingPage() {
               })}
 
               {(eligibleData?.availableDates ?? []).length === 0 && (
-                <p className="text-sm text-slate-500">
-                  No interview dates are currently open for booking.
+                <p className="text-sm text-[#64748B]">
+                  No upcoming interview dates are open right now. Please check back shortly.
                 </p>
               )}
             </div>
           </CardContent>
         </Card>
 
-        {/* --- Time selection --- */}
-        <Card>
+        {/* Time Selection Card */}
+        <Card className="border-[#D6D3C8] bg-white shadow-sm">
           <CardHeader
-            title="Select Interview Time"
-            subtitle="Times already taken are shown but cannot be selected."
+            title="2. Select Time Slot"
+            subtitle="Real-time availability with collision protection."
           />
           <CardContent>
             {loadingSlots ? (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {Array.from({ length: 8 }).map((_, index) => (
-                  <Skeleton key={index} className="h-16 w-full" />
+                  <Skeleton key={index} className="h-16 w-full rounded-xl bg-[#F5F1E8]" />
                 ))}
               </div>
             ) : slots.length === 0 ? (
-              <p className="text-sm text-slate-500">
-                No interview times are available for this date.
+              <p className="text-sm text-[#64748B]">
+                No available interview slots found for this date. Please pick another date above.
               </p>
             ) : (
               <>
-                <div className="mb-4 flex flex-wrap items-center gap-4 text-xs text-slate-500">
+                <div className="mb-4 flex flex-wrap items-center gap-4 text-xs text-[#64748B]">
                   <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#15803D]" />
                     Available
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-slate-400" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#D8CDBB]" />
                     Already Taken
                   </span>
                   <span className="flex items-center gap-1.5">
-                    <span className="h-2.5 w-2.5 rounded-full bg-accent-600" />
+                    <span className="h-2.5 w-2.5 rounded-full bg-[#1B4332]" />
                     Selected
                   </span>
                 </div>
@@ -460,7 +460,6 @@ export default function InterviewSchedulingPage() {
                   {slots.map((slot) => {
                     const taken = slot.status === "already_taken";
                     const past = slot.status === "past";
-                    // Already-taken and past times are NOT clickable.
                     const disabled = taken || past;
                     const selected = slot.startAt === selectedStartAt;
 
@@ -473,25 +472,25 @@ export default function InterviewSchedulingPage() {
                         aria-disabled={disabled}
                         onClick={() => setSelectedStartAt(slot.startAt)}
                         className={cn(
-                          "flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-colors",
+                          "flex flex-col items-start gap-1 rounded-xl border p-3.5 text-left transition-all cursor-pointer",
                           selected &&
-                            "border-accent-600 bg-accent-50 ring-2 ring-accent-600",
+                            "border-[#1B4332] bg-[#EAF4EE] ring-2 ring-[#40916C] shadow-sm",
                           !selected &&
                             !disabled &&
-                            "border-emerald-200 bg-emerald-50 hover:border-emerald-400 hover:bg-emerald-100",
+                            "border-[#D6D3C8] bg-white hover:border-[#40916C] hover:bg-[#F5F1E8]",
                           disabled &&
-                            "cursor-not-allowed border-slate-200 bg-slate-100 opacity-60"
+                            "cursor-not-allowed border-[#D8CDBB] bg-[#E9E4D8]/50 opacity-60 text-[#64748B]"
                         )}
                       >
-                        <span className="text-sm font-semibold text-slate-900">
+                        <span className="text-sm font-bold text-[#1F2937]">
                           {slot.time}
                         </span>
-                        <span className="text-xs text-slate-500">
+                        <span className="text-[11px] font-medium text-[#64748B]">
                           {taken
                             ? "Already Taken"
                             : past
-                              ? "Unavailable"
-                              : "Available"}
+                            ? "Unavailable"
+                            : "Available Slot"}
                         </span>
                       </button>
                     );
@@ -502,34 +501,32 @@ export default function InterviewSchedulingPage() {
           </CardContent>
         </Card>
 
-        {/* --- Confirmation --- */}
+        {/* Confirmation & Booking Card */}
         {selectedSlot && (
-          <Card>
-            <CardContent className="p-5">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-                Selected interview
-              </p>
+          <Card className="border-[#40916C]/40 bg-[#EAF4EE] shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wider text-[#15803D]">
+                    Selected Slot Confirmation
+                  </p>
+                  <p className="text-lg font-bold text-[#1B4332] mt-0.5">
+                    {formatDateLabel(selectedDate, true)} at {selectedSlot.time}
+                  </p>
+                  <p className="text-xs text-[#1F2937] mt-1">
+                    Duration: {config?.interviewDurationMinutes ?? 30} mins • Timezone: {config?.timezone ?? "IST"}
+                  </p>
+                </div>
 
-              <dl className="mt-3 grid gap-4 sm:grid-cols-3">
-                <Field
-                  label="Date"
-                  value={formatDateLabel(selectedDate, true)}
-                />
-                <Field label="Time" value={selectedSlot.time} />
-                <Field
-                  label="Duration"
-                  value={`${config?.interviewDurationMinutes ?? 0} minutes`}
-                />
-              </dl>
-
-              <Button
-                className="mt-5"
-                onClick={handleBook}
-                loading={booking}
-                disabled={booking}
-              >
-                Book Interview
-              </Button>
+                <button
+                  type="button"
+                  onClick={handleBook}
+                  disabled={booking}
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[#1B4332] hover:bg-[#143326] text-white font-semibold text-sm transition-all shadow-sm disabled:opacity-50 cursor-pointer"
+                >
+                  {booking ? "Confirming Booking..." : "Confirm & Book Slot →"}
+                </button>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -538,12 +535,6 @@ export default function InterviewSchedulingPage() {
   );
 }
 
-/**
- * Format a "YYYY-MM-DD" calendar date for display.
- *
- * The value is a calendar date rather than an instant, so it is formatted in
- * UTC to avoid shifting to the previous/next day.
- */
 function formatDateLabel(date: string, long = false) {
   if (!date) return "—";
 
@@ -565,10 +556,10 @@ function Field({
 }) {
   return (
     <div className="min-w-0">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+      <dt className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">
         {label}
       </dt>
-      <dd className="mt-1 break-words text-sm font-medium text-slate-900">
+      <dd className="mt-0.5 break-words text-sm font-semibold text-[#1F2937]">
         {value || "—"}
       </dd>
     </div>

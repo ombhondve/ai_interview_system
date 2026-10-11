@@ -2,6 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --forest-green: #1B4332;
+  --natural-green: #40916C;
+  --warm-sand: #F5F1E8;
+  --beige: #D8CDBB;
+  --card-bg: #FFFFFF;
+  --main-text: #1F2937;
+  --secondary-text: #64748B;
+  --success-verified: #15803D;
+  --warning-pending: #B45309;
+  --error-rejected: #B91C1C;
+  --input-borders: #D6D3C8;
+  --hover-background: #E9E4D8;
+}
+
 @layer base {
   * {
     border-color: #E2E8F0;

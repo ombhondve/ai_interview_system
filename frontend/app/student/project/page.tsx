@@ -129,25 +129,29 @@ function VerificationResultView({
 
   if (state === "accepted") {
     return (
-      <Card className="border-emerald-200 bg-emerald-50/60">
+      <Card className="border-[#40916C]/40 bg-[#EAF4EE] shadow-sm">
         <CardContent className="p-8">
-          <div className="mx-auto max-w-2xl text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-600 text-2xl font-bold text-white">
+          <div className="mx-auto max-w-2xl text-center space-y-4">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#15803D] text-2xl font-bold text-white shadow-sm">
               ✓
             </div>
-            <h2 className="mt-5 text-2xl font-semibold text-emerald-950">
-              Accepted
+            <h2 className="text-2xl font-bold text-[#1B4332]">
+              Project Accepted & Verified
             </h2>
-            <p className="mt-2 text-sm leading-6 text-emerald-800">
-              Your project passed verification.
+            <p className="text-sm leading-6 text-[#1F2937]">
+              Your project submission has successfully passed all automated repository checks and AI requirement verification.
             </p>
-            <span className="mt-4 inline-flex rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-800">
-              Accepted
+            <span className="inline-flex rounded-full bg-[#15803D]/15 px-3 py-1 text-xs font-bold text-[#15803D]">
+              Verified Candidate
             </span>
-            <div className="mt-7">
-              <Button onClick={onScheduleInterview}>
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={onScheduleInterview}
+                className="bg-[#40916C] hover:bg-[#347959] text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#40916C] cursor-pointer"
+              >
                 Schedule Interview →
-              </Button>
+              </button>
             </div>
           </div>
         </CardContent>
@@ -157,28 +161,30 @@ function VerificationResultView({
 
   if (state === "rejected") {
     return (
-      <Card className="border-rose-200 bg-rose-50/60">
+      <Card className="border-[#B91C1C]/30 bg-[#FEE2E2]/50 shadow-sm">
         <CardContent className="p-8">
-          <div className="mx-auto max-w-2xl text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-rose-600 text-2xl font-bold text-white">
-              ×
+          <div className="mx-auto max-w-2xl text-center space-y-4">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#B91C1C] text-2xl font-bold text-white shadow-sm">
+              ✕
             </div>
-            <h2 className="mt-5 text-2xl font-semibold text-rose-950">
-              Rejected
+            <h2 className="text-2xl font-bold text-[#B91C1C]">
+              Submission Not Verified
             </h2>
-            <p className="mt-2 text-sm leading-6 text-rose-800">
-              Your project did not meet the required project requirements.
+            <p className="text-sm leading-6 text-[#1F2937]">
+              Your submission did not meet the required technical criteria. Please review the automated feedback below.
             </p>
             {verification.rejectionReason && (
-              <div className="mt-6 rounded-xl border border-rose-200 bg-white/70 p-4 text-left">
-                <p className="text-sm font-semibold text-rose-900">Reason</p>
-                <p className="mt-2 text-sm leading-6 text-rose-800">
+              <div className="rounded-xl border border-[#B91C1C]/25 bg-white p-4 text-left shadow-2xs">
+                <p className="text-xs font-bold uppercase tracking-wider text-[#B91C1C]">
+                  Automated Feedback
+                </p>
+                <p className="mt-1 text-sm leading-6 text-[#1F2937]">
                   {verification.rejectionReason}
                 </p>
               </div>
             )}
-            <span className="mt-5 inline-flex rounded-full bg-rose-100 px-3 py-1 text-sm font-semibold text-rose-800">
-              Rejected
+            <span className="inline-flex rounded-full bg-[#B91C1C]/15 px-3 py-1 text-xs font-bold text-[#B91C1C]">
+              Changes Required
             </span>
           </div>
         </CardContent>
@@ -205,13 +211,15 @@ function VerificationResultView({
   );
 
   return (
-    <Card className="border-blue-200 bg-blue-50/60">
+    <Card className="border-[#D6D3C8] bg-white shadow-sm">
       <CardContent className="p-8">
         <div className="mx-auto max-w-2xl text-center">
-          <div className="mx-auto h-14 w-14 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
-          <h2 className="mt-5 text-xl font-semibold text-slate-950">Verifying your project</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            {progress?.message || "Please wait while we analyze your submission."}
+          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-3 border-[#D6D3C8] border-t-[#40916C]" />
+          <h2 className="mt-5 text-xl font-bold text-[#1B4332]">
+            Verifying Your Project
+          </h2>
+          <p className="mt-2 text-sm leading-6 text-[#64748B]">
+            {progress?.message || "Please wait while our verification engine analyzes your repository."}
           </p>
           <div className="mx-auto mt-7 max-w-md space-y-4 text-left">
             {steps.map((step, index) => {
@@ -279,27 +287,27 @@ function VerificationStep({
 }) {
   const indicatorClass =
     failed
-      ? "bg-red-600 text-white"
+      ? "bg-[#B91C1C] text-white"
       : complete
-        ? "bg-emerald-600 text-white"
+        ? "bg-[#15803D] text-white"
         : active
-          ? "bg-blue-600 text-white animate-pulse"
-          : "bg-slate-200 text-slate-500";
+          ? "bg-[#40916C] text-white animate-pulse"
+          : "bg-[#E9E4D8] text-[#64748B]";
 
   const labelClass =
     failed
-      ? "font-semibold text-red-800"
+      ? "font-semibold text-[#B91C1C]"
       : active
-        ? "font-semibold text-blue-800"
+        ? "font-semibold text-[#1B4332]"
         : complete
-          ? "text-slate-800"
-          : "text-slate-500";
+          ? "text-[#1F2937]"
+          : "text-[#64748B]";
 
   return (
     <div className="relative flex items-start gap-3">
       <span className={`relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all duration-500 ${indicatorClass}`}>
         {active && !failed && !complete && (
-          <span className="absolute inset-0 rounded-full border-2 border-blue-300 animate-ping" />
+          <span className="absolute inset-0 rounded-full border-2 border-[#40916C] animate-ping" />
         )}
         <span className="relative z-10">
           {failed ? "×" : complete ? "✓" : active ? "•" : ""}
@@ -307,7 +315,7 @@ function VerificationStep({
       </span>
       <div className="min-w-0">
         <span className={`text-sm ${labelClass}`}>{label}</span>
-        {message && <p className="mt-0.5 text-xs leading-5 text-slate-500">{message}</p>}
+        {message && <p className="mt-0.5 text-xs leading-5 text-[#64748B]">{message}</p>}
       </div>
     </div>
   );
@@ -912,18 +920,17 @@ export default function Project() {
         {/* PAGE HEADER */}
         {/* ====================================== */}
 
-        <div>
-          <p className="text-sm font-medium text-slate-500">
-            Candidate portal
+        <div className="space-y-1">
+          <p className="text-xs font-bold uppercase tracking-wider text-[#40916C]">
+            Technical Assessment
           </p>
 
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
-            Project submission
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#1B4332]">
+            Assigned Project Submission
           </h1>
 
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-            Complete the assigned project and submit
-            your repository or deployed project URL.
+          <p className="max-w-2xl text-sm leading-6 text-[#64748B]">
+            Complete the assigned recruitment challenge and submit your public GitHub or repository URL for automated AI evaluation.
           </p>
         </div>
 
@@ -934,20 +941,20 @@ export default function Project() {
         {error && (
           <div
             role="alert"
-            className="rounded-xl border border-red-200 bg-red-50 p-4"
+            className="rounded-xl border border-[#B91C1C]/30 bg-[#FEE2E2]/70 p-4"
           >
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-start gap-3">
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#B91C1C] text-xs font-bold text-white">
                   !
                 </div>
 
                 <div>
-                  <p className="font-medium text-red-900">
+                  <p className="font-semibold text-[#B91C1C]">
                     Unable to continue
                   </p>
 
-                  <p className="mt-1 text-sm text-red-700">
+                  <p className="mt-1 text-sm text-[#1F2937]">
                     {error}
                   </p>
                 </div>
@@ -956,7 +963,7 @@ export default function Project() {
               <button
                 type="button"
                 onClick={() => setError("")}
-                className="text-sm font-medium text-red-700 hover:text-red-900"
+                className="text-xs font-semibold text-[#B91C1C] hover:underline"
               >
                 Dismiss
               </button>
@@ -969,18 +976,22 @@ export default function Project() {
         {/* ====================================== */}
 
         {!project ? (
-          <Card>
+          <Card className="border-[#D6D3C8] bg-white shadow-sm">
             <CardContent className="py-14">
               <div className="text-center">
-                <h2 className="text-lg font-semibold text-slate-900">
-                  No project assigned
+                <h2 className="text-lg font-bold text-[#1B4332]">
+                  No Project Assigned
                 </h2>
-                <p className="mx-auto mt-1 max-w-md text-sm text-slate-500">
-                  A project has not been assigned to your application yet. Please check back later.
+                <p className="mx-auto mt-1 max-w-md text-sm text-[#64748B]">
+                  A project has not been assigned to your candidate profile yet. Please check back later or contact your recruiter.
                 </p>
-                <Button className="mt-5" size="sm" onClick={loadCandidate}>
-                  Refresh
-                </Button>
+                <button
+                  type="button"
+                  onClick={loadCandidate}
+                  className="mt-5 inline-flex items-center px-4 py-2 rounded-xl bg-[#40916C] text-white text-xs font-semibold hover:bg-[#347959] cursor-pointer"
+                >
+                  Refresh Status
+                </button>
               </div>
             </CardContent>
           </Card>
@@ -994,54 +1005,54 @@ export default function Project() {
           />
         ) : (
           <>
-            {/* Assigned project stays on this same page until the student submits. */}
-            <Card>
+            {/* Assigned project briefing */}
+            <Card className="border-[#D6D3C8] bg-white shadow-sm">
               <CardHeader
-                title="Assigned project"
-                subtitle="Review the requirements before submitting your work."
+                title="Project Specification"
+                subtitle="Review technical requirements before starting implementation."
               />
               <CardContent>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="rounded-xl border border-[#D8CDBB] bg-[#F5F1E8] p-5 sm:p-6 space-y-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Project</p>
-                      <h2 className="mt-1 text-lg font-semibold text-slate-900">{project.title}</h2>
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">Assigned Challenge</p>
+                      <h2 className="mt-1 text-xl font-bold text-[#1B4332]">{project.title}</h2>
                     </div>
                     {project.difficulty && (
-                      <span className="inline-flex w-fit rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-700">
+                      <span className="inline-flex w-fit rounded-full bg-[#1B4332] text-[#F5F1E8] px-3 py-1 text-xs font-semibold">
                         {project.difficulty}
                       </span>
                     )}
                   </div>
 
                   {project.description && (
-                    <div className="mt-5">
-                      <p className="text-sm font-medium text-slate-800">Requirements</p>
-                      <p className="mt-2 whitespace-pre-line text-sm leading-6 text-slate-600">{project.description}</p>
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-bold uppercase tracking-wider text-[#1F2937]">Requirements & Guidelines</p>
+                      <p className="whitespace-pre-line text-sm leading-6 text-[#1F2937] bg-white p-4 rounded-xl border border-[#D6D3C8]">{project.description}</p>
                     </div>
                   )}
 
-                  <div className="mt-5 flex items-center gap-2 text-sm">
-                    <span className="font-medium text-slate-800">Deadline:</span>
-                    <span className="text-slate-600">
-                      {project.deadline || "Deadline will start after you download the project."}
+                  <div className="flex items-center gap-2 text-sm bg-white px-3.5 py-2.5 rounded-xl border border-[#D6D3C8]">
+                    <span className="font-bold text-[#1B4332]">Deadline:</span>
+                    <span className="text-[#64748B]">
+                      {project.deadline || "Deadline timer begins once you download the project resources."}
                     </span>
                   </div>
 
-                  <div className="mt-5 border-t border-slate-200 pt-5">
+                  <div className="border-t border-[#D8CDBB] pt-4">
                     {(project.pdfUrl || project.detailedPdfUrl || project.briefUrl) ? (
-                      <Button
-                        loading={downloading}
+                      <button
+                        type="button"
                         disabled={downloading}
                         onClick={downloadProject}
-                        className="w-full sm:w-auto"
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#40916C] hover:bg-[#347959] text-white font-semibold text-sm transition-all shadow-sm disabled:opacity-50 cursor-pointer"
                       >
-                        {downloading ? "Preparing download..." : "Download Project"}
-                      </Button>
+                        {downloading ? "Preparing download..." : "Download Project Resources (PDF)"}
+                      </button>
                     ) : (
-                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                        <p className="text-sm font-medium text-amber-900">Project PDF is not available yet.</p>
-                        <p className="mt-1 text-sm text-amber-700">Please contact the administrator to make the project PDF available.</p>
+                      <div className="rounded-xl border border-[#B45309]/30 bg-[#FFFBEB] p-4">
+                        <p className="text-sm font-semibold text-[#B45309]">Project brief is currently being prepared.</p>
+                        <p className="mt-1 text-xs text-[#64748B]">Please contact the hiring team to make the project brief available.</p>
                       </div>
                     )}
                   </div>
@@ -1051,15 +1062,15 @@ export default function Project() {
 
             {/* Submission appears only after the project has actually been downloaded. */}
             {(candidate?.projectSubmissionStatus === "downloaded" || candidate?.projectDownloadedAt) && (
-              <Card>
+              <Card className="border-[#D6D3C8] bg-white shadow-sm">
                 <CardHeader
-                  title="Submit your project"
-                  subtitle="Provide a public repository or deployed project URL."
+                  title="Submit Your Solution"
+                  subtitle="Provide a public GitHub, GitLab, or hosted repository URL."
                 />
                 <CardContent>
-                  <div className="max-w-2xl">
+                  <div className="max-w-2xl space-y-4">
                     <Input
-                      label="Project URL"
+                      label="GitHub / Repository URL"
                       type="url"
                       placeholder="https://github.com/username/project"
                       value={url}
@@ -1069,17 +1080,18 @@ export default function Project() {
                       }}
                       disabled={submitting}
                     />
-                    <p className="mt-2 text-xs leading-5 text-slate-500">
-                      You can submit a GitHub/GitLab repository, a live deployment, or another publicly accessible project URL.
+                    <p className="text-xs text-[#64748B] leading-relaxed">
+                      Make sure your repository is public so our automated verification engine can inspect your commits, dependencies, and test coverage.
                     </p>
-                    <div className="mt-5">
-                      <Button
-                        loading={submitting}
+                    <div className="pt-2">
+                      <button
+                        type="button"
                         disabled={!url.trim() || submitting}
                         onClick={submitProject}
+                        className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-[#1B4332] hover:bg-[#143326] text-white font-semibold text-sm transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                       >
-                        Submit Project
-                      </Button>
+                        {submitting ? "Analyzing & Submitting..." : "Submit Project for Verification"}
+                      </button>
                     </div>
                   </div>
                 </CardContent>

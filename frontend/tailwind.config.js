@@ -8,6 +8,31 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Forest & Sand Design System (Student Portal)
+        forest: {
+          DEFAULT: "#1B4332",
+          dark: "#143326",
+          light: "#255A44",
+        },
+        natural: {
+          DEFAULT: "#40916C",
+          hover: "#347959",
+          light: "#EAF4EE",
+        },
+        sand: {
+          DEFAULT: "#F5F1E8",
+          dark: "#D8CDBB",
+          border: "#D6D3C8",
+          hover: "#E9E4D8",
+          card: "#FFFFFF",
+        },
+        student: {
+          text: "#1F2937",
+          muted: "#64748B",
+          success: "#15803D",
+          warning: "#B45309",
+          error: "#B91C1C",
+        },
         // RecruitAI Brand System
         navy: {
           DEFAULT: "#111F33",

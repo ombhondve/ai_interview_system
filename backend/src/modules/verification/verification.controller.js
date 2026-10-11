@@ -34,6 +34,8 @@ export async function sendOtpController(req, res) {
     return res.status(200).json({
       message: "OTP sent successfully.",
       channel: result.channel,
+      expiresAt: result.expiresAt || result.session?.otpExpiresAt,
+      expiresInSeconds: result.expiresInSeconds || 60,
     });
   } catch (error) {
     console.error("Send OTP error:", error);

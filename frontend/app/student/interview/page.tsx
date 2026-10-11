@@ -228,72 +228,133 @@ export default function InterviewPage() {
   };
 
   return <StudentShell><div className="mx-auto max-w-3xl space-y-5">
-    <Card><CardHeader title="AI Interview Room" subtitle="Real-time voice interview conducted inside Google Meet with RecruitAI AI Interviewer."/><CardContent>
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div><p className="text-sm text-slate-500">Status</p><p className="font-semibold text-slate-900">{session.status.replaceAll("_", " ")}</p></div>
-        <div><p className="text-sm text-slate-500">Scheduled Time</p><p className="font-semibold text-slate-900">{new Date(session.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p></div>
-        <div><p className="text-sm text-slate-500">Duration</p><p className="font-semibold">30 minutes</p></div>
-        <div><p className="text-sm text-slate-500">Platform</p><p className="font-semibold text-indigo-600">Google Meet</p></div>
-      </div>
-    </CardContent></Card>
+    <Card className="border-[#D6D3C8] bg-white shadow-sm">
+      <CardHeader
+        title="AI Interview Session Console"
+        subtitle="Real-time voice interview conducted inside Google Meet with RecruitAI AI Interviewer."
+      />
+      <CardContent>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-xl bg-[#F5F1E8] border border-[#D8CDBB]">
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">Status</p>
+            <p className="text-sm font-bold text-[#1B4332] capitalize mt-0.5">{session.status.replaceAll("_", " ").toLowerCase()}</p>
+          </div>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">Scheduled Time</p>
+            <p className="text-sm font-bold text-[#1F2937] mt-0.5">{new Date(session.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+          </div>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">Duration</p>
+            <p className="text-sm font-bold text-[#1F2937] mt-0.5">30 Minutes</p>
+          </div>
+          <div>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">Platform</p>
+            <p className="text-sm font-bold text-[#40916C] mt-0.5">Google Meet</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
 
-    {notice && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{notice}</p>}
+    {notice && (
+      <p role="alert" className="rounded-xl border border-[#B45309]/30 bg-[#FEF3C7] p-3 text-xs sm:text-sm font-medium text-[#B45309]">
+        {notice}
+      </p>
+    )}
 
     {isFinished ? (
-      <Card><CardContent className="p-6">
-        <h2 className="text-lg font-semibold">{session.status === "FAILED" ? "Analysis needs attention" : session.status === "ANALYZED" ? "Interview completed" : session.status === "CANDIDATE_NO_SHOW" ? "Candidate No-Show" : "Interview completed — report processing"}</h2>
-        <p className="mt-2 text-sm text-slate-600">{session.status === "CANDIDATE_NO_SHOW" ? "The interview slot passed without candidate attendance within the grace period." : "Your interview has concluded. Your voice answers have been transcribed and analyzed."}</p>
-        {session.analysisError && <p className="mt-2 text-sm text-amber-800">{session.analysisError}</p>}
-      </CardContent></Card>
+      <Card className="border-[#D6D3C8] bg-white shadow-sm">
+        <CardContent className="p-6 text-center space-y-2">
+          <h2 className="text-lg font-bold text-[#1B4332]">
+            {session.status === "FAILED"
+              ? "Analysis Needs Attention"
+              : session.status === "ANALYZED"
+              ? "Interview Completed & Analyzed"
+              : session.status === "CANDIDATE_NO_SHOW"
+              ? "Candidate No-Show"
+              : "Interview Completed — Generating Evaluation"}
+          </h2>
+          <p className="text-sm text-[#64748B] max-w-md mx-auto">
+            {session.status === "CANDIDATE_NO_SHOW"
+              ? "The scheduled interview window elapsed without candidate attendance."
+              : "Your interview has concluded. The conversational transcript has been recorded for recruiter review."}
+          </p>
+          {session.analysisError && (
+            <p className="text-xs text-[#B45309]">{session.analysisError}</p>
+          )}
+        </CardContent>
+      </Card>
     ) : (
-      <Card className="border-indigo-200 bg-indigo-50/50"><CardContent className="space-y-4 p-6">
-        <h2 className="text-xl font-bold text-indigo-950">Google Meet AI Interview</h2>
-        <p className="text-sm leading-6 text-slate-700">
-          This interview is conducted completely via voice inside Google Meet.
-          The RecruitAI Meeting Bot attends the call as the interviewer.
-        </p>
+      <Card className="border-[#40916C]/40 bg-[#EAF4EE] shadow-sm">
+        <CardContent className="space-y-4 p-6 sm:p-7">
+          <h2 className="text-xl font-bold text-[#1B4332]">Google Meet AI Voice Interview</h2>
+          <p className="text-sm leading-relaxed text-[#1F2937]">
+            This technical interview is conducted in real time with the RecruitAI Voice Bot inside Google Meet.
+          </p>
 
-        <div className="rounded-xl border border-indigo-200 bg-white p-4 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">How to Attend</p>
-          <ol className="list-decimal pl-5 text-sm space-y-1 text-slate-700">
-            <li>Click <strong>Join Google Meet</strong> when your scheduled time arrives.</li>
-            <li>Ensure your microphone and speakers are working so you can hear and speak to the AI interviewer.</li>
-            <li>When you speak, the AI interviewer transcribes your answer and responds with the next question.</li>
-          </ol>
-        </div>
-
-        {session.meetLink ? (
-          <div className="pt-2">
-            <Button
-              className="w-full sm:w-auto text-base py-3 px-6"
-              disabled={!isDueOrPast}
-              onClick={openGoogleMeet}
-            >
-              {isDueOrPast ? "Join Google Meet" : "Interview Scheduled (Join available at scheduled time)"}
-            </Button>
-            <p className="mt-3 text-xs text-slate-500">
-              Meeting URL: <a href={session.meetLink} target="_blank" rel="noreferrer" className="underline text-indigo-600 break-all">{session.meetLink}</a>
+          <div className="rounded-xl border border-[#D6D3C8] bg-white p-5 space-y-3">
+            <p className="text-xs font-bold uppercase tracking-wider text-[#15803D]">
+              Interview Instructions
             </p>
+            <ol className="list-decimal pl-5 text-sm space-y-2 text-[#1F2937]">
+              <li>Click <strong>Join Google Meet</strong> when your scheduled interview time arrives.</li>
+              <li>Ensure your microphone and audio output are enabled in browser settings.</li>
+              <li>Answer the interviewer&apos;s technical questions verbally. Answers are transcribed automatically.</li>
+            </ol>
           </div>
-        ) : (
-          <p className="text-sm text-amber-700">Google Meet link is generating. Please refresh in a moment.</p>
-        )}
-      </CardContent></Card>
+
+          {session.meetLink ? (
+            <div className="pt-2 space-y-2">
+              <button
+                type="button"
+                disabled={!isDueOrPast}
+                onClick={openGoogleMeet}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-sm font-semibold py-3 px-6 rounded-xl bg-[#40916C] hover:bg-[#347959] text-white shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+              >
+                {isDueOrPast ? "Join Google Meet Room Now →" : "Join Button Unlocks at Scheduled Time"}
+              </button>
+              <p className="text-xs text-[#64748B]">
+                Meeting Link:{" "}
+                <a
+                  href={session.meetLink}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline text-[#1B4332] font-semibold break-all"
+                >
+                  {session.meetLink}
+                </a>
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-[#B45309]">Google Meet link is generating. Please refresh in a moment.</p>
+          )}
+        </CardContent>
+      </Card>
     )}
 
     {session.transcript && session.transcript.length > 0 && (
-      <Card><CardHeader title="Interview transcript" subtitle="Verbatim transcript captured during your Google Meet interview session."/><CardContent>
-        <div className="max-h-80 space-y-3 overflow-y-auto">
-          {session.transcript.map((turn, index) => (
-            <div key={`${turn.questionId || "turn"}-${index}`} className="rounded-lg bg-slate-50 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                {turn.speaker === "AI" ? "AI interviewer" : "You"}
-              </p>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800">{turn.text}</p>
-            </div>
-          ))}
-        </div>
-      </CardContent></Card>
+      <Card className="border-[#D6D3C8] bg-white shadow-sm">
+        <CardHeader
+          title="Interview Transcript"
+          subtitle="Transcript captured during your Google Meet interview session."
+        />
+        <CardContent>
+          <div className="max-h-80 space-y-3 overflow-y-auto">
+            {session.transcript.map((turn, index) => (
+              <div
+                key={`${turn.questionId || "turn"}-${index}`}
+                className="rounded-xl border border-[#D8CDBB] bg-[#F5F1E8] p-3.5 space-y-1"
+              >
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#40916C]">
+                  {turn.speaker === "AI" ? "RecruitAI Interviewer" : "Candidate"}
+                </p>
+                <p className="whitespace-pre-wrap text-sm text-[#1F2937] leading-relaxed">
+                  {turn.text}
+                </p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     )}
   </div></StudentShell>;
 }

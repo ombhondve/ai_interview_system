@@ -72,10 +72,10 @@ export async function createVerificationSession(
   const otpHash = hashOtp(otp);
 
   /**
-   * OTP expires after 10 minutes.
+   * OTP expires after 60 seconds (1 minute).
    */
   const otpExpiresAt =
-    getOtpExpiry(10);
+    getOtpExpiry(60);
 
   /**
    * Remove previous verification
@@ -137,11 +137,13 @@ export async function createVerificationSession(
   }
 
   /**
-   * Never return the OTP.
+   * Never return the OTP. Return session info, channel, and exact server expiry.
    */
   return {
     session,
     channel: delivery.channel,
+    expiresAt: session.otpExpiresAt,
+    expiresInSeconds: 60,
   };
 }
 

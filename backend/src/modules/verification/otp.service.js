@@ -53,10 +53,11 @@ export function verifyOtpHash(otp, storedHash) {
 /**
  * Generate OTP expiry time.
  *
- * Default: 10 minutes.
+ * Default: 60 seconds.
+ * Accepts seconds (default: 60).
  */
-export function getOtpExpiry(minutes = 10) {
+export function getOtpExpiry(seconds = 60) {
   return new Date(
-    Date.now() + minutes * 60 * 1000
+    Date.now() + seconds * 1000
   );
 }
