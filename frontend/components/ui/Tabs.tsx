@@ -26,9 +26,9 @@ export function Tabs({
   );
 }
 
-export function TabsList({ children }: { children: React.ReactNode }) {
+export function TabsList({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className="flex gap-1 border-b border-slate-200 dark:border-white/10" role="tablist">
+    <div className={cn("flex gap-1 border-b border-[#E2E8F0]", className)} role="tablist">
       {children}
     </div>
   );
@@ -36,32 +36,32 @@ export function TabsList({ children }: { children: React.ReactNode }) {
 
 export function TabsTrigger({ value, children }: { value: string; children: React.ReactNode }) {
   const ctx = useContext(TabsContext)!;
-  const isActive = ctx.active === value;
+  const isActive = ctx?.active === value;
   return (
     <button
       role="tab"
       aria-selected={isActive}
-      onClick={() => ctx.setActive(value)}
+      onClick={() => ctx?.setActive(value)}
       className={cn(
-        "relative px-4 py-2.5 text-sm font-medium transition-colors",
+        "relative px-3.5 py-2.5 text-xs font-semibold uppercase tracking-wider transition-colors",
         isActive
-          ? "text-accent-600 dark:text-accent-400"
-          : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+          ? "text-[#1976D2]"
+          : "text-[#64748B] hover:text-[#111F33]"
       )}
     >
       {children}
       {isActive && (
-        <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-accent-600 dark:bg-accent-400" />
+        <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-[#1976D2]" />
       )}
     </button>
   );
 }
 
-export function TabsContent({ value, children }: { value: string; children: React.ReactNode }) {
+export function TabsContent({ value, children, className }: { value: string; children: React.ReactNode; className?: string }) {
   const ctx = useContext(TabsContext)!;
-  if (ctx.active !== value) return null;
+  if (ctx?.active !== value) return null;
   return (
-    <div role="tabpanel" className="animate-fade-in py-4">
+    <div role="tabpanel" className={cn("animate-fade-in py-4", className)}>
       {children}
     </div>
   );

@@ -14,7 +14,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
     return (
       <div className="w-full">
         {label && (
-          <label htmlFor={selectId} className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+          <label htmlFor={selectId} className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[#64748B]">
             {label}
           </label>
         )}
@@ -23,16 +23,15 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             ref={ref}
             id={selectId}
             className={cn(
-              "h-9 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-sm text-slate-700",
-              "focus:outline-none focus:ring-2 focus:ring-accent-500/30 focus:border-accent-500",
-              "dark:border-white/10 dark:bg-white/5 dark:text-slate-200",
+              "h-9 w-full appearance-none rounded-md border border-[#E2E8F0] bg-white pl-3 pr-8 text-sm text-[#111F33]",
+              "transition-colors focus:outline-none focus:border-[#1976D2] focus:ring-2 focus:ring-[#1976D2]/20",
               className
             )}
             {...props}
           >
             {children}
           </select>
-          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#64748B]" />
         </div>
       </div>
     );

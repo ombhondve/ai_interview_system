@@ -318,7 +318,7 @@ export default function SettingsPage() {
         {/* Layout */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[240px_1fr]">
           {/* Settings Navigation */}
-          <aside className="surface h-fit rounded-2xl border p-2 shadow-sm">
+          <aside className="h-fit rounded-lg border border-[#E2E8F0] bg-white p-2 shadow-sm">
             <SettingsNav
               icon={<User size={17} />}
               label="Profile"
@@ -366,15 +366,15 @@ export default function SettingsPage() {
           <div className="space-y-6">
             {activeSection === "calendar" && (
               <SettingsCard title="Google Calendar" description="Connect the company calendar used to create interview events and Google Meet links.">
-                {calendarNotice && <p role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{calendarNotice}</p>}
-                <div className="flex flex-col gap-4 rounded-xl border border-slate-200 p-4 dark:border-white/10 sm:flex-row sm:items-center sm:justify-between">
+                {calendarNotice && <p role="status" className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">{calendarNotice}</p>}
+                <div className="flex flex-col gap-4 rounded-lg border border-[#E2E8F0] p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className={`flex items-center gap-2 font-semibold ${calendarStatus.connected ? "text-emerald-700" : "text-slate-700 dark:text-slate-200"}`}><span aria-hidden className={`h-2.5 w-2.5 rounded-full ${calendarStatus.connected ? "bg-emerald-500" : "bg-slate-400"}`} />{calendarStatus.connected ? "Connected" : "Not connected"}</p>
-                    {calendarStatus.connected ? <div className="mt-2 space-y-1 text-sm text-slate-600 dark:text-slate-400"><p>Account: {calendarStatus.googleAccountEmail}</p><p>Calendar: {calendarStatus.calendarId === "primary" ? "Primary calendar" : calendarStatus.calendarId}</p><p>Connected: {calendarStatus.connectedAt ? new Date(calendarStatus.connectedAt).toLocaleString() : "—"}</p></div> : <p className="mt-2 max-w-xl text-sm text-slate-600 dark:text-slate-400">Connect an authorized Google account so verified candidates can book calendar events and Meet conferences.</p>}
+                    <p className={`flex items-center gap-2 font-semibold text-xs ${calendarStatus.connected ? "text-emerald-700" : "text-[#111F33]"}`}><span aria-hidden className={`h-2 w-2 rounded-full ${calendarStatus.connected ? "bg-emerald-500" : "bg-slate-400"}`} />{calendarStatus.connected ? "Connected" : "Not connected"}</p>
+                    {calendarStatus.connected ? <div className="mt-2 space-y-1 text-xs text-[#64748B]"><p>Account: {calendarStatus.googleAccountEmail}</p><p>Calendar: {calendarStatus.calendarId === "primary" ? "Primary calendar" : calendarStatus.calendarId}</p><p>Connected: {calendarStatus.connectedAt ? new Date(calendarStatus.connectedAt).toLocaleString() : "—"}</p></div> : <p className="mt-2 max-w-xl text-xs text-[#64748B]">Connect an authorized Google account so verified candidates can book calendar events and Meet conferences.</p>}
                   </div>
-                  <div className="flex shrink-0 flex-wrap gap-2"><button disabled={calendarBusy} onClick={() => void connectCalendar()} className="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50">{calendarBusy ? "Working…" : calendarStatus.connected ? "Reconnect Google Calendar" : "Connect Google Calendar"}</button>{calendarStatus.connected && <button disabled={calendarBusy} onClick={() => void disconnectCalendar()} className="rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:text-slate-300">Disconnect</button>}</div>
+                  <div className="flex shrink-0 flex-wrap gap-2"><button disabled={calendarBusy} onClick={() => void connectCalendar()} className="rounded-md bg-[#1976D2] px-3.5 py-2 text-xs font-semibold text-white hover:bg-[#1565C0] disabled:opacity-50">{calendarBusy ? "Working…" : calendarStatus.connected ? "Reconnect Google Calendar" : "Connect Google Calendar"}</button>{calendarStatus.connected && <button disabled={calendarBusy} onClick={() => void disconnectCalendar()} className="rounded-md border border-[#E2E8F0] px-3.5 py-2 text-xs font-medium text-slate-700 hover:bg-[#F5F7FA] disabled:opacity-50">Disconnect</button>}</div>
                 </div>
-                <p className="mt-4 text-xs text-slate-500">Google Calendar creates the event and Google Meet room. The AI meeting bot joins this room to conduct the interview directly with the candidate.</p>
+                <p className="mt-3 text-xs text-[#64748B]">Google Calendar creates the event and Google Meet room. The AI meeting bot joins this room to conduct the interview directly with the candidate.</p>
               </SettingsCard>
             )}
 
@@ -481,10 +481,10 @@ function SettingsNav({
   return (
     <button
       onClick={onClick}
-      className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
+      className={`mb-1 flex w-full items-center gap-3 rounded-md px-3 py-2 text-xs font-medium transition ${
         active
-          ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400"
-          : "text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-white/5"
+          ? "bg-blue-50 text-[#1976D2] font-semibold border border-blue-200/60"
+          : "text-[#64748B] hover:bg-[#F5F7FA] hover:text-[#111F33]"
       }`}
     >
       {icon}
@@ -1427,14 +1427,14 @@ function SettingsCard({
   headerAction?: React.ReactNode;
 }) {
   return (
-    <section className="surface rounded-2xl border p-5 shadow-sm sm:p-6">
-      <div className="flex flex-col gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-start sm:justify-between dark:border-white/5">
+    <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-sm sm:p-6">
+      <div className="flex flex-col gap-4 border-b border-[#E2E8F0] pb-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="font-semibold text-slate-900 dark:text-white">
+          <h2 className="text-sm font-semibold text-[#111F33]">
             {title}
           </h2>
 
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-0.5 text-xs text-[#64748B]">
             {description}
           </p>
         </div>

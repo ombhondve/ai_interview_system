@@ -1,14 +1,23 @@
 import { cn } from "@/lib/utils";
 
-type BadgeVariant = "success" | "warning" | "danger" | "info" | "neutral" | "accent";
+export type BadgeVariant = "success" | "warning" | "danger" | "info" | "neutral" | "accent";
 
 const variantClasses: Record<BadgeVariant, string> = {
-  success: "bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-500",
-  warning: "bg-warning-50 text-warning-700 dark:bg-warning-500/10 dark:text-warning-500",
-  danger: "bg-danger-50 text-danger-700 dark:bg-danger-500/10 dark:text-danger-500",
-  info: "bg-info-50 text-info-600 dark:bg-info-500/10 dark:text-info-500",
-  neutral: "bg-slate-100 text-slate-600 dark:bg-white/10 dark:text-slate-300",
-  accent: "bg-accent-50 text-accent-700 dark:bg-accent-500/10 dark:text-accent-400",
+  success: "bg-emerald-50 text-[#16A34A] border border-emerald-200/70",
+  warning: "bg-amber-50 text-[#D97706] border border-amber-200/70",
+  danger: "bg-red-50 text-[#DC2626] border border-red-200/70",
+  info: "bg-blue-50 text-[#1976D2] border border-blue-200/70",
+  neutral: "bg-slate-50 text-[#64748B] border border-slate-200/70",
+  accent: "bg-blue-50 text-[#1976D2] border border-blue-200/70",
+};
+
+const dotClasses: Record<BadgeVariant, string> = {
+  success: "bg-[#16A34A]",
+  warning: "bg-[#D97706]",
+  danger: "bg-[#DC2626]",
+  info: "bg-[#1976D2]",
+  neutral: "bg-[#64748B]",
+  accent: "bg-[#1976D2]",
 };
 
 export function Badge({
@@ -25,12 +34,12 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium",
+        "inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium leading-none tracking-tight",
         variantClasses[variant],
         className
       )}
     >
-      {dot && <span className="h-1.5 w-1.5 rounded-full bg-current" />}
+      {dot && <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", dotClasses[variant])} />}
       {children}
     </span>
   );
@@ -41,7 +50,7 @@ export const statusToBadgeVariant: Record<string, BadgeVariant> = {
   under_review: "warning",
   approved: "success",
   rejected: "danger",
-  scheduled: "accent",
+  scheduled: "info",
   completed: "success",
   decided: "neutral",
   pending: "warning",

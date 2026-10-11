@@ -119,7 +119,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Funnel */}
-        <section className="surface rounded-2xl border p-5 shadow-sm">
+        <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-sm">
           <ChartHeader
             title="Recruitment Funnel"
             description="Candidate progression through the recruitment workflow."
@@ -139,18 +139,18 @@ export default function AnalyticsPage() {
 
               return (
                 <div key={label as string}>
-                  <div className="mb-1.5 flex items-center justify-between text-sm">
-                    <span className="text-slate-600 dark:text-slate-300">
+                  <div className="mb-1.5 flex items-center justify-between text-xs">
+                    <span className="font-medium text-[#64748B]">
                       {label}
                     </span>
-                    <span className="font-semibold text-slate-900 dark:text-white">
+                    <span className="font-semibold text-[#111F33]">
                       {value}
                     </span>
                   </div>
 
-                  <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-white/5">
+                  <div className="h-2 overflow-hidden rounded-full bg-[#E2E8F0]">
                     <div
-                      className="h-full rounded-full bg-indigo-600 transition-all duration-700"
+                      className="h-full rounded-full bg-[#1976D2] transition-all duration-700"
                       style={{ width: `${width}%` }}
                     />
                   </div>
@@ -162,7 +162,7 @@ export default function AnalyticsPage() {
 
         {/* Two Charts */}
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-          <section className="surface rounded-2xl border p-5 shadow-sm">
+          <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-sm">
             <ChartHeader
               title="Candidates by Status"
               description="Current candidate distribution."
@@ -183,7 +183,7 @@ export default function AnalyticsPage() {
 
                     <div className="flex h-[85%] w-full items-end">
                       <div
-                        className="w-full rounded-t-lg bg-indigo-600 transition-all duration-700 hover:bg-indigo-700"
+                        className="w-full rounded-t-md bg-[#1976D2] transition-all duration-700 hover:bg-[#1565C0]"
                         style={{ height: `${height}%` }}
                       />
                     </div>
@@ -197,7 +197,7 @@ export default function AnalyticsPage() {
             </div>
           </section>
 
-          <section className="surface rounded-2xl border p-5 shadow-sm">
+          <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-sm">
             <ChartHeader
               title="Interviews Over Time"
               description="Completed and scheduled interviews."
@@ -218,7 +218,7 @@ export default function AnalyticsPage() {
 
                     <div className="flex h-[85%] w-full items-end">
                       <div
-                        className="w-full rounded-t-lg bg-slate-800 transition-all duration-700 dark:bg-slate-200"
+                        className="w-full rounded-t-md bg-[#111F33] transition-all duration-700 hover:bg-[#1976D2]"
                         style={{ height: `${height}%` }}
                       />
                     </div>
@@ -234,7 +234,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Score Distribution */}
-        <section className="surface rounded-2xl border p-5 shadow-sm">
+        <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-sm">
           <ChartHeader
             title="Interview Score Distribution"
             description="Distribution of overall interview scores."
@@ -300,20 +300,20 @@ function MetricCard({
   change: string;
 }) {
   return (
-    <div className="surface rounded-2xl border p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+    <div className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-sm transition hover:border-[#1976D2]/40">
       <div className="flex items-center justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400">
+        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-blue-50 text-[#1976D2]">
           {icon}
         </div>
 
-        <span className="rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">
+        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-[#16A34A] border border-emerald-200/60">
           {change}
         </span>
       </div>
 
-      <p className="mt-5 text-sm text-slate-500">{label}</p>
+      <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-[#64748B]">{label}</p>
 
-      <p className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">
+      <p className="mt-1 text-2xl font-bold text-[#111F33]">
         {value}
       </p>
     </div>
@@ -329,8 +329,8 @@ function ChartHeader({
 }) {
   return (
     <div>
-      <h2 className="font-semibold text-slate-900 dark:text-white">{title}</h2>
-      <p className="mt-1 text-sm text-slate-500">{description}</p>
+      <h2 className="text-sm font-semibold text-[#111F33]">{title}</h2>
+      <p className="mt-0.5 text-xs text-[#64748B]">{description}</p>
     </div>
   );
 }
@@ -348,19 +348,19 @@ function DistributionRow({
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-sm text-slate-600 dark:text-slate-300">
+      <div className="mb-1.5 flex items-center justify-between text-xs">
+        <span className="font-medium text-[#64748B]">
           {label}
         </span>
 
-        <span className="text-sm font-semibold text-slate-900 dark:text-white">
-          {value} candidates
+        <span className="font-semibold text-[#111F33]">
+          {value} candidates ({Math.round(percentage)}%)
         </span>
       </div>
 
-      <div className="h-2.5 overflow-hidden rounded-full bg-slate-100 dark:bg-white/5">
+      <div className="h-2 overflow-hidden rounded-full bg-[#E2E8F0]">
         <div
-          className="h-full rounded-full bg-indigo-600 transition-all duration-700"
+          className="h-full rounded-full bg-[#1976D2] transition-all duration-700"
           style={{ width: `${percentage}%` }}
         />
       </div>

@@ -439,7 +439,7 @@ export default function ReportsPage() {
 
                           <Link
                             href={`/admin/reports/${report.id}`}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-indigo-700"
+                            className="inline-flex items-center gap-1.5 rounded-md bg-[#1976D2] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#1565C0]"
                           >
                             Decision
                             <ChevronRight size={14} />
@@ -518,18 +518,18 @@ function SummaryCard({
   value: string | number;
 }) {
   return (
-    <div className="surface rounded-2xl border p-5 shadow-sm">
+    <div className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400">
+        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-blue-50 text-[#1976D2]">
           {icon}
         </div>
 
-        <span className="text-2xl font-semibold text-slate-900 dark:text-white">
+        <span className="text-2xl font-bold text-[#111F33]">
           {value}
         </span>
       </div>
 
-      <p className="mt-4 text-sm text-slate-500">{label}</p>
+      <p className="mt-3 text-xs font-medium uppercase tracking-wider text-[#64748B]">{label}</p>
     </div>
   );
 }

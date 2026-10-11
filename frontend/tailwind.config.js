@@ -8,57 +8,97 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        accent: {
-          50: "#eef2ff",
-          100: "#e0e7ff",
-          200: "#c7d2fe",
-          300: "#a5b4fc",
-          400: "#818cf8",
-          500: "#6366f1",
-          600: "#4f46e5",
-          700: "#4338ca",
-          800: "#3730a3",
-          900: "#312e81",
+        // RecruitAI Brand System
+        navy: {
+          DEFAULT: "#111F33",
+          50: "#1A2B42",
+          100: "#17273C",
+          800: "#142337",
+          900: "#111F33",
+          950: "#0C1727",
         },
+        brand: {
+          navy: "#111F33",
+          blue: "#1976D2",
+          gray: "#F5F7FA",
+          border: "#E2E8F0",
+          slate: "#64748B",
+        },
+        page: {
+          DEFAULT: "#F5F7FA",
+        },
+        surface: {
+          DEFAULT: "#FFFFFF",
+        },
+        // Professional Blue as Primary Accent
+        primary: {
+          50: "#E3F2FD",
+          100: "#BBDEFB",
+          200: "#90CAF9",
+          300: "#64B5F6",
+          400: "#42A5F5",
+          500: "#2196F3",
+          600: "#1976D2",
+          700: "#1565C0",
+          800: "#0D47A1",
+          900: "#0A387E",
+        },
+        // Retain existing accent mapped to Professional Blue for backward compatibility
+        accent: {
+          50: "#E3F2FD",
+          100: "#BBDEFB",
+          200: "#90CAF9",
+          300: "#64B5F6",
+          400: "#42A5F5",
+          500: "#2196F3",
+          600: "#1976D2",
+          700: "#1565C0",
+          800: "#0D47A1",
+          900: "#0A387E",
+        },
+        // Exact Semantic Colors
         success: {
-          50: "#f0fdf4",
-          100: "#dcfce7",
-          500: "#22c55e",
-          600: "#16a34a",
-          700: "#15803d",
+          50: "#F0FDF4",
+          100: "#DCFCE7",
+          500: "#22C55E",
+          600: "#16A34A",
+          700: "#15803D",
         },
         warning: {
-          50: "#fffbeb",
-          100: "#fef3c7",
-          500: "#f59e0b",
-          600: "#d97706",
-          700: "#b45309",
+          50: "#FFFBEB",
+          100: "#FEF3C7",
+          500: "#F59E0B",
+          600: "#D97706",
+          700: "#B45309",
         },
         danger: {
-          50: "#fef2f2",
-          100: "#fee2e2",
-          500: "#ef4444",
-          600: "#dc2626",
-          700: "#b91c1c",
+          50: "#FEF2F2",
+          100: "#FEE2E2",
+          500: "#EF4444",
+          600: "#DC2626",
+          700: "#B91C1C",
         },
         info: {
-          50: "#eff6ff",
-          100: "#dbeafe",
-          500: "#3b82f6",
-          600: "#2563eb",
+          50: "#EFF6FF",
+          100: "#DBEAFE",
+          500: "#3B82F6",
+          600: "#1976D2",
         },
       },
       borderRadius: {
-        xl: "0.875rem",
-        "2xl": "1.125rem",
+        sm: "0.25rem",
+        DEFAULT: "0.375rem",
+        md: "0.5rem", // 8px
+        lg: "0.625rem", // 10px
+        xl: "0.75rem",
       },
       boxShadow: {
         subtle: "0 1px 2px 0 rgb(0 0 0 / 0.04), 0 1px 3px 0 rgb(0 0 0 / 0.06)",
-        card: "0 1px 3px 0 rgb(0 0 0 / 0.06), 0 4px 12px -2px rgb(0 0 0 / 0.05)",
-        popover: "0 4px 16px -4px rgb(0 0 0 / 0.12), 0 2px 6px -2px rgb(0 0 0 / 0.08)",
+        card: "0 1px 3px 0 rgb(17 31 51 / 0.05), 0 2px 6px -1px rgb(17 31 51 / 0.03)",
+        popover: "0 4px 16px -4px rgb(17 31 51 / 0.12), 0 2px 6px -2px rgb(17 31 51 / 0.08)",
       },
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
+        sans: ["Inter", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Roboto", "sans-serif"],
       },
       keyframes: {
         "fade-in": {
@@ -71,7 +111,7 @@ module.exports = {
         },
       },
       animation: {
-        "fade-in": "fade-in 0.2s ease-out",
+        "fade-in": "fade-in 0.15s ease-out",
         shimmer: "shimmer 2s infinite linear",
       },
     },

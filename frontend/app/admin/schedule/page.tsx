@@ -267,30 +267,30 @@ export default function SchedulePage() {
               <li
                 key={entry.startAt}
                 className={cn(
-                  "px-5 py-4",
-                  entry.status === "booked" && "bg-red-50/40 dark:bg-red-500/5"
+                  "px-5 py-4 transition-colors",
+                  entry.status === "booked" ? "bg-blue-50/20" : "bg-white"
                 )}
               >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   {/* Time + status */}
-                  <div className="flex items-center gap-3 sm:w-40">
+                  <div className="flex items-center gap-3 sm:w-44 shrink-0">
                     <span
                       aria-hidden
                       className={cn(
-                        "h-2.5 w-2.5 shrink-0 rounded-full",
+                        "h-2 w-2 shrink-0 rounded-full",
                         entry.status === "booked"
-                          ? "bg-red-500"
-                          : "bg-emerald-500"
+                          ? "bg-[#1976D2]"
+                          : "bg-[#16A34A]"
                       )}
                     />
                     <div>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                      <p className="text-sm font-semibold text-[#111F33]">
                         {entry.time}
                       </p>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-xs text-[#64748B]">
                         {entry.status === "booked"
-                          ? "🔴 Booked"
-                          : "🟢 Available"}
+                          ? "Booked by candidate"
+                          : "Available slot"}
                       </p>
                     </div>
                   </div>
@@ -342,7 +342,7 @@ export default function SchedulePage() {
                           <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                             Google Meet
                           </dt>
-                          <dd className="mt-0.5 truncate text-sm font-medium text-indigo-600 dark:text-indigo-400">
+                          <dd className="mt-0.5 truncate text-sm font-medium text-[#1976D2]">
                             <a
                               href={entry.booking.meetLink}
                               target="_blank"

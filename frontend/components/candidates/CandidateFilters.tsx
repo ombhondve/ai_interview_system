@@ -19,8 +19,8 @@ interface CandidateFiltersBarProps {
 }
 
 const selectClass =
-  "h-9 shrink-0 rounded-md border border-slate-200 bg-white px-2.5 text-sm text-slate-700 " +
-  "outline-none transition-colors focus:border-slate-400 " +
+  "h-9 shrink-0 rounded-md border border-[#E2E8F0] bg-white px-2.5 text-xs text-[#111F33] " +
+  "outline-none transition-colors focus:border-[#1976D2] focus:ring-1 focus:ring-[#1976D2] " +
   "dark:border-white/10 dark:bg-white/5 dark:text-slate-200";
 
 export function CandidateFiltersBar({

@@ -1,451 +1,702 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Users,
-  Clock3,
   Video,
-  FileCheck2,
-  ArrowUpRight,
+  FileCheck,
+  Clock,
   CalendarDays,
   Search,
+  ArrowUpRight,
+  RefreshCw,
+  ExternalLink,
+  ChevronRight,
+  Filter,
+  CheckCircle2,
+  AlertCircle,
+  TrendingUp,
 } from "lucide-react";
-import Link from "next/link";
 
-import { Card } from "@/components/ui/Card";
+import { Card, CardHeader, CardContent } from "@/components/ui/Card";
+import { Badge, statusToBadgeVariant } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { getGreeting } from "@/lib/utils";
 import {
   adminScheduleService,
   AdminUpcomingInterview,
 } from "@/services/interviewScheduling.api";
+import { candidateService } from "@/services/candidate.api";
+import { apiUrl } from "@/lib/client";
+import { Candidate } from "@/types";
 
-const stats = [
-  {
-    title: "New Candidates",
-    value: 12,
-    description: "Received recently",
-    icon: Users,
-    href: "/admin/candidates",
-    tone: "accent" as const,
-  },
-  {
-    title: "Pending Reviews",
-    value: 7,
-    description: "Need your attention",
-    icon: FileCheck2,
-    href: "/admin/candidates",
-    tone: "warning" as const,
-  },
-  {
-    title: "Upcoming Interviews",
-    value: 5,
-    description: "Scheduled interviews",
-    icon: Video,
-    href: "/admin/schedule",
-    tone: "info" as const,
-  },
-  {
-    title: "Awaiting Decision",
-    value: 3,
-    description: "Reports ready for review",
-    icon: Clock3,
-    href: "/admin/reports",
-    tone: "success" as const,
-  },
-];
-
-const toneClasses: Record<string, { bg: string; text: string; ring: string }> = {
-  accent: { bg: "bg-accent-50 dark:bg-accent-500/10", text: "text-accent-600 dark:text-accent-400", ring: "group-hover:ring-accent-200 dark:group-hover:ring-accent-500/30" },
-  warning: { bg: "bg-warning-50 dark:bg-warning-500/10", text: "text-warning-600 dark:text-warning-500", ring: "group-hover:ring-warning-200 dark:group-hover:ring-warning-500/30" },
-  info: { bg: "bg-info-50 dark:bg-info-500/10", text: "text-info-600 dark:text-info-500", ring: "group-hover:ring-info-200 dark:group-hover:ring-info-500/30" },
-  success: { bg: "bg-success-50 dark:bg-success-500/10", text: "text-success-600 dark:text-success-500", ring: "group-hover:ring-success-200 dark:group-hover:ring-success-500/30" },
-};
-
-const attentionItems = [
-  {
-    title: "Candidate reviews",
-    description: "7 candidates are waiting for admin review.",
-    href: "/admin/candidates",
-    tone: "warning" as const,
-  },
-  {
-    title: "Upcoming interviews",
-    description: "5 interviews are scheduled.",
-    href: "/admin/interviews",
-    tone: "info" as const,
-  },
-  {
-    title: "Interview reports",
-    description: "3 reports are waiting for a final decision.",
-    href: "/admin/reports",
-    tone: "success" as const,
-  },
-];
-
-const pipeline = [
-  { label: "Received", value: 12, tone: "bg-slate-400 dark:bg-slate-500" },
-  { label: "Under Review", value: 7, tone: "bg-warning-500" },
-  { label: "Approved", value: 5, tone: "bg-info-500" },
-  { label: "Scheduled", value: 5, tone: "bg-accent-500" },
-  { label: "Completed", value: 3, tone: "bg-accent-600" },
-  { label: "Report Ready", value: 3, tone: "bg-success-500" },
-  { label: "Decision", value: 1, tone: "bg-success-600" },
-];
-
-function useCountUp(target: number, durationMs = 900, skip = false) {
-  const [value, setValue] = useState(skip ? target : 0);
-
-  useEffect(() => {
-    if (skip) {
-      setValue(target);
-      return;
-    }
-    let frame: number;
-    const start = performance.now();
-
-    const tick = (now: number) => {
-      const progress = Math.min((now - start) / durationMs, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setValue(Math.round(eased * target));
-      if (progress < 1) frame = requestAnimationFrame(tick);
-    };
-
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [target, durationMs, skip]);
-
-  return value;
+interface CompletedReportRow {
+  _id: string;
+  status: string;
+  scheduledAt: string;
+  analysis?: {
+    overallScore?: number;
+    recommendation?: string;
+  };
+  candidateId?: {
+    name?: string;
+    email?: string;
+    role?: string;
+  } | string;
+  projectId?: {
+    title?: string;
+  } | string;
 }
 
-function Detail({ label, value }: { label: string; value?: string | null }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-        {label}
-      </dt>
-      <dd className="mt-0.5 break-words text-sm text-slate-900 dark:text-slate-100">
-        {value || "—"}
-      </dd>
-    </div>
-  );
-}
-
-function StatCard({ stat, index }: { stat: (typeof stats)[number]; index: number }) {
-  const reduceMotion = useReducedMotion();
-  const Icon = stat.icon;
-  const tone = toneClasses[stat.tone];
-  const displayValue = useCountUp(stat.value, 700 + index * 80, !!reduceMotion);
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: reduceMotion ? 0 : index * 0.06 }}
-    >
-      <Link href={stat.href} className="group block">
-        <Card className={`p-5 ring-1 ring-transparent transition-all hover:-translate-y-0.5 ${tone.ring}`}>
-          <div className="flex items-start justify-between">
-            <div className={`rounded-xl p-2.5 ${tone.bg}`}>
-              <Icon className={`h-5 w-5 ${tone.text}`} />
-            </div>
-            <ArrowUpRight className="h-4 w-4 -translate-x-1 translate-y-1 text-slate-300 opacity-0 transition-all group-hover:translate-x-0 group-hover:translate-y-0 group-hover:opacity-100 dark:text-slate-600" />
-          </div>
-
-          <p className="mt-4 text-3xl font-semibold tabular-nums text-slate-900 dark:text-white">
-            {displayValue}
-          </p>
-          <p className="mt-1 text-sm font-medium text-slate-700 dark:text-slate-200">{stat.title}</p>
-          <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{stat.description}</p>
-        </Card>
-      </Link>
-    </motion.div>
-  );
-}
-
-function PipelineBar() {
-  const [hovered, setHovered] = useState<number | null>(null);
-  const max = pipeline[0].value || 1;
-
-  return (
-    <div className="space-y-2.5">
-      {pipeline.map((stage, i) => {
-        const widthPct = Math.max((stage.value / max) * 100, stage.value > 0 ? 4 : 0);
-        const pctOfStart = Math.round((stage.value / max) * 100);
-        const isHovered = hovered === i;
-
-        return (
-          <button
-            key={stage.label}
-            type="button"
-            onMouseEnter={() => setHovered(i)}
-            onMouseLeave={() => setHovered(null)}
-            onFocus={() => setHovered(i)}
-            onBlur={() => setHovered(null)}
-            className="group flex w-full items-center gap-4 rounded-lg px-2 py-1.5 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
-          >
-            <span className="w-28 shrink-0 text-xs text-slate-500 dark:text-slate-400 sm:w-32">
-              {stage.label}
-            </span>
-
-            <span className="relative h-6 flex-1 overflow-hidden rounded-md bg-slate-100 dark:bg-white/5">
-              <motion.span
-                initial={{ width: 0 }}
-                animate={{ width: `${widthPct}%` }}
-                transition={{ duration: 0.7, delay: 0.1 + i * 0.06, ease: "easeOut" }}
-                className={`absolute inset-y-0 left-0 rounded-md ${stage.tone} ${
-                  hovered !== null && !isHovered ? "opacity-50" : "opacity-100"
-                } transition-opacity`}
-              />
-            </span>
-
-            <span className="w-16 shrink-0 text-right text-sm font-semibold tabular-nums text-slate-900 dark:text-white">
-              {stage.value}
-            </span>
-            <span
-              className={`w-10 shrink-0 text-right text-xs tabular-nums text-slate-400 transition-opacity dark:text-slate-500 ${
-                isHovered ? "opacity-100" : "opacity-0 group-hover:opacity-100"
-              }`}
-            >
-              {pctOfStart}%
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
+interface ActivityEvent {
+  id: string;
+  type: "candidate" | "interview" | "report";
+  title: string;
+  detail: string;
+  timestamp: string;
+  href: string;
+  statusVariant: "info" | "warning" | "success" | "neutral";
 }
 
 export default function AdminDashboardPage() {
-  const greeting = useMemo(() => getGreeting(), []);
+  // State for upcoming interviews
   const [upcoming, setUpcoming] = useState<AdminUpcomingInterview[]>([]);
   const [upcomingLoading, setUpcomingLoading] = useState(true);
   const [upcomingError, setUpcomingError] = useState(false);
-  const [upcomingQuery, setUpcomingQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
-  const loadUpcoming = async () => {
+  // State for candidates & pipeline metrics
+  const [totalCandidates, setTotalCandidates] = useState<number>(0);
+  const [candidatesList, setCandidatesList] = useState<Candidate[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(true);
+
+  // State for completed reports
+  const [reports, setReports] = useState<CompletedReportRow[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(true);
+
+  // Load all dashboard operational data
+  const loadDashboardData = useCallback(async () => {
+    // 1. Upcoming interviews
     setUpcomingLoading(true);
     setUpcomingError(false);
     try {
-      const data = await adminScheduleService.getUpcoming(8);
-      setUpcoming(data.interviews ?? []);
-    } catch {
+      const data = await adminScheduleService.getUpcoming(10);
+      setUpcoming(data.interviews || []);
+    } catch (err) {
+      console.error("Failed to load upcoming interviews:", err);
       setUpcomingError(true);
     } finally {
       setUpcomingLoading(false);
-      {/* -------------------------------------------------------- */}
-      {/* SCHEDULED INTERVIEWS (READ-ONLY)                             */}
-      {/* -------------------------------------------------------- */}
-      {/* Visualised as booked slots: student slot cards only.         */}
-      {/* No create / edit / delete / reschedule controls exist here   */}
-      {/* (or anywhere in the admin app) — the admin can only VIEW.    */}
-      <Card className="p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2">
-              <CalendarDays className="h-4 w-4 text-accent-600 dark:text-accent-400" />
-              <h2 className="text-base font-semibold text-slate-900 dark:text-white">
-                Scheduled Interviews
-              </h2>
-            </div>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Slots booked by students. Read-only — no changes possible here.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                type="search"
-                value={upcomingQuery}
-                onChange={(event) => setUpcomingQuery(event.target.value)}
-                placeholder="Search candidate…"
-                aria-label="Search scheduled interviews"
-                className="w-52 rounded-md border border-slate-200 bg-white py-1.5 pl-8 pr-3 text-sm text-slate-700 outline-none focus:border-accent-400 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
-              />
-            </div>
-            <Link
-              href="/admin/schedule"
-              className="text-sm font-medium text-accent-600 hover:text-accent-700 dark:text-accent-400"
-            >
-              View full schedule →
-            </Link>
-          </div>
-        </div>
-
-        <div className="mt-5">
-          {upcomingLoading ? (
-            <div className="space-y-3">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-20 w-full" />
-              ))}
-            </div>
-          ) : upcomingError ? (
-            <ErrorState
-              title="Unable to load scheduled interviews"
-              onRetry={loadUpcoming}
-            />
-          ) : filteredUpcoming.length === 0 ? (
-            <EmptyState
-              icon={Video}
-              title={
-                upcoming.length === 0
-                  ? "No interviews scheduled yet"
-                  : "No matches found"
-              }
-              description={
-                upcoming.length === 0
-                  ? "Booked slots will appear here as soon as students schedule their interviews."
-                  : "Try a different name, email, role or project."
-              }
-            />
-          ) : (
-            <ul className="space-y-3">
-              {filteredUpcoming.map((interview) => (
-                <li
-                  key={interview.id}
-                  className="flex flex-col gap-3 rounded-lg border border-slate-100 bg-slate-50/60 p-4 sm:flex-row sm:items-start sm:justify-between dark:border-white/5 dark:bg-white/[0.02]"
-                >
-                  <div className="flex items-center gap-3 sm:w-44 sm:shrink-0">
-                    <span
-                      aria-hidden
-                      className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-500"
-                    />
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                        {interview.time} – {interview.endTime}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {interview.date}
-                      </p>
-                    </div>
-                  </div>
-
-                  <dl className="grid flex-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
-                    <Detail
-                      label="Candidate"
-                      value={interview.candidate.name}
-                    />
-                    <Detail label="Email" value={interview.candidate.email} />
-                    <Detail label="Phone" value={interview.candidate.phone} />
-                    <Detail label="Role" value={interview.candidate.role} />
-                    <Detail label="Project" value={interview.project} />
-                    <Detail
-                      label="Status"
-                      value={
-                        interview.status
-                          ? interview.status.charAt(0).toUpperCase() +
-                            interview.status.slice(1)
-                          : null
-                      }
-                    />
-                  </dl>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </Card>
-
     }
-  };
 
-  useEffect(() => {
-    loadUpcoming();
+    // 2. Candidate stats & pipeline
+    setCandidatesLoading(true);
+    try {
+      const candResult = await candidateService.getCandidates({ pageSize: 50 });
+      setTotalCandidates(candResult.total || 0);
+      setCandidatesList(candResult.data || []);
+    } catch (err) {
+      console.error("Failed to load candidates:", err);
+    } finally {
+      setCandidatesLoading(false);
+    }
+
+    // 3. Completed reports
+    setReportsLoading(true);
+    try {
+      const res = await fetch(apiUrl("/api/ai-interviews/admin/reports"), {
+        credentials: "include",
+      });
+      if (res.ok) {
+        const reportData = await res.json();
+        setReports(reportData.interviews || []);
+      }
+    } catch (err) {
+      console.error("Failed to load interview reports:", err);
+    } finally {
+      setReportsLoading(false);
+    }
   }, []);
 
-  const filteredUpcoming = useMemo(() => {
-    const needle = upcomingQuery.trim().toLowerCase();
-    if (!needle) return upcoming;
-    return upcoming.filter((interview) =>
-      [
-        interview.candidate.name,
-        interview.candidate.email,
-        interview.candidate.phone,
-        interview.candidate.role,
-        interview.project,
-        interview.date,
-        interview.time,
-      ]
-        .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(needle))
-    );
-  }, [upcoming, upcomingQuery]);
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
 
-  const liveStats = useMemo(
-    () =>
-      stats.map((stat) =>
-        stat.title === "Upcoming Interviews" && !upcomingLoading
-          ? { ...stat, value: upcoming.length }
-          : stat
-      ),
-    [upcoming.length, upcomingLoading]
-  );
+  // Compute accurate pipeline counts from real candidate status model
+  const pipelineStats = useMemo(() => {
+    const counts = {
+      received: 0,
+      under_review: 0,
+      approved: 0,
+      scheduled: 0,
+      completed: 0,
+      selected: 0,
+    };
+
+    candidatesList.forEach((c) => {
+      const s = c.status as keyof typeof counts;
+      if (counts[s] !== undefined) {
+        counts[s]++;
+      } else {
+        counts.received++;
+      }
+    });
+
+    // Also include upcoming scheduled interviews count if greater
+    if (upcoming.length > counts.scheduled) {
+      counts.scheduled = upcoming.length;
+    }
+    // Include completed reports count if greater
+    if (reports.length > counts.completed) {
+      counts.completed = reports.length;
+    }
+
+    const stages = [
+      { key: "received", label: "Applied / Received", count: counts.received, color: "#64748B" },
+      { key: "under_review", label: "Under Review", count: counts.under_review, color: "#D97706" },
+      { key: "approved", label: "Eligible / Approved", count: counts.approved, color: "#1976D2" },
+      { key: "scheduled", label: "Interview Scheduled", count: counts.scheduled, color: "#1976D2" },
+      { key: "completed", label: "Interview Completed", count: counts.completed, color: "#16A34A" },
+      { key: "selected", label: "Selected", count: counts.selected, color: "#16A34A" },
+    ];
+
+    const maxCount = Math.max(...stages.map((s) => s.count), 1);
+    return { stages, maxCount, counts };
+  }, [candidatesList, upcoming.length, reports.length]);
+
+  // Filtered upcoming interviews
+  const filteredInterviews = useMemo(() => {
+    return upcoming.filter((item) => {
+      const matchesSearch =
+        !searchQuery.trim() ||
+        [
+          item.candidate?.name,
+          item.candidate?.email,
+          item.candidate?.role,
+          item.project,
+          item.date,
+          item.time,
+        ]
+          .filter(Boolean)
+          .some((val) =>
+            String(val).toLowerCase().includes(searchQuery.trim().toLowerCase())
+          );
+
+      const matchesStatus =
+        statusFilter === "all" ||
+        (item.status && item.status.toLowerCase() === statusFilter.toLowerCase());
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [upcoming, searchQuery, statusFilter]);
+
+  // Derived real recent activity events from active DB records
+  const recentActivities = useMemo<ActivityEvent[]>(() => {
+    const list: ActivityEvent[] = [];
+
+    // Latest candidates
+    candidatesList.slice(0, 3).forEach((c) => {
+      list.push({
+        id: `cand-${c.id}`,
+        type: "candidate",
+        title: `Candidate ${c.name}`,
+        detail: `Applied for ${c.role || "Technical Role"} · Stage: ${c.status.replace("_", " ")}`,
+        timestamp: c.receivedDate ? new Date(c.receivedDate).toLocaleDateString() : "Recent",
+        href: `/admin/candidates/${c.id}`,
+        statusVariant: c.status === "under_review" ? "warning" : "info",
+      });
+    });
+
+    // Latest upcoming interviews
+    upcoming.slice(0, 3).forEach((i) => {
+      list.push({
+        id: `int-${i.id}`,
+        type: "interview",
+        title: `Interview scheduled: ${i.candidate?.name}`,
+        detail: `${i.project || "Project Review"} on ${i.date} at ${i.time}`,
+        timestamp: `${i.date}`,
+        href: `/admin/interviews`,
+        statusVariant: "info",
+      });
+    });
+
+    // Latest completed reports
+    reports.slice(0, 3).forEach((r) => {
+      const cName = typeof r.candidateId === "object" ? r.candidateId?.name : "Candidate";
+      list.push({
+        id: `rep-${r._id}`,
+        type: "report",
+        title: `Evaluation ready for ${cName}`,
+        detail: `Score: ${r.analysis?.overallScore ?? "—"}/100 · ${r.analysis?.recommendation || "Pending review"}`,
+        timestamp: r.scheduledAt ? new Date(r.scheduledAt).toLocaleDateString() : "Recent",
+        href: `/admin/interviews/${r._id}`,
+        statusVariant: "success",
+      });
+    });
+
+    return list.slice(0, 6);
+  }, [candidatesList, upcoming, reports]);
+
+  const awaitingEvaluationCount = useMemo(() => {
+    return reports.filter((r) => !r.analysis?.overallScore || r.status === "pending_evaluation").length;
+  }, [reports]);
 
   return (
-    <div className="space-y-8">
-      <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Admin Dashboard</p>
-        <h1 className="mt-1 text-2xl font-semibold text-slate-900 dark:text-white">{greeting}</h1>
-        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-          Here&apos;s an overview of your recruitment activity.
-        </p>
-      </motion.div>
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {liveStats.map((stat, index) => (
-          <StatCard key={stat.title} stat={stat} index={index} />
-        ))}
-      </div>
-
-      <Card className="p-6">
-        <div className="mb-5">
-          <h2 className="text-base font-semibold text-slate-900 dark:text-white">Needs Your Attention</h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Tasks that may require an admin action.
+    <div className="space-y-6">
+      {/* 1. Page Header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-[#E2E8F0] pb-5">
+        <div>
+          <h1 className="text-xl font-bold tracking-tight text-[#111F33]">
+            Recruitment Operations
+          </h1>
+          <p className="mt-1 text-xs text-[#64748B]">
+            Real-time candidate pipeline, AI interview schedules, and evaluation oversight.
           </p>
         </div>
 
-        <div className="divide-y divide-slate-100 dark:divide-white/10">
-          {attentionItems.map((item) => {
-            const tone = toneClasses[item.tone];
-            return (
-              <Link
-                key={item.title}
-                href={item.href}
-                className="group flex items-center justify-between gap-4 py-4 transition-colors"
+        <div className="flex items-center gap-2.5">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={loadDashboardData}
+            className="text-xs"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh
+          </Button>
+          <Link href="/admin/schedule">
+            <Button size="sm" className="text-xs">
+              <CalendarDays className="h-3.5 w-3.5" />
+              View Master Schedule
+            </Button>
+          </Link>
+        </div>
+      </div>
+
+      {/* 2. Key Performance Metrics Cards */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Metric 1: Total Candidates */}
+        <Card className="p-4 border-[#E2E8F0] hover:border-[#1976D2]/40 transition-colors">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-[#64748B]">
+              Total Candidates
+            </span>
+            <div className="rounded-md bg-blue-50 p-2 text-[#1976D2]">
+              <Users className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-[#111F33]">
+              {candidatesLoading ? "—" : totalCandidates}
+            </span>
+            <span className="text-xs text-[#64748B]">in pipeline</span>
+          </div>
+          <div className="mt-3 flex items-center justify-between border-t border-[#E2E8F0] pt-2 text-[11px]">
+            <Link
+              href="/admin/candidates"
+              className="font-medium text-[#1976D2] hover:underline flex items-center gap-1"
+            >
+              Browse candidate pool
+              <ArrowUpRight className="h-3 w-3" />
+            </Link>
+          </div>
+        </Card>
+
+        {/* Metric 2: Upcoming Interviews */}
+        <Card className="p-4 border-[#E2E8F0] hover:border-[#1976D2]/40 transition-colors">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-[#64748B]">
+              Scheduled Interviews
+            </span>
+            <div className="rounded-md bg-blue-50 p-2 text-[#1976D2]">
+              <Video className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-[#111F33]">
+              {upcomingLoading ? "—" : upcoming.length}
+            </span>
+            <span className="text-xs text-[#64748B]">upcoming slots</span>
+          </div>
+          <div className="mt-3 flex items-center justify-between border-t border-[#E2E8F0] pt-2 text-[11px]">
+            <Link
+              href="/admin/schedule"
+              className="font-medium text-[#1976D2] hover:underline flex items-center gap-1"
+            >
+              Inspect calendar slots
+              <ArrowUpRight className="h-3 w-3" />
+            </Link>
+          </div>
+        </Card>
+
+        {/* Metric 3: Completed Interviews */}
+        <Card className="p-4 border-[#E2E8F0] hover:border-[#1976D2]/40 transition-colors">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-[#64748B]">
+              Completed Sessions
+            </span>
+            <div className="rounded-md bg-emerald-50 p-2 text-[#16A34A]">
+              <FileCheck className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-[#111F33]">
+              {reportsLoading ? "—" : reports.length}
+            </span>
+            <span className="text-xs text-[#64748B]">evaluated reports</span>
+          </div>
+          <div className="mt-3 flex items-center justify-between border-t border-[#E2E8F0] pt-2 text-[11px]">
+            <Link
+              href="/admin/interviews"
+              className="font-medium text-[#1976D2] hover:underline flex items-center gap-1"
+            >
+              Review session results
+              <ArrowUpRight className="h-3 w-3" />
+            </Link>
+          </div>
+        </Card>
+
+        {/* Metric 4: Pending Admin Action */}
+        <Card className="p-4 border-[#E2E8F0] hover:border-[#1976D2]/40 transition-colors">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-[#64748B]">
+              Awaiting Evaluation
+            </span>
+            <div className="rounded-md bg-amber-50 p-2 text-[#D97706]">
+              <Clock className="h-4 w-4" />
+            </div>
+          </div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-2xl font-bold text-[#111F33]">
+              {reportsLoading ? "—" : awaitingEvaluationCount}
+            </span>
+            <span className="text-xs text-[#64748B]">require decision</span>
+          </div>
+          <div className="mt-3 flex items-center justify-between border-t border-[#E2E8F0] pt-2 text-[11px]">
+            <Link
+              href="/admin/reports"
+              className="font-medium text-[#D97706] hover:underline flex items-center gap-1"
+            >
+              Action report decisions
+              <ArrowUpRight className="h-3 w-3" />
+            </Link>
+          </div>
+        </Card>
+      </div>
+
+      {/* 3. Hero Section: Scheduled Interviews Table */}
+      <Card>
+        <CardHeader
+          title={
+            <div className="flex items-center gap-2">
+              <span>Upcoming Scheduled Interviews</span>
+              <Badge variant="info">
+                {filteredInterviews.length} Booked
+              </Badge>
+            </div>
+          }
+          subtitle="Real-time interview sessions booked by candidates through the scheduling engine."
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Search Control */}
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#64748B]" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Filter candidate or project…"
+                  className="h-8 w-44 rounded-md border border-[#E2E8F0] bg-[#F5F7FA] pl-8 pr-3 text-xs text-[#111F33] focus:border-[#1976D2] focus:bg-white focus:outline-none"
+                />
+              </div>
+
+              {/* Status Filter */}
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="h-8 rounded-md border border-[#E2E8F0] bg-white px-2.5 text-xs text-[#111F33] focus:border-[#1976D2] focus:outline-none"
               >
-                <div className="flex items-start gap-3">
-                  <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${tone.text.replace("text-", "bg-")}`} />
-                  <div>
-                    <p className="text-sm font-medium text-slate-900 group-hover:text-accent-600 dark:text-white dark:group-hover:text-accent-400">
-                      {item.title}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{item.description}</p>
+                <option value="all">All Statuses</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="completed">Completed</option>
+                <option value="pending">Pending</option>
+              </select>
+
+              <Link href="/admin/schedule">
+                <Button variant="outline" size="sm" className="h-8 text-xs">
+                  Full Calendar →
+                </Button>
+              </Link>
+            </div>
+          }
+        />
+
+        <CardContent className="p-0">
+          {upcomingLoading ? (
+            <div className="p-6 space-y-3">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : upcomingError ? (
+            <div className="p-6">
+              <ErrorState
+                title="Could not load interview schedule"
+                description="Please verify backend connectivity and try again."
+                onRetry={loadDashboardData}
+              />
+            </div>
+          ) : filteredInterviews.length === 0 ? (
+            <div className="py-12">
+              <EmptyState
+                icon={Video}
+                title={upcoming.length === 0 ? "No interviews scheduled yet" : "No matching interviews"}
+                description={
+                  upcoming.length === 0
+                    ? "Candidates will appear here once they complete project verification and book an available slot."
+                    : "Try adjusting your search query or status filter."
+                }
+              />
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-[#E2E8F0] bg-[#F5F7FA] text-[#64748B] font-semibold uppercase tracking-wider">
+                    <th className="py-3 px-4">Candidate</th>
+                    <th className="py-3 px-4">Role / Project</th>
+                    <th className="py-3 px-4">Schedule</th>
+                    <th className="py-3 px-4">Mode</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#E2E8F0] text-[#111F33]">
+                  {filteredInterviews.map((item) => (
+                    <tr
+                      key={item.id}
+                      className="hover:bg-[#F5F7FA]/75 transition-colors group"
+                    >
+                      {/* Candidate Column */}
+                      <td className="py-3 px-4">
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-[#111F33]">
+                            {item.candidate?.name || "Candidate"}
+                          </span>
+                          <span className="text-[11px] text-[#64748B]">
+                            {item.candidate?.email || "No email on file"}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Role / Project */}
+                      <td className="py-3 px-4">
+                        <div className="flex flex-col">
+                          <span className="font-medium text-[#111F33]">
+                            {item.candidate?.role || "Engineering Role"}
+                          </span>
+                          <span className="text-[11px] text-[#64748B] truncate max-w-[200px]">
+                            {item.project || "Technical Project Review"}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Schedule */}
+                      <td className="py-3 px-4">
+                        <div className="flex flex-col">
+                          <span className="font-medium text-[#111F33]">
+                            {item.date}
+                          </span>
+                          <span className="text-[11px] text-[#64748B]">
+                            {item.time} {item.endTime ? `– ${item.endTime}` : ""}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* Interview Mode */}
+                      <td className="py-3 px-4">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-[#1976D2]">
+                          <Video className="h-3 w-3" />
+                          AI Voice / Meet
+                        </span>
+                      </td>
+
+                      {/* Status */}
+                      <td className="py-3 px-4">
+                        <Badge
+                          variant={
+                            item.status === "completed"
+                              ? "success"
+                              : item.status === "scheduled"
+                              ? "info"
+                              : "warning"
+                          }
+                          dot
+                        >
+                          {item.status ? item.status.toUpperCase() : "SCHEDULED"}
+                        </Badge>
+                      </td>
+
+                      {/* Actions */}
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Link href={`/admin/candidates`}>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-[11px] text-[#1976D2] hover:bg-blue-50"
+                            >
+                              Profile
+                            </Button>
+                          </Link>
+                          <Link href={`/admin/interviews`}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-[11px]"
+                            >
+                              Details
+                            </Button>
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* 4. Bottom Grid: Pipeline Status Visualization & Recent Activity */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        {/* Candidate Recruitment Pipeline Visualization */}
+        <Card>
+          <CardHeader
+            title="Recruitment Pipeline Distribution"
+            subtitle="Stage progression of all candidates currently tracked by the system."
+            action={
+              <Link
+                href="/admin/candidates"
+                className="text-xs font-semibold text-[#1976D2] hover:underline"
+              >
+                View Candidates →
+              </Link>
+            }
+          />
+          <CardContent className="space-y-4 pt-4">
+            {pipelineStats.stages.map((stage) => {
+              const pct = Math.round(
+                (stage.count / Math.max(totalCandidates, 1)) * 100
+              );
+              const barWidth = Math.max(
+                (stage.count / pipelineStats.maxCount) * 100,
+                stage.count > 0 ? 6 : 0
+              );
+
+              return (
+                <div key={stage.key} className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-medium text-[#111F33] flex items-center gap-1.5">
+                      <span
+                        className="h-2 w-2 rounded-full"
+                        style={{ backgroundColor: stage.color }}
+                      />
+                      {stage.label}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-[#111F33]">
+                        {stage.count}
+                      </span>
+                      <span className="text-[11px] text-[#64748B] w-8 text-right">
+                        {pct}%
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Horizontal Bar */}
+                  <div className="h-2 w-full rounded-full bg-[#E2E8F0] overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{
+                        width: `${barWidth}%`,
+                        backgroundColor: stage.color,
+                      }}
+                    />
                   </div>
                 </div>
+              );
+            })}
+          </CardContent>
+        </Card>
 
-                <ArrowUpRight className="h-4 w-4 shrink-0 -translate-x-1 translate-y-1 text-slate-300 opacity-0 transition-all group-hover:translate-x-0 group-hover:translate-y-0 group-hover:opacity-100 dark:text-slate-600" />
+        {/* Real Recent Recruitment Activity */}
+        <Card>
+          <CardHeader
+            title="Recent Recruitment Activity"
+            subtitle="Verified actions, scheduling changes, and evaluation updates."
+            action={
+              <Link
+                href="/admin/audit-log"
+                className="text-xs font-semibold text-[#1976D2] hover:underline"
+              >
+                Audit Log →
               </Link>
-            );
-          })}
-        </div>
-      </Card>
+            }
+          />
+          <CardContent className="p-0">
+            {recentActivities.length === 0 ? (
+              <div className="p-6 text-center text-xs text-[#64748B]">
+                No recent activity recorded yet.
+              </div>
+            ) : (
+              <div className="divide-y divide-[#E2E8F0]">
+                {recentActivities.map((event) => (
+                  <Link
+                    key={event.id}
+                    href={event.href}
+                    className="flex items-start justify-between gap-3 p-3.5 hover:bg-[#F5F7FA] transition-colors group"
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <div className="mt-1">
+                        <span
+                          className={`h-2 w-2 rounded-full inline-block ${
+                            event.statusVariant === "success"
+                              ? "bg-[#16A34A]"
+                              : event.statusVariant === "warning"
+                              ? "bg-[#D97706]"
+                              : "bg-[#1976D2]"
+                          }`}
+                        />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-[#111F33] group-hover:text-[#1976D2] transition-colors">
+                          {event.title}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-[#64748B]">
+                          {event.detail}
+                        </p>
+                      </div>
+                    </div>
 
-      <Card className="p-6">
-        <h2 className="text-base font-semibold text-slate-900 dark:text-white">Recruitment Pipeline</h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Current candidate flow through the recruitment process. Hover a stage for detail.
-        </p>
-
-        <div className="mt-6">
-          <PipelineBar />
-        </div>
-      </Card>
+                    <div className="flex items-center gap-1.5 shrink-0 text-right">
+                      <span className="text-[10px] text-[#64748B]">
+                        {event.timestamp}
+                      </span>
+                      <ChevronRight className="h-3 w-3 text-slate-300 group-hover:text-[#1976D2] transition-colors" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
