@@ -74,7 +74,7 @@ export async function syncInterviewLifecycles(now = new Date()) {
  * Handle candidate presence signal (when candidate enters the interview room or joins).
  * Transitions from WAITING_FOR_CANDIDATE / SCHEDULED to IN_PROGRESS.
  */
-export async function recordCandidatePresence(interviewId, candidateId) {
+export async function recordCandidatePresence(interviewId, candidateId, { isBot = false } = {}) {
   const interview = await AiInterview.findById(interviewId);
   if (!interview) {
     const error = new Error("Interview not found");
@@ -102,8 +102,13 @@ export async function recordCandidatePresence(interviewId, candidateId) {
     });
   }
 
-  // If currently waiting, scheduled, or already in-progress, ensure session is bootstrapped
-  if (["SCHEDULED", "READY", "WAITING_FOR_CANDIDATE", "IN_PROGRESS"].includes(interview.status)) {
+  // For Google Meet interviews, opening the waiting room does not start the interview.
+  // The interview genuinely starts when the bot signals entry in Google Meet,
+  // or when already in progress, or for browser-only voice sessions (no Meet link).
+  const hasMeet = Boolean(interview.meetLink);
+  const shouldStart = !hasMeet || isBot || interview.status === "IN_PROGRESS";
+
+  if (shouldStart && ["SCHEDULED", "READY", "WAITING_FOR_CANDIDATE", "IN_PROGRESS"].includes(interview.status)) {
     const started = await startInterview(interview._id, candidateId);
     logger.info("INTERVIEW_STARTED", {
       interviewId: String(interview._id),

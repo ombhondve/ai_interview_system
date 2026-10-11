@@ -56,7 +56,9 @@ router.all("/cron/sync", async (_req, res) => {
 router.get("/mine", requireVerifiedSession, async (req, res) => {
   try {
     await syncInterviewLifecycles();
-    const doc = await AiInterview.findOne({ candidateId: req.candidate._id, status: { $nin: ["CANCELLED"] } }).sort({ scheduledAt: -1 });
+    const doc = await AiInterview.findOne({ candidateId: req.candidate._id, status: { $nin: ["CANCELLED"] } })
+      .sort({ scheduledAt: -1 })
+      .populate("botJobId", "status assignedWorkerId retryAfter failureReason needsAdminReview");
     if (!doc) return res.json({ success: true, interview: null });
     if (!isProjectVerified(req.candidate)) return res.status(403).json({ success: false, message: "The assigned project must be verified before interview access." });
     const context = await buildInterviewContext({ candidateId: doc.candidateId, projectId: doc.projectId, bookingId: doc.bookingId });
@@ -240,8 +242,8 @@ router.post("/internal/:interviewId/candidate-joined", validInterviewId, async (
     const interview = await requireInternalServiceSession(req, req.params.interviewId, candidateId, { allowPreflight: true });
 
     logger.info("[INTERVIEW] Bot signaled candidate joined in Google Meet", { interviewId: String(interview._id) });
-    // Advance lifecycle to IN_PROGRESS and bootstrap first question if needed
-    const result = await recordCandidatePresence(interview._id, interview.candidateId);
+    // Advance lifecycle to IN_PROGRESS and bootstrap first question when bot reports entry
+    const result = await recordCandidatePresence(interview._id, interview.candidateId, { isBot: true });
     const updated = result.interview || interview;
     const firstQ = updated.questions?.[updated.currentQuestionIndex] || updated.questions?.[0] || null;
     const fallbackGreeting = "Hi, welcome to your interview. Before we begin, let's quickly check your audio and video. Can you hear me clearly?";

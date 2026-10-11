@@ -235,7 +235,6 @@ export async function syncEligibleInterviewJobs() {
   const preparationWindowMs = getPreparationWindowMs();
   const maxAttempts = getMaxAttempts();
   const nowMs = Date.now();
-  const cutoffStart = new Date(nowMs + preparationWindowMs);
   const cutoffStale = new Date(nowMs - (60 * 60 * 1000)); // Discard ancient stale records
 
   // Advance lifecycles for any due or elapsed sessions
@@ -251,9 +250,12 @@ export async function syncEligibleInterviewJobs() {
     return 0;
   }
 
+  // Discover upcoming and active interviews (up to 48 hours ahead) within scheduling horizon
+  const horizonCutoff = new Date(nowMs + (48 * 60 * 60 * 1000));
+
   let query = AiInterview.find({
-    status: { $in: ["SCHEDULED", "READY", "WAITING_FOR_CANDIDATE"] },
-    scheduledAt: { $lte: cutoffStart, $gte: cutoffStale },
+    status: { $in: ["SCHEDULED", "READY", "WAITING_FOR_CANDIDATE", "IN_PROGRESS"] },
+    scheduledAt: { $lte: horizonCutoff, $gte: cutoffStale },
     meetLink: { $ne: null },
   });
 
@@ -265,6 +267,7 @@ export async function syncEligibleInterviewJobs() {
 
   for (const interview of eligibleInterviews) {
     if (!validateMeetUrl(interview.meetLink)) {
+      logger.debug(`[BOT_SYNC] Skipping interview ${interview._id}: invalid or missing meetLink`);
       continue;
     }
 
@@ -273,7 +276,7 @@ export async function syncEligibleInterviewJobs() {
     });
 
     if (!existingJob) {
-      await BotJob.findOneAndUpdate(
+      const newJob = await BotJob.findOneAndUpdate(
         { interviewId: interview._id },
         {
           $setOnInsert: {
@@ -295,6 +298,38 @@ export async function syncEligibleInterviewJobs() {
           logger.warn(`Could not queue BotJob for interview ${interview._id}: ${err.message}`);
         }
       });
+
+      if (newJob) {
+        interview.botJobId = newJob._id;
+        if (typeof interview.save === "function") {
+          await interview.save().catch(() => {});
+        }
+        logger.info(`[BOT_SYNC] Discovered and queued BotJob ${newJob._id} for interview ${interview._id} (scheduledAt: ${new Date(interview.scheduledAt).toISOString()})`);
+      }
+    } else {
+      // Existing job detected
+      const durationMs = (interview.durationMinutes || 30) * 60 * 1000;
+      const graceMs = DEFAULT_NO_SHOW_GRACE_MINUTES * 60 * 1000;
+      const isSlotActive = nowMs <= new Date(interview.scheduledAt).getTime() + durationMs + graceMs;
+
+      // Recover erroneously failed jobs caused by IN_PROGRESS status bug while slot is active
+      if (
+        existingJob.status === "FAILED" &&
+        existingJob.failureReason &&
+        existingJob.failureReason.includes("non-executable status: IN_PROGRESS") &&
+        isSlotActive &&
+        ["SCHEDULED", "READY", "WAITING_FOR_CANDIDATE", "IN_PROGRESS"].includes(interview.status)
+      ) {
+        existingJob.status = "QUEUED";
+        existingJob.assignedWorkerId = null;
+        existingJob.leaseExpiresAt = null;
+        existingJob.needsAdminReview = false;
+        existingJob.retryAfter = null;
+        if (typeof existingJob.save === "function") {
+          await existingJob.save().catch(() => {});
+        }
+        logger.info(`[BOT_SYNC] Recovered erroneously failed BotJob ${existingJob._id} for interview ${interview._id} back to QUEUED`);
+      }
     }
   }
 }
@@ -365,7 +400,7 @@ export async function claimNextJob(workerId, { currentTime } = {}) {
   // 3. Verify underlying AiInterview session status and timing
   const interview = await findInterviewSafely(claimedJob.interviewId);
   if (interview) {
-    const validExecutionStatuses = ["SCHEDULED", "READY", "WAITING_FOR_CANDIDATE"];
+    const validExecutionStatuses = ["SCHEDULED", "READY", "WAITING_FOR_CANDIDATE", "IN_PROGRESS"];
     if (!validExecutionStatuses.includes(interview.status)) {
       claimedJob.status = interview.status === "COMPLETED" ? "COMPLETED" : "FAILED";
       claimedJob.failureReason = `Interview session is in non-executable status: ${interview.status}`;
@@ -396,6 +431,8 @@ export async function claimNextJob(workerId, { currentTime } = {}) {
       claimedJob.scheduledAt = interview.scheduledAt;
       claimedJob.assignedWorkerId = null;
       claimedJob.leaseExpiresAt = null;
+      // Do not consume a failure attempt for future-time deferral
+      claimedJob.attemptCount = Math.max(0, claimedJob.attemptCount - 1);
       await claimedJob.save();
 
       return {
@@ -461,13 +498,17 @@ export async function claimNextJob(workerId, { currentTime } = {}) {
     details: { attempt: claimedJob.attemptCount, scheduledAt: claimedJob.scheduledAt },
   });
 
+  const authoritativeMeetUrl = (interview && interview.meetLink) || claimedJob.meetLink || "";
+  logger.info(`[JOB_CLAIM] Worker ${workerId} claimed job ${claimedJob._id} for interview ${claimedJob.interviewId} (scheduledAt: ${new Date(claimedJob.scheduledAt).toISOString()})`);
+
   return {
     success: true,
     job: {
       jobId: String(claimedJob._id),
       interviewId: String(claimedJob.interviewId),
       candidateId: authoritativeCandidateId ? String(authoritativeCandidateId) : "",
-      meetUrl: claimedJob.meetLink,
+      meetUrl: authoritativeMeetUrl,
+      meetLink: authoritativeMeetUrl,
       scheduledAt: claimedJob.scheduledAt,
       durationMinutes: interview?.durationMinutes || 30,
       leaseDurationMs: leaseMs,

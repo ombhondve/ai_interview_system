@@ -23,6 +23,7 @@ export async function getInterviewConfig() {
         key: SINGLETON_KEY,
         workingHours: { startHour: 0, endHour: 24 },
         minLeadHours: 0,
+        allowedWeekdays: [0, 1, 2, 3, 4, 5, 6],
       });
     } catch (error) {
       // Lost a create race - another request seeded it first.
@@ -31,15 +32,18 @@ export async function getInterviewConfig() {
     }
   }
 
-  // Ensure un-restricted schedule rules (no 2-hour minimum lead, no 9-18 business hours restriction)
+  // Ensure un-restricted schedule rules (no 2-hour minimum lead, no 9-18 business hours restriction, allow all days)
   if (
     config &&
     (config.minLeadHours !== 0 ||
       config.workingHours?.startHour !== 0 ||
-      config.workingHours?.endHour !== 24)
+      config.workingHours?.endHour !== 24 ||
+      !config.allowedWeekdays ||
+      config.allowedWeekdays.length < 7)
   ) {
     config.minLeadHours = 0;
     config.workingHours = { startHour: 0, endHour: 24 };
+    config.allowedWeekdays = [0, 1, 2, 3, 4, 5, 6];
     if (typeof config.save === "function") {
       await config.save().catch(() => {});
     }

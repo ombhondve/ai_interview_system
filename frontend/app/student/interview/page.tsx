@@ -8,7 +8,75 @@ import { Button } from "@/components/ui/Button";
 import { backendApiUrl } from "@/lib/client";
 
 type Turn = { speaker: string; text: string; timestamp: string; questionId?: string; section?: string };
-type Session = { _id: string; status: string; scheduledAt: string; meetLink?: string; calendarEventId?: string; questions: Array<{ question: string; category: string; questionId?: string }>; transcript: Turn[]; currentQuestionIndex: number; startedAt?: string; analysisError?: string };
+type BotJobInfo = {
+  _id?: string;
+  status: string;
+  assignedWorkerId?: string | null;
+  retryAfter?: string | null;
+  failureReason?: string | null;
+  needsAdminReview?: boolean;
+};
+type Session = {
+  _id: string;
+  status: string;
+  scheduledAt: string;
+  meetLink?: string;
+  calendarEventId?: string;
+  botJobId?: BotJobInfo | string | null;
+  questions: Array<{ question: string; category: string; questionId?: string }>;
+  transcript: Turn[];
+  currentQuestionIndex: number;
+  startedAt?: string;
+  analysisError?: string;
+};
+
+function getStatusBadge(session: Session) {
+  const isFinished = ["COMPLETING", "COMPLETED", "ANALYSIS_PENDING", "ANALYZED"].includes(session.status);
+  if (isFinished) {
+    return { text: "Completed", subtext: "Concluded", colorClass: "text-[#1B4332]" };
+  }
+  if (session.status === "FAILED") {
+    return { text: "Session Error", subtext: session.analysisError || "Interview failed", colorClass: "text-[#DC2626]" };
+  }
+
+  const botJob = typeof session.botJobId === "object" && session.botJobId ? session.botJobId : null;
+  if (botJob && botJob.status === "FAILED") {
+    return { text: "Bot Error", subtext: botJob.failureReason || "Worker reported failure", colorClass: "text-[#DC2626]" };
+  }
+
+  if (session.status === "IN_PROGRESS") {
+    return { text: "🟢 In Progress", subtext: "Interview active in call", colorClass: "text-[#15803D]" };
+  }
+
+  const now = Date.now();
+  const scheduledTime = new Date(session.scheduledAt).getTime();
+  const isFuture = scheduledTime > now;
+
+  if (botJob) {
+    if (botJob.status === "RUNNING") {
+      return { text: "🔵 Bot Joining Call", subtext: "Connecting to Google Meet...", colorClass: "text-[#2563EB]" };
+    }
+    if (botJob.status === "CLAIMED") {
+      return { text: "🔵 Bot Starting", subtext: "Worker assigned & initializing...", colorClass: "text-[#2563EB]" };
+    }
+    if (botJob.status === "QUEUED") {
+      if (isFuture) {
+        return { text: "🟡 Scheduled", subtext: "Job queued for start time", colorClass: "text-[#D97706]" };
+      }
+      return { text: "🟡 Waiting for Bot", subtext: "Due for execution", colorClass: "text-[#D97706]" };
+    }
+  }
+
+  if (isFuture) {
+    return { text: "🟡 Scheduled", subtext: "Awaiting scheduled time", colorClass: "text-[#D97706]" };
+  }
+
+  if (session.status === "WAITING_FOR_CANDIDATE") {
+    return { text: "🟡 Ready — Waiting for You", subtext: "Please join meeting", colorClass: "text-[#15803D]" };
+  }
+
+  return { text: session.status.replaceAll("_", " "), subtext: "", colorClass: "text-[#1B4332]" };
+}
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(backendApiUrl(`/api/ai-interviews${path}`), { ...init, credentials: "include", headers: { "Content-Type": "application/json", ...init?.headers } });
@@ -267,13 +335,15 @@ export default function InterviewPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-xl bg-[#F5F1E8] border border-[#D8CDBB]">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">Status</p>
-            <p className="text-sm font-bold text-[#1B4332] mt-0.5">
-              {session.status === "IN_PROGRESS"
-                ? "🟢 In Progress (Bot In Call)"
-                : session.status === "WAITING_FOR_CANDIDATE"
-                ? "🟡 Ready — Waiting for You"
-                : session.status.replaceAll("_", " ").toLowerCase()}
-            </p>
+            {(() => {
+              const badge = getStatusBadge(session);
+              return (
+                <div className="mt-0.5">
+                  <p className={`text-sm font-bold ${badge.colorClass}`}>{badge.text}</p>
+                  {badge.subtext && <p className="text-[11px] text-[#64748B]">{badge.subtext}</p>}
+                </div>
+              );
+            })()}
           </div>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">Scheduled Time</p>

@@ -318,10 +318,10 @@ describe("BotControl Remote Worker Management System Tests", () => {
       jest.spyOn(AiInterview, "find").mockResolvedValue([]);
       await botControlService.syncEligibleInterviewJobs();
 
-      // Only SCHEDULED, READY, WAITING_FOR_CANDIDATE are queried
+      // Only active/executable statuses are queried (terminal statuses like COMPLETED/CANCELLED excluded)
       expect(AiInterview.find).toHaveBeenCalledWith(
         expect.objectContaining({
-          status: { $in: ["SCHEDULED", "READY", "WAITING_FOR_CANDIDATE"] },
+          status: { $in: ["SCHEDULED", "READY", "WAITING_FOR_CANDIDATE", "IN_PROGRESS"] },
         })
       );
     });
@@ -938,6 +938,124 @@ describe("BotControl Remote Worker Management System Tests", () => {
         { retryAfter: null },
         { retryAfter: { $lte: fixedNow } },
       ]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // 20. End-to-End Scheduling & IN_PROGRESS Eligibility Protections
+  // ---------------------------------------------------------------------------
+  describe("20. IN_PROGRESS Eligibility & Safe Recovery", () => {
+    test("claimNextJob successfully claims job when interview status is IN_PROGRESS (student waiting)", async () => {
+      const fixedNow = new Date("2026-10-10T10:00:00.000Z");
+      const interviewId = "507f1f77bcf86cd799439012";
+      const mockWorker = { workerId: "worker-test-01", enabled: true, status: "IDLE", save: jest.fn().mockResolvedValue(true) };
+      jest.spyOn(BotWorker, "findOne").mockResolvedValue(mockWorker);
+      jest.spyOn(botControlService, "recoverExpiredLeases").mockResolvedValue(0);
+      jest.spyOn(botControlService, "syncEligibleInterviewJobs").mockResolvedValue(true);
+
+      const mockJob = {
+        _id: "job-in-progress-1",
+        interviewId,
+        candidateId: "cand-1",
+        meetLink: "https://meet.google.com/abc-defg-hij",
+        scheduledAt: fixedNow,
+        status: "CLAIMED",
+        attemptCount: 1,
+        save: jest.fn().mockResolvedValue(true),
+      };
+      jest.spyOn(BotJob, "findOneAndUpdate").mockResolvedValue(mockJob);
+
+      // Interview status is IN_PROGRESS because candidate opened portal
+      const mockInterview = {
+        _id: interviewId,
+        candidateId: "cand-1",
+        status: "IN_PROGRESS",
+        meetLink: "https://meet.google.com/abc-defg-hij",
+        scheduledAt: fixedNow,
+        save: jest.fn().mockResolvedValue(true),
+      };
+      jest.spyOn(AiInterview, "findById").mockResolvedValue(mockInterview);
+
+      const result = await botControlService.claimNextJob("worker-test-01", { currentTime: fixedNow });
+
+      expect(result.success).toBe(true);
+      expect(result.job).not.toBeNull();
+      expect(result.job.jobId).toBe("job-in-progress-1");
+      expect(result.job.interviewId).toBe(interviewId);
+      expect(mockJob.status).toBe("CLAIMED");
+      expect(mockJob.failureReason).toBeUndefined();
+    });
+
+    test("claimNextJob rolls back attemptCount when rescheduled session is in the future", async () => {
+      const fixedNow = new Date("2026-10-10T10:00:00.000Z");
+      const futureTime = new Date("2026-10-10T10:30:00.000Z");
+      const mockWorker = { workerId: "worker-test-01", enabled: true, status: "IDLE", save: jest.fn().mockResolvedValue(true) };
+      jest.spyOn(BotWorker, "findOne").mockResolvedValue(mockWorker);
+      jest.spyOn(botControlService, "recoverExpiredLeases").mockResolvedValue(0);
+      jest.spyOn(botControlService, "syncEligibleInterviewJobs").mockResolvedValue(true);
+
+      const mockJob = {
+        _id: "job-future-deferral",
+        interviewId: "int-future",
+        scheduledAt: fixedNow,
+        status: "CLAIMED",
+        attemptCount: 2,
+        save: jest.fn().mockResolvedValue(true),
+      };
+      jest.spyOn(BotJob, "findOneAndUpdate").mockResolvedValue(mockJob);
+
+      // Session rescheduled to future
+      const mockInterview = {
+        _id: "int-future",
+        status: "SCHEDULED",
+        scheduledAt: futureTime,
+        save: jest.fn().mockResolvedValue(true),
+      };
+      jest.spyOn(AiInterview, "findById").mockResolvedValue(mockInterview);
+
+      const result = await botControlService.claimNextJob("worker-test-01", { currentTime: fixedNow });
+
+      expect(result.success).toBe(true);
+      expect(result.job).toBeNull();
+      expect(mockJob.status).toBe("QUEUED");
+      expect(mockJob.attemptCount).toBe(1); // 2 decremented back to 1!
+    });
+
+    test("syncEligibleInterviewJobs recovers an erroneously failed job when interview is active IN_PROGRESS", async () => {
+      const interviewId = "507f1f77bcf86cd799439099";
+      const now = new Date();
+      const mockInterview = {
+        _id: interviewId,
+        candidateId: "cand-1",
+        bookingId: "book-1",
+        meetLink: "https://meet.google.com/abc-defg-hij",
+        scheduledAt: now,
+        status: "IN_PROGRESS",
+        durationMinutes: 30,
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      jest.spyOn(AiInterview, "find").mockReturnValue({
+        limit: jest.fn().mockResolvedValue([mockInterview]),
+      });
+
+      const mockFailedJob = {
+        _id: "failed-job-1",
+        interviewId,
+        status: "FAILED",
+        failureReason: "Interview session is in non-executable status: IN_PROGRESS",
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      jest.spyOn(BotJob, "findOne").mockResolvedValue(mockFailedJob);
+
+      await botControlService.syncEligibleInterviewJobs();
+
+      expect(mockFailedJob.status).toBe("QUEUED");
+      expect(mockFailedJob.assignedWorkerId).toBeNull();
+      expect(mockFailedJob.leaseExpiresAt).toBeNull();
+      expect(mockFailedJob.needsAdminReview).toBe(false);
+      expect(mockFailedJob.save).toHaveBeenCalled();
     });
   });
 });
