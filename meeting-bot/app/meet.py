@@ -24,6 +24,18 @@ def validate_meet_url(url: str) -> bool:
     return bool(MEET_URL_PATTERN.match(url.strip()))
 
 
+def mask_meet_url(url: str) -> str:
+    """Mask Google Meet URL for safe diagnostic logging, e.g., meet.google.com/abc-***-hij."""
+    if not url or not isinstance(url, str):
+        return "<none>"
+    match = re.search(r"meet\.google\.com\/([a-zA-Z0-9]{3})-([a-zA-Z0-9]{4})-([a-zA-Z0-9]{3})", url)
+    if match:
+        p1, _, p3 = match.groups()
+        return f"https://meet.google.com/{p1}-***-{p3}"
+    clean = re.sub(r"://.*@", "://***@", url).strip()
+    return clean[:35] + "..." if len(clean) > 35 else clean
+
+
 def normalize_audio_label(label: str) -> str:
     """
     Normalize audio device labels across Windows WASAPI, MME, DirectSound, and Chrome WebRTC formats.

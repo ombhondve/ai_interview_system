@@ -23,7 +23,7 @@ import uvicorn
 
 from app.config import settings
 from app.bot import bot_instance, BotStatus
-from app.meet import validate_meet_url
+from app.meet import validate_meet_url, mask_meet_url
 
 from enum import Enum
 
@@ -424,6 +424,37 @@ async def run_cli():
                     args.interview_id, candidate_id=cand_param
                 )
                 logger.info(f"[BACKEND] Verified session status: {session_check.get('status')} (phase: {session_check.get('phase')})")
+
+                # Verify readiness window: Bot must not join prematurely before allowed window
+                readiness = session_check.get("readinessStatus")
+                if readiness == "NOT_DUE":
+                    logger.error(
+                        f"[IDENTITY] Interview {args.interview_id} scheduled start has not arrived "
+                        f"(scheduledAt={session_check.get('scheduledAt')}). Aborting premature meeting join."
+                    )
+                    sys.exit(1)
+
+                valid_statuses = ("SCHEDULED", "READY", "WAITING_FOR_CANDIDATE", "IN_PROGRESS")
+                session_status = session_check.get("status")
+                if session_status not in valid_statuses:
+                    logger.error(
+                        f"[IDENTITY] Interview session is in non-executable status '{session_status}'. Aborting meeting join."
+                    )
+                    sys.exit(1)
+
+                # Authoritative Meet URL synchronization
+                authoritative_meet_url = session_check.get("meetLink")
+                if authoritative_meet_url and validate_meet_url(authoritative_meet_url):
+                    if args.meet_url != authoritative_meet_url:
+                        logger.warning(
+                            f"[IDENTITY] Synchronizing meet_url with authoritative interview meetLink: "
+                            f"{mask_meet_url(authoritative_meet_url)} (was: {mask_meet_url(args.meet_url)})"
+                        )
+                        args.meet_url = authoritative_meet_url
+                elif not args.meet_url or not validate_meet_url(args.meet_url):
+                    logger.error("[IDENTITY] No valid Google Meet URL found for interview session. Aborting join.")
+                    sys.exit(1)
+
                 if session_check.get("candidateId"):
                     resolved_cand = str(session_check["candidateId"]).strip()
                     if resolved_cand and resolved_cand not in ("null", "None") and resolved_cand != args.candidate_id:
@@ -435,6 +466,11 @@ async def run_cli():
                         logger.info(f"[BACKEND] Synchronized scheduled duration: {args.duration_minutes} minutes")
                     except Exception:
                         pass
+
+                logger.info(
+                    f"[IDENTITY] Confirmed meeting identity: interviewId={args.interview_id} "
+                    f"candidateId={args.candidate_id} meetUrl={mask_meet_url(args.meet_url)}"
+                )
             except Exception as pre_backend_err:
                 logger.error(f"[BACKEND] Backend session pre-flight failed ({pre_backend_err}). Aborting meeting join to prevent unlinked interview.")
                 sys.exit(1)

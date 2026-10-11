@@ -60,6 +60,36 @@ export default function InterviewPage() {
   }, []);
 
   useEffect(() => { void load(); }, [load]);
+
+  // Polling hook: While interview is active or pending, poll /mine every 4 seconds to catch bot joining and updates
+  useEffect(() => {
+    if (!session) return;
+    const isTerminal = ["COMPLETING", "COMPLETED", "ANALYSIS_PENDING", "ANALYZED", "FAILED", "CANDIDATE_NO_SHOW"].includes(session.status);
+    if (isTerminal) return;
+
+    const interval = window.setInterval(async () => {
+      try {
+        const data = await api<{ interview: Session | null }>("/mine");
+        if (data.interview) {
+          setSession((prev) => {
+            if (!prev) return data.interview;
+            if (
+              prev.status !== data.interview!.status ||
+              prev.currentQuestionIndex !== data.interview!.currentQuestionIndex ||
+              (prev.transcript?.length || 0) !== (data.interview!.transcript?.length || 0)
+            ) {
+              return data.interview;
+            }
+            return prev;
+          });
+        }
+      } catch {
+        // Silently tolerate transient polling errors
+      }
+    }, 4000);
+
+    return () => window.clearInterval(interval);
+  }, [session?.status]);
   useEffect(() => {
     if (!session?.startedAt || session.status !== "IN_PROGRESS") return;
     const tick = () => {
@@ -237,7 +267,13 @@ export default function InterviewPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-xl bg-[#F5F1E8] border border-[#D8CDBB]">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">Status</p>
-            <p className="text-sm font-bold text-[#1B4332] capitalize mt-0.5">{session.status.replaceAll("_", " ").toLowerCase()}</p>
+            <p className="text-sm font-bold text-[#1B4332] mt-0.5">
+              {session.status === "IN_PROGRESS"
+                ? "🟢 In Progress (Bot In Call)"
+                : session.status === "WAITING_FOR_CANDIDATE"
+                ? "🟡 Ready — Waiting for You"
+                : session.status.replaceAll("_", " ").toLowerCase()}
+            </p>
           </div>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">Scheduled Time</p>

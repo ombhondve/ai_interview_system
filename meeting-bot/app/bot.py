@@ -14,7 +14,7 @@ from typing import Optional, Dict, Any
 from playwright.async_api import async_playwright, BrowserContext, Page, Playwright
 
 from app.config import settings
-from app.meet import validate_meet_url, MeetNavigator
+from app.meet import validate_meet_url, mask_meet_url, MeetNavigator
 
 logger = logging.getLogger("MeetingBot")
 
@@ -202,6 +202,11 @@ class MeetingBot:
                         "--no-sandbox",
                         "--use-fake-ui-for-media-stream",  # Auto-grants media stream dialogs
                         "--enable-features=NetworkService,NetworkServiceInProcess",
+                        "--restore-last-session=false",
+                        "--disable-session-crashed-bubble",
+                        "--no-first-run",
+                        "--no-default-browser-check",
+                        "--disable-features=OptimizationGuideModelDownloading",
                     ],
                     "viewport": {"width": 1280, "height": 720},
                 }
@@ -211,14 +216,27 @@ class MeetingBot:
                 # Launch Chromium persistent context
                 self._context = await self._playwright.chromium.launch_persistent_context(**launch_kwargs)
 
+                # Close any stale restored tabs to guarantee clean meeting state
+                while len(self._context.pages) > 1:
+                    stale_page = self._context.pages.pop()
+                    try:
+                        await stale_page.close()
+                    except Exception as close_err:
+                        logger.debug(f"[MEET] Note closing extra page: {close_err}")
+
                 self._page = self._context.pages[0] if self._context.pages else await self._context.new_page()
+                try:
+                    await self._page.goto("about:blank")
+                except Exception:
+                    pass
                 self._navigator = MeetNavigator(self._page)
 
                 self.status = BotStatus.OPENING_MEET
+                masked_url = mask_meet_url(self.meet_url)
                 logger.info("[MEET] Opening Google Meet")
-                logger.info(f"[MeetingBot] Opening Google Meet: {self.meet_url}")
+                logger.info(f"[MeetingBot] Opening Google Meet: {masked_url}")
                 await self._page.goto(self.meet_url, wait_until="networkidle", timeout=45000)
-                logger.info("[MeetingBot] Meet page loaded")
+                logger.info(f"[MeetingBot] Meet page loaded ({masked_url})")
 
                 self.status = BotStatus.PRE_JOIN
                 logger.info("[MEET] Prejoin detected")

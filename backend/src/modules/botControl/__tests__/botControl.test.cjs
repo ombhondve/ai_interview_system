@@ -558,9 +558,8 @@ describe("BotControl Remote Worker Management System Tests", () => {
 
   // ---------------------------------------------------------------------------
   // 17. Strict Scheduled Start-Time & Eligibility Enforcement
-  // TEMPORARILY DISABLED FOR TESTING — RESTORE STRICT SLOT TIMING
   // ---------------------------------------------------------------------------
-  describe.skip("17. Strict Scheduled Start-Time & Eligibility Enforcement (TEMPORARILY DISABLED FOR TESTING — RESTORE STRICT SLOT TIMING)", () => {
+  describe("17. Strict Scheduled Start-Time & Eligibility Enforcement", () => {
     const fixedNow = new Date("2026-10-10T09:00:00.000Z"); // 2:30 PM IST
 
     beforeEach(() => {
@@ -743,9 +742,9 @@ describe("BotControl Remote Worker Management System Tests", () => {
   });
 
   // ---------------------------------------------------------------------------
-  // 18. Relaxed Timing Testing Mode Verification
+  // 18. Relaxed Timing Testing Mode Verification (Deprecated - Strict slot timing active)
   // ---------------------------------------------------------------------------
-  describe("18. Relaxed Timing Testing Mode Verification", () => {
+  describe.skip("18. Relaxed Timing Testing Mode Verification", () => {
     const fixedNow = new Date("2026-10-10T09:00:00.000Z");
 
     beforeEach(() => {

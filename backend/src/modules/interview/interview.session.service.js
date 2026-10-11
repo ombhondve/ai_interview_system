@@ -78,12 +78,14 @@ export async function startInterview(interviewId, candidateId) {
     e.status = 409;
     throw e;
   }
-  /* =========================================================================
-   * TEMPORARILY DISABLED FOR TESTING — RESTORE STRICT SLOT TIMING
-   * In production, validates that interview start time is within the allowed window:
-   * const now = Date.now(), start = new Date(booking.startAt).getTime(), end = new Date(booking.endAt).getTime();
-   * if (now < start - 15 * 60_000 || now > end) { const e = new Error("Interview is outside its allowed start window."); e.status = 403; throw e; }
-   * ========================================================================= */
+  if (booking && booking.startAt && booking.endAt) {
+    const now = Date.now(), start = new Date(booking.startAt).getTime(), end = new Date(booking.endAt).getTime();
+    if (now < start - 15 * 60_000 || now > end + 15 * 60_000) {
+      const e = new Error("Interview is outside its allowed start window.");
+      e.status = 403;
+      throw e;
+    }
+  }
   const ctx = await loadInterviewContext(doc.candidateId, doc.projectId, doc.bookingId);
   if (doc.questions.length === 0) {
     const question = {

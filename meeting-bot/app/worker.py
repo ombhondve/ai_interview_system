@@ -34,8 +34,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("RecruitAI.BotWorker")
 
-# Google Meet URL validation regex
-from app.meet import validate_meet_url
+# Google Meet URL validation regex and masking
+from app.meet import validate_meet_url, mask_meet_url
 
 
 class BotWorkerConfig:
@@ -479,7 +479,7 @@ class BotWorkerAgent:
 
         # 1. Validate Google Meet URL
         if not meet_url or not validate_meet_url(meet_url):
-            err_msg = f"Rejected invalid Google Meet URL format: {meet_url}"
+            err_msg = f"Rejected invalid Google Meet URL format: {mask_meet_url(meet_url)}"
             logger.error(err_msg)
             self.report_job_failure(job_id, err_msg)
             return
@@ -490,16 +490,12 @@ class BotWorkerAgent:
             self.report_job_failure(job_id, err_msg)
             return
 
-        # =====================================================================
-        # TEMPORARILY DISABLED FOR TESTING — RESTORE STRICT SLOT TIMING
-        # In production, rejects jobs that lack a scheduledAt timestamp.
-        # Uncomment the block below when ready for production slot timing enforcement:
-        # if not scheduled_at_raw:
-        #     err_msg = "Job rejected: missing scheduledAt timestamp."
-        #     logger.error(err_msg)
-        #     self.report_job_failure(job_id, err_msg)
-        #     return
-        # =====================================================================
+        # Enforce scheduled start time presence
+        if not scheduled_at_raw:
+            err_msg = "Job rejected: missing scheduledAt timestamp."
+            logger.error(err_msg)
+            self.report_job_failure(job_id, err_msg)
+            return
 
         # 2. Strict Preflight Recheck before launching subprocess
         logger.info(f"Performing preflight eligibility recheck for job {job_id} before launch...")
@@ -522,6 +518,16 @@ class BotWorkerAgent:
             self.current_job_id = None
             return
 
+        # Resolve authoritative Meet URL from preflight if returned
+        authoritative_meet_url = preflight.get("meetLink") or preflight.get("meetUrl")
+        if authoritative_meet_url and validate_meet_url(authoritative_meet_url):
+            if authoritative_meet_url != meet_url:
+                logger.warning(
+                    f"[IDENTITY] Updating job Meet URL to authoritative backend URL: "
+                    f"{mask_meet_url(authoritative_meet_url)} (was: {mask_meet_url(meet_url)})"
+                )
+                meet_url = authoritative_meet_url
+
         # Resolve authoritative candidateId from preflight check if present
         if preflight and preflight.get("candidateId"):
             resolved_cand = str(preflight["candidateId"]).strip()
@@ -535,6 +541,11 @@ class BotWorkerAgent:
             self.status = "IDLE"
             self.current_job_id = None
             return
+
+        logger.info(
+            f"[JOB_DISPATCH] jobId={job_id} interviewId={interview_id} candidateId={candidate_id} "
+            f"scheduledAt={scheduled_at_raw} meetUrl={mask_meet_url(meet_url)}"
+        )
 
         # 3. Confirm / renew initial lease before launching subprocess
         if not self.renew_job_lease(job_id):

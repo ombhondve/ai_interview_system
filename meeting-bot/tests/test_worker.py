@@ -375,7 +375,6 @@ def test_bot_subprocess_failure_reports_failure_with_real_error(worker_agent):
         assert mock_fail.call_args[1].get("exit_code") == 1
 
 
-@pytest.mark.skip(reason="TEMPORARILY DISABLED FOR TESTING — RESTORE STRICT SLOT TIMING")
 def test_job_missing_scheduled_at_rejected(worker_agent):
     """Job without scheduledAt timestamp is rejected without launching bot."""
     bad_job = {
