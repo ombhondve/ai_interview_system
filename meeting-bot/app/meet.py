@@ -1025,7 +1025,7 @@ class MeetNavigator:
             'p:has-text("will let you in shortly")',
             'span:has-text("Asking to join")',
             'div:has-text("Someone in the call will let you in shortly")',
-            'button:has-text("Cancel")',
+            'div:has-text("You\'ll join the call when someone lets you in")',
         ]
         for selector in waiting_indicators:
             try:
@@ -1035,6 +1035,35 @@ class MeetNavigator:
             except Exception:
                 pass
         return False
+
+    async def dismiss_incall_dialogs(self) -> None:
+        """Dismiss in-call informational dialogs like 'Your meeting\'s ready' or 'Add others'."""
+        try:
+            dismiss_selectors = [
+                'button[aria-label*="Close" i]',
+                'button[aria-label*="Dismiss" i]',
+                'button:has-text("Got it")',
+                'button:has-text("Close")',
+                'div[role="dialog"] button[aria-label*="close" i]',
+                'i:has-text("close")',
+            ]
+            for sel in dismiss_selectors:
+                try:
+                    loc = self.page.locator(sel)
+                    cnt = await loc.count()
+                    for i in range(cnt):
+                        el = loc.nth(i)
+                        if await el.is_visible():
+                            aria = (await el.get_attribute("aria-label") or "").lower()
+                            if "leave" in aria or "end" in aria:
+                                continue
+                            await el.click(timeout=1000)
+                            logger.info(f"[MEET] Dismissed in-call dialog via {sel}")
+                            break
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug(f"[MEET] Note dismissing in-call dialogs: {e}")
 
     async def verify_meeting_admission(self) -> dict:
         """
@@ -1136,7 +1165,7 @@ class MeetNavigator:
             int: detected count (defaults to 1 if bot is sole participant).
         """
         try:
-            # Check 1: Button aria-label such as "People (2)", "Show everyone (2)"
+            # Check 1: Button aria-label such as "People (2)", "Show everyone, 2 people", "Show everyone (2)"
             people_buttons = self.page.locator(
                 'button[aria-label*="People" i], button[aria-label*="Show everyone" i]'
             )
@@ -1146,13 +1175,31 @@ class MeetNavigator:
                 if await btn.is_visible():
                     aria = (await btn.get_attribute("aria-label") or "")
                     text = (await btn.inner_text() or "")
-                    # Extract digits from e.g. "People (2)" or innerText "2"
-                    m = re.search(r"\((\d+)\)", aria) or re.search(r"\b(\d+)\b", text)
+                    # Extract digits: parentheses "(2)", phrases "2 people", or isolated numbers "\b2\b"
+                    m = (
+                        re.search(r"\((\d+)\)", aria)
+                        or re.search(r"(\d+)\s+people", aria, re.IGNORECASE)
+                        or re.search(r"(\d+)\s+participants?", aria, re.IGNORECASE)
+                        or re.search(r"\b(\d+)\b", aria)
+                        or re.search(r"\b(\d+)\b", text)
+                    )
                     if m:
-                        return int(m.group(1))
+                        val = int(m.group(1))
+                        if val > 0:
+                            return val
 
-            # Check 2: Participant video tiles or grid elements ([data-participant-id] or [data-allocation-index])
-            tiles = self.page.locator("[data-participant-id], [data-allocation-index]")
+                    # Check child badge elements within the button
+                    badges = btn.locator("span, div")
+                    badge_count = await badges.count()
+                    for j in range(badge_count):
+                        badge_text = (await badges.nth(j).inner_text() or "").strip()
+                        if badge_text.isdigit() and int(badge_text) > 0:
+                            return int(badge_text)
+
+            # Check 2: Remote participant tiles or grid elements
+            tiles = self.page.locator(
+                "[data-participant-id], [data-allocation-index], [data-requested-participant-id]"
+            )
             tile_count = await tiles.count()
             if tile_count > 0:
                 return tile_count
@@ -1166,10 +1213,54 @@ class MeetNavigator:
     async def is_candidate_present(self) -> bool:
         """
         Check if any candidate / other participant has joined the Google Meet.
-        Distinguishes BOT_ONLY (count <= 1) from CANDIDATE_PRESENT (count >= 2).
+        Uses multi-signal detection:
+        1. Participant count badge >= 2
+        2. Remote video elements streaming
+        3. Remote participant tiles excluding self
+        4. ParticipantMediaMonitor presence check if available
         """
-        count = await self.get_participant_count()
-        return count >= 2
+        try:
+            # Check 1: Participant count
+            count = await self.get_participant_count()
+            if count >= 2:
+                logger.info(f"[MEET] Candidate detected via participant count badge: {count}")
+                return True
+
+            # Check 2: Remote participant video elements
+            remote_videos = self.page.locator(
+                'div[data-allocation-index]:not([data-self-name]) video, '
+                'div[data-participant-id]:not([data-self-name]) video, '
+                'div[data-requested-participant-id]:not([data-self-name]) video'
+            )
+            rv_count = await remote_videos.count()
+            for k in range(rv_count):
+                rv = remote_videos.nth(k)
+                if await rv.is_visible():
+                    logger.info("[MEET] Candidate detected via remote video stream.")
+                    return True
+
+            # Check 3: Remote participant tiles (distinct from bot self-view)
+            remote_tiles = self.page.locator(
+                'div[data-allocation-index]:not([data-self-name]):not([data-is-self="true"]), '
+                'div[data-participant-id]:not([data-self-name]):not([data-is-self="true"])'
+            )
+            rt_count = await remote_tiles.count()
+            if rt_count >= 1:
+                logger.info(f"[MEET] Candidate detected via remote tiles count: {rt_count}")
+                return True
+
+            # Check 4: Media monitor check if attached
+            if hasattr(self, "media_monitor") and self.media_monitor:
+                from app.media_monitor import MediaState
+                st = await self.media_monitor.check_candidate_presence()
+                if st == MediaState.PRESENT:
+                    logger.info("[MEET] Candidate detected via MediaMonitor.")
+                    return True
+
+        except Exception as e:
+            logger.debug(f"[MEET] Candidate presence check note: {e}")
+
+        return False
 
     async def leave_meeting(self) -> None:
         """Attempt to click the Leave Call button gracefully only when actually inside meeting."""

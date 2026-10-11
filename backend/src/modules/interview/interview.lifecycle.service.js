@@ -102,8 +102,8 @@ export async function recordCandidatePresence(interviewId, candidateId) {
     });
   }
 
-  // If currently waiting or scheduled, transition and start the interview session
-  if (["SCHEDULED", "READY", "WAITING_FOR_CANDIDATE"].includes(interview.status)) {
+  // If currently waiting, scheduled, or already in-progress, ensure session is bootstrapped
+  if (["SCHEDULED", "READY", "WAITING_FOR_CANDIDATE", "IN_PROGRESS"].includes(interview.status)) {
     const started = await startInterview(interview._id, candidateId);
     logger.info("INTERVIEW_STARTED", {
       interviewId: String(interview._id),

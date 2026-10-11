@@ -865,6 +865,144 @@ async def test_select_device_dropdown_mismatch_returns_error_with_available_opti
     assert "HDMI Monitor Audio" in res["available_options"]
 
 
+@pytest.mark.asyncio
+async def test_wait_for_admission_success_transitions_to_joined():
+    """Verify wait_for_admission transitions status to JOINED, dismisses dialogs, and mutes mic upon host admission."""
+    bot = MeetingBot()
+    bot._page = MagicMock()
+    bot._page.wait_for_timeout = AsyncMock()
+    bot._navigator = MagicMock()
+    bot._navigator.verify_meeting_admission = AsyncMock(
+        side_effect=[
+            {"is_inside": False, "waiting_detected": True, "evidence": []},
+            {"is_inside": True, "waiting_detected": False, "evidence": ["Leave call control present", "Dock present"]},
+        ]
+    )
+    bot._navigator.dismiss_incall_dialogs = AsyncMock()
+    bot._navigator.mute_microphone = AsyncMock()
+
+    admitted = await bot.wait_for_admission(timeout_sec=10.0)
+    assert admitted is True
+    assert bot.status == BotStatus.JOINED
+    assert bot.joined_at is not None
+    bot._navigator.dismiss_incall_dialogs.assert_awaited_once()
+    bot._navigator.mute_microphone.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_wait_for_admission_denied_transitions_to_failed():
+    """Verify wait_for_admission detects host denial and transitions to FAILED."""
+    bot = MeetingBot()
+    bot._page = MagicMock()
+    bot._page.wait_for_timeout = AsyncMock()
+    
+    loc_denied = AsyncMock()
+    loc_denied.count = AsyncMock(return_value=1)
+    loc_denied.first = AsyncMock()
+    loc_denied.first.is_visible = AsyncMock(return_value=True)
+
+    loc_empty = AsyncMock()
+    loc_empty.count = AsyncMock(return_value=0)
+    loc_empty.first = AsyncMock()
+    loc_empty.first.is_visible = AsyncMock(return_value=False)
+
+    def locator_side_effect(selector):
+        if "can't join this call" in selector:
+            return loc_denied
+        return loc_empty
+
+    bot._page.locator.side_effect = locator_side_effect
+    bot._navigator = MagicMock()
+    bot._navigator.verify_meeting_admission = AsyncMock(
+        return_value={"is_inside": False, "waiting_detected": False, "evidence": []}
+    )
+    bot._navigator.is_waiting_for_admission = AsyncMock(return_value=False)
+
+    admitted = await bot.wait_for_admission(timeout_sec=10.0)
+    assert admitted is False
+    assert bot.status == BotStatus.FAILED
+    assert "denied" in (bot.failure_reason or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_dismiss_incall_dialogs_clicks_close():
+    """Verify dismiss_incall_dialogs finds and clicks the close/dismiss button on popups."""
+    page = MagicMock()
+    loc_close = AsyncMock()
+    loc_close.count = AsyncMock(return_value=1)
+    loc_close.nth = MagicMock(return_value=loc_close)
+    loc_close.is_visible = AsyncMock(return_value=True)
+    loc_close.get_attribute = AsyncMock(return_value="Close")
+    loc_close.click = AsyncMock()
+
+    loc_empty = AsyncMock()
+    loc_empty.count = AsyncMock(return_value=0)
+
+    def locator_side_effect(selector):
+        if 'aria-label*="Close"' in selector:
+            return loc_close
+        return loc_empty
+
+    page.locator.side_effect = locator_side_effect
+    nav = MeetNavigator(page)
+    await nav.dismiss_incall_dialogs()
+    loc_close.click.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_modern_meet_show_everyone_with_people_text():
+    """Verify modern Google Meet aria-label 'Show everyone, 2 people' is detected as 2 participants."""
+    page = MagicMock()
+    loc_btn = AsyncMock()
+    loc_btn.count = AsyncMock(return_value=1)
+    loc_btn.nth = MagicMock(return_value=loc_btn)
+    loc_btn.is_visible = AsyncMock(return_value=True)
+    loc_btn.get_attribute = AsyncMock(return_value="Show everyone, 2 people")
+    loc_btn.inner_text = AsyncMock(return_value="")
+    loc_btn.locator = MagicMock(return_value=AsyncMock(count=AsyncMock(return_value=0)))
+
+    loc_empty = AsyncMock()
+    loc_empty.count = AsyncMock(return_value=0)
+
+    def locator_side_effect(selector):
+        if "Show everyone" in selector or "People" in selector:
+            return loc_btn
+        return loc_empty
+
+    page.locator.side_effect = locator_side_effect
+    nav = MeetNavigator(page)
+    count = await nav.get_participant_count()
+    assert count == 2
+    present = await nav.is_candidate_present()
+    assert present is True
+
+
+@pytest.mark.asyncio
+async def test_candidate_detected_via_remote_video():
+    """Verify candidate is detected when remote video element is streaming."""
+    page = MagicMock()
+    loc_people = AsyncMock()
+    loc_people.count = AsyncMock(return_value=0)
+
+    loc_video = AsyncMock()
+    loc_video.count = AsyncMock(return_value=1)
+    loc_video.nth = MagicMock(return_value=loc_video)
+    loc_video.is_visible = AsyncMock(return_value=True)
+
+    loc_empty = AsyncMock()
+    loc_empty.count = AsyncMock(return_value=0)
+
+    def locator_side_effect(selector):
+        if "video" in selector:
+            return loc_video
+        return loc_empty
+
+    page.locator.side_effect = locator_side_effect
+    nav = MeetNavigator(page)
+    present = await nav.is_candidate_present()
+    assert present is True
+
+
 
 
 

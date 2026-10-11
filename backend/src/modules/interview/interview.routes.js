@@ -244,6 +244,8 @@ router.post("/internal/:interviewId/candidate-joined", validInterviewId, async (
     const result = await recordCandidatePresence(interview._id, interview.candidateId);
     const updated = result.interview || interview;
     const firstQ = updated.questions?.[updated.currentQuestionIndex] || updated.questions?.[0] || null;
+    const fallbackGreeting = "Hi, welcome to your interview. Before we begin, let's quickly check your audio and video. Can you hear me clearly?";
+    const resolvedQuestion = firstQ?.question || fallbackGreeting;
 
     return res.json({
       success: true,
@@ -253,7 +255,7 @@ router.post("/internal/:interviewId/candidate-joined", validInterviewId, async (
       phase: updated.phase,
       durationMinutes: updated.durationMinutes || 30,
       currentQuestionIndex: updated.currentQuestionIndex,
-      firstQuestion: firstQ?.question || null,
+      firstQuestion: resolvedQuestion,
       started: Boolean(result.started),
     });
   } catch (error) {

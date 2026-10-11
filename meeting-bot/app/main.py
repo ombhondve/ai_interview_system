@@ -495,7 +495,22 @@ async def run_cli():
         # MODE 2: Real Interview Mode (--interview-id) OR In-Meeting Audio Test
         # ----------------------------------------------------------------------
         if args.interview_id or args.meet_audio_test:
-            logger.info("[MeetingBot] Starting in-meeting audio capture and interview loop...")
+            # Check admission state first if bot was waiting
+            if bot_instance.status == BotStatus.WAITING_FOR_ADMISSION:
+                logger.info("[MEET] Bot is waiting for host admission before starting interview loop...")
+                admitted = await bot_instance.wait_for_admission(timeout_sec=300.0)
+                if not admitted:
+                    logger.error("[MeetingBot] Bot was not admitted to Google Meet.")
+                    await bot_instance.stop()
+                    sys.exit(1)
+
+            # Ensure bot is genuinely inside meeting before starting audio capture
+            if bot_instance.status != BotStatus.JOINED:
+                logger.error(f"[MeetingBot] Cannot start interview loop: bot status is {bot_instance.status}, expected JOINED.")
+                await bot_instance.stop()
+                sys.exit(1)
+
+            logger.info("[MeetingBot] Confirmed inside Google Meet. Starting in-meeting audio capture...")
             audio_capture.start_capture()
             diag_dir = Path(__file__).resolve().parent.parent / "diagnostics" / "audio_test"
             diag_dir.mkdir(parents=True, exist_ok=True)
@@ -542,23 +557,24 @@ async def run_cli():
                     await bot_instance.stop()
                     sys.exit(1)
 
-                if first_question:
-                    logger.info(f"[AI] First question generated: '{first_question}'")
-                    logger.info("[AI] SPEAKING")
-                    await asyncio.sleep(1.5)
+                if not first_question or not first_question.strip():
+                    first_question = "Hi, welcome to your interview. Before we begin, let's quickly check your audio and video. Can you hear me clearly?"
+                    logger.info(f"[AI] Using default precheck question: '{first_question}'")
+
+                logger.info(f"[AI] First question generated: '{first_question}'")
+                logger.info("[AI] SPEAKING")
+                await asyncio.sleep(1.5)
+                spoken = await bot_instance.speak_text(first_question)
+                if not spoken:
+                    logger.warning("[AI] First question playback failed; attempting single retry in 2s...")
+                    await asyncio.sleep(2.0)
                     spoken = await bot_instance.speak_text(first_question)
-                    if not spoken:
-                        logger.warning("[AI] First question playback failed; attempting single retry in 2s...")
-                        await asyncio.sleep(2.0)
-                        spoken = await bot_instance.speak_text(first_question)
-                    if not spoken:
-                        logger.error("[AI] Question playback could not be completed after retry. Mic remains muted.")
-                    logger.info("[PERF] ai_speaking_finished")
-                    audio_capture.reset_buffer()
-                    logger.info("[PERF] audio_buffer_flushed")
-                    await asyncio.sleep(0.4)
-                else:
-                    logger.info("[MeetingBot] No initial question returned from backend; waiting for candidate speech.")
+                if not spoken:
+                    logger.error("[AI] Question playback could not be completed after retry. Mic remains muted.")
+                logger.info("[PERF] ai_speaking_finished")
+                audio_capture.reset_buffer()
+                logger.info("[PERF] audio_buffer_flushed")
+                await asyncio.sleep(0.4)
 
             # Start Master Interview Recording
             audio_capture.start_master_recording()

@@ -126,7 +126,7 @@ class ParticipantMediaMonitor:
             return MediaState.UNKNOWN
 
         try:
-            # Check button aria-label e.g. "People (2)", "Show everyone (2)"
+            # Check button aria-label e.g. "People (2)", "Show everyone, 2 people", "Show everyone (2)"
             for sel in MEET_SELECTORS["participant_count"]:
                 loc = self.page.locator(sel)
                 count = await loc.count()
@@ -136,7 +136,13 @@ class ParticipantMediaMonitor:
                         aria = (await btn.get_attribute("aria-label") or "")
                         text = (await btn.inner_text() or "")
                         import re
-                        m = re.search(r"\((\d+)\)", aria) or re.search(r"\b(\d+)\b", text)
+                        m = (
+                            re.search(r"\((\d+)\)", aria)
+                            or re.search(r"(\d+)\s+people", aria, re.IGNORECASE)
+                            or re.search(r"(\d+)\s+participants?", aria, re.IGNORECASE)
+                            or re.search(r"\b(\d+)\b", aria)
+                            or re.search(r"\b(\d+)\b", text)
+                        )
                         if m:
                             total = int(m.group(1))
                             if total >= 2:
@@ -147,8 +153,39 @@ class ParticipantMediaMonitor:
                                 self.candidate_present = MediaState.DISCONNECTED
                                 return MediaState.DISCONNECTED
 
+                        # Check child badges
+                        badges = btn.locator("span, div")
+                        b_cnt = await badges.count()
+                        for j in range(b_cnt):
+                            bt = (await badges.nth(j).inner_text() or "").strip()
+                            if bt.isdigit():
+                                b_val = int(bt)
+                                if b_val >= 2:
+                                    self.candidate_present = MediaState.PRESENT
+                                    self.last_candidate_present_time = time.monotonic()
+                                    return MediaState.PRESENT
+                                elif b_val == 1:
+                                    self.candidate_present = MediaState.DISCONNECTED
+                                    return MediaState.DISCONNECTED
+
+            # Check remote video elements
+            for sel in MEET_SELECTORS["remote_video"]:
+                vid_loc = self.page.locator(sel)
+                if await vid_loc.count() > 0 and await vid_loc.first.is_visible():
+                    self.candidate_present = MediaState.PRESENT
+                    self.last_candidate_present_time = time.monotonic()
+                    return MediaState.PRESENT
+
+            # Check remote participant tiles
+            for sel in MEET_SELECTORS["remote_tiles"]:
+                rt_loc = self.page.locator(sel)
+                if await rt_loc.count() > 0 and await rt_loc.first.is_visible():
+                    self.candidate_present = MediaState.PRESENT
+                    self.last_candidate_present_time = time.monotonic()
+                    return MediaState.PRESENT
+
             # Fallback check on participant tiles
-            tiles = self.page.locator("[data-participant-id], [data-allocation-index]")
+            tiles = self.page.locator("[data-participant-id], [data-allocation-index], [data-requested-participant-id]")
             tile_count = await tiles.count()
             if tile_count >= 2:
                 self.candidate_present = MediaState.PRESENT

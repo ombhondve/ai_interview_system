@@ -48,12 +48,36 @@ export async function startInterview(interviewId, candidateId) {
   const doc = await AiInterview.findById(interviewId);
   if (!doc) { const e = new Error("Interview not found"); e.status = 404; throw e; }
   if (String(doc.candidateId) !== String(candidateId)) { const e = new Error("Forbidden"); e.status = 403; throw e; }
-  if (doc.status === "IN_PROGRESS") return doc;
+  if (doc.status === "IN_PROGRESS") {
+    if (doc.questions.length === 0) {
+      const question = {
+        category: "PRECHECK",
+        question: "Hi, welcome to your interview. Before we begin, let's quickly check your audio and video. Can you hear me clearly?",
+        difficulty: "EASY",
+        reason: "Initial greeting and audio/video pre-check.",
+        source: "fallback",
+        followUpExpected: true,
+      };
+      doc.phase = "PRECHECK";
+      doc.questions.push({ ...question, questionId: "0", askedAt: new Date() });
+      doc.transcript.push({ speaker: "AI", text: question.question, timestamp: new Date(), questionId: "0", category: question.category, section: "PRECHECK" });
+      await doc.save();
+    }
+    return doc;
+  }
   if (!["READY", "SCHEDULED", "WAITING_FOR_CANDIDATE"].includes(doc.status)) { const e = new Error("Interview cannot be started"); e.status = 400; throw e; }
   const candidate = await Candidate.findById(candidateId);
-  if (!isProjectVerified(candidate)) { const e = new Error("The assigned project must be verified before starting the interview."); e.status = 403; throw e; }
-  const booking = await InterviewBooking.findById(doc.bookingId);
-  if (!booking || booking.status !== "scheduled") { const e = new Error("Interview booking is no longer active."); e.status = 409; throw e; }
+  if (!isProjectVerified(candidate) && !["scheduled", "in_progress"].includes(candidate?.interviewStatus)) {
+    const e = new Error("The assigned project must be verified before starting the interview.");
+    e.status = 403;
+    throw e;
+  }
+  const booking = doc.bookingId ? await InterviewBooking.findById(doc.bookingId) : null;
+  if (booking && ["cancelled", "no_show"].includes(booking.status)) {
+    const e = new Error("Interview booking is no longer active.");
+    e.status = 409;
+    throw e;
+  }
   /* =========================================================================
    * TEMPORARILY DISABLED FOR TESTING — RESTORE STRICT SLOT TIMING
    * In production, validates that interview start time is within the allowed window:

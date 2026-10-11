@@ -229,6 +229,20 @@ router.post(
         interviewSession.conferenceId = meeting.conferenceId || null;
         interviewSession.calendarAdminId = meeting.adminId;
         await interviewSession.save();
+
+        if (candidate) {
+          candidate.interviewUrl = meeting.meetLink;
+          candidate.interviewStatus = "scheduled";
+          await candidate.save();
+        }
+
+        try {
+          const { syncEligibleInterviewJobs } = await import("../botControl/botControl.service.js");
+          await syncEligibleInterviewJobs();
+        } catch (syncErr) {
+          logger.warn(`Could not sync bot jobs immediately: ${syncErr.message}`);
+        }
+
         logger.info("[BOOKING_DIAG] Stage 5: Booking and session persistence complete", { bookingId: booking.id });
 
         return res.status(201).json({
