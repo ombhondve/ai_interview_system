@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -38,7 +39,8 @@ type VerificationState = {
     | "not_submitted"
     | "in_progress"
     | "accepted"
-    | "rejected";
+    | "rejected"
+    | "under_review";
   label: string;
   description: string;
   isTerminal: boolean;
@@ -192,6 +194,38 @@ function VerificationResultView({
     );
   }
 
+  if (state === "under_review") {
+    return (
+      <Card className="border-[#D97706]/40 bg-[#FFFBEB] shadow-sm">
+        <CardContent className="p-8">
+          <div className="mx-auto max-w-2xl text-center space-y-4">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#D97706] text-2xl font-bold text-white shadow-sm">
+              ℹ
+            </div>
+            <h2 className="text-2xl font-bold text-[#92400E]">
+              Submission Under Administrator Review
+            </h2>
+            <p className="text-sm leading-6 text-[#1F2937]">
+              Your project repository and verification findings have been received and forwarded to the evaluation team for manual review.
+            </p>
+            <div className="rounded-xl border border-[#D97706]/25 bg-white p-4 text-left shadow-2xs">
+              <p className="text-xs font-bold uppercase tracking-wider text-[#D97706]">
+                Review Notice
+              </p>
+              <p className="mt-1 text-sm leading-6 text-[#1F2937]">
+                {verification.description ||
+                  "Automated verification completed with items requiring administrative review. You will be notified once the review is complete."}
+              </p>
+            </div>
+            <span className="inline-flex rounded-full bg-[#D97706]/15 px-3 py-1 text-xs font-bold text-[#D97706]">
+              Pending Manual Review
+            </span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   const steps = [
     { key: "validating", label: "Validating repository" },
     { key: "project_requirements", label: "Loading project requirements" },
@@ -226,26 +260,26 @@ function VerificationResultView({
               const recorded = stageMap.get(step.key);
               const isReplayCurrent = index === currentIndex;
               const isFailed =
-                isReplayCurrent &&
-                recorded?.status === "failed";
-              const isActive =
-                isReplayCurrent &&
-                !isFailed &&
-                (recorded?.status === "active" || progress?.stage === step.key);
+                recorded?.status === "failed" || (isReplayCurrent && Boolean(progress?.failed));
               const isComplete =
-                index < currentIndex ||
-                (isReplayCurrent && recorded?.status === "completed");
+                recorded?.status === "completed" || (index < currentIndex && recorded?.status !== "failed");
+              const isActive =
+                !isComplete &&
+                !isFailed &&
+                (recorded?.status === "active" || progress?.stage === step.key || isReplayCurrent);
 
               return (
                 <VerificationStep
                   key={step.key}
                   label={step.label}
                   message={
-                    isReplayCurrent
-                      ? recorded?.message || progress?.message
-                      : isComplete
-                        ? "Completed successfully."
-                        : undefined
+                    isFailed
+                      ? recorded?.message || "Failed during verification."
+                      : isReplayCurrent
+                        ? recorded?.message || progress?.message || "In progress..."
+                        : isComplete
+                          ? "Completed successfully."
+                          : undefined
                   }
                   active={isActive}
                   complete={!isFailed && isComplete}
@@ -479,20 +513,35 @@ export default function Project() {
    */
 
   const isPollingActive =
-    verification?.state === "in_progress";
+    verification?.state === "in_progress" && !pendingTerminalVerification;
+
+  const [pollingErrorCount, setPollingErrorCount] = useState(0);
+  const [pollingTimedOut, setPollingTimedOut] = useState(false);
+  const pollStartTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!isPollingActive) {
+      pollStartTimeRef.current = null;
       return;
     }
 
+    if (!pollStartTimeRef.current) {
+      pollStartTimeRef.current = Date.now();
+    }
+
     let cancelled = false;
+    const abortController = new AbortController();
 
     /**
      * Fetch the latest student-facing verification state.
      */
     const poll = async () => {
       try {
+        // If polling for over 2 minutes, flag timeout recovery
+        if (pollStartTimeRef.current && Date.now() - pollStartTimeRef.current > 120000) {
+          setPollingTimedOut(true);
+        }
+
         const backendUrl =
           process.env.NEXT_PUBLIC_BACKEND_URL ||
           "https://ai-interview-system-eewl.vercel.app";
@@ -503,95 +552,112 @@ export default function Project() {
             method: "GET",
             credentials: "include",
             cache: "no-store",
+            signal: abortController.signal,
           }
         );
 
-        if (cancelled || !response.ok) {
+        if (cancelled) {
           return;
         }
 
+        if (response.status === 401) {
+          router.replace("/student/verify");
+          return;
+        }
+
+        if (!response.ok) {
+          setPollingErrorCount((prev) => prev + 1);
+          return;
+        }
+
+        setPollingErrorCount(0);
         const data = await response.json();
 
-        const next =
+        const next: VerificationState | null =
           data?.data?.verification ?? null;
 
         setVerificationProgress(data?.data?.progress ?? null);
-        setVerificationHistory(data?.data?.progressHistory ?? []);
+
+        const newHistory: VerificationStage[] = data?.data?.progressHistory ?? [];
+        setVerificationHistory((prev) => {
+          if (JSON.stringify(prev) === JSON.stringify(newHistory)) return prev;
+          return newHistory;
+        });
 
         if (cancelled || !next) {
           return;
         }
 
         if (next.isTerminal) {
-          // Do not switch to Accepted/Rejected yet. Replay the persisted
-          // verification history first so the student sees the complete
-          // top-to-bottom process.
+          // Immediately set pending terminal verification.
+          // This sets isPollingActive to false, stopping the polling interval!
           setPendingTerminalVerification(next);
         } else {
           setVerification(next);
         }
-      } catch {
-        // Transient polling failures are ignored; the next tick retries.
+      } catch (err) {
+        if ((err as Error)?.name !== "AbortError") {
+          setPollingErrorCount((prev) => prev + 1);
+        }
       }
     };
 
-    const intervalId = setInterval(
-      poll,
-      1000
-    );
+    // Execute first poll tick immediately
+    poll();
+
+    const intervalId = setInterval(poll, 1500);
 
     return () => {
       cancelled = true;
+      abortController.abort();
       clearInterval(intervalId);
     };
-  }, [isPollingActive, loadCandidate]);
+  }, [isPollingActive, router]);
 
   /**
-   * Replay persisted verification stages visually.
-   *
-   * Backend speed must never cause the UI to skip stages. This is presentation
-   * only: it does not delay or modify backend verification.
+   * Replay persisted verification stages visually, then transition to terminal result.
    */
   useEffect(() => {
-    if (!isPollingActive) return;
+    // Only replay if verification is in_progress or we have a pending terminal verification to reveal
+    if (verification?.state !== "in_progress" && !pendingTerminalVerification) {
+      return;
+    }
 
     const occurredCount = verificationHistory.filter(
       (stage) => stage.status !== "pending"
     ).length;
 
-    if (!occurredCount) return;
-
-    if (replayIndex < occurredCount - 1) {
+    // Advance replay index sequentially through occurred stages
+    if (occurredCount > 0 && replayIndex < occurredCount - 1) {
       const timer = window.setTimeout(() => {
-        setReplayIndex((current) =>
-          Math.min(current + 1, occurredCount - 1)
-        );
-      }, 900);
+        setReplayIndex((current) => Math.min(current + 1, occurredCount - 1));
+      }, 500);
 
       return () => window.clearTimeout(timer);
     }
 
-    if (pendingTerminalVerification && !showTerminalResult) {
+    // Once all occurred stages have played, transition to terminal result
+    if (pendingTerminalVerification) {
       const timer = window.setTimeout(() => {
         setShowTerminalResult(true);
         setVerification(pendingTerminalVerification);
-      }, 900);
+        setPendingTerminalVerification(null);
+      }, 500);
 
       return () => window.clearTimeout(timer);
     }
   }, [
-    isPollingActive,
+    verification?.state,
     verificationHistory,
     replayIndex,
-    pendingTerminalVerification,
-    showTerminalResult
+    pendingTerminalVerification
   ]);
 
   useEffect(() => {
-    if (verification?.isTerminal && !isPollingActive) {
+    if (verification?.isTerminal) {
       setShowTerminalResult(true);
     }
-  }, [verification?.isTerminal, isPollingActive]);
+  }, [verification?.isTerminal]);
 
   /**
    * ============================================
@@ -995,14 +1061,41 @@ export default function Project() {
               </div>
             </CardContent>
           </Card>
-        ) : verification?.state === "in_progress" || verification?.state === "accepted" || verification?.state === "rejected" ? (
-          <VerificationResultView
-            verification={verification}
-            progress={verificationProgress}
-            progressHistory={verificationHistory}
-            displayIndex={replayIndex}
-            onScheduleInterview={() => router.push("/student/interview-scheduling")}
-          />
+        ) : verification?.state === "in_progress" ||
+            verification?.state === "accepted" ||
+            verification?.state === "rejected" ||
+            verification?.state === "under_review" ? (
+          <>
+            {pollingTimedOut && verification?.state === "in_progress" && (
+              <div
+                role="alert"
+                className="rounded-xl border border-[#D97706]/30 bg-[#FFFBEB] p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shadow-xs"
+              >
+                <div>
+                  <p className="font-semibold text-sm text-[#92400E]">
+                    Verification is taking longer than usual
+                  </p>
+                  <p className="mt-0.5 text-xs text-[#78350F]">
+                    Your repository analysis is running in the background. You can refresh your status now or wait a moment.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadCandidate}
+                  className="w-fit shrink-0 px-3 py-1.5 rounded-lg bg-[#D97706] text-white text-xs font-semibold hover:bg-[#B45309] cursor-pointer"
+                >
+                  Refresh Status
+                </button>
+              </div>
+            )}
+            <VerificationResultView
+              verification={verification}
+              progress={verificationProgress}
+              progressHistory={verificationHistory}
+              displayIndex={replayIndex}
+              onScheduleInterview={() => router.push("/student/interview-scheduling")}
+            />
+          </>
         ) : (
           <>
             {/* Assigned project briefing */}

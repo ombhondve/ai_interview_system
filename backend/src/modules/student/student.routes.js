@@ -129,8 +129,8 @@ router.get(
       const { deriveVerificationState } = await import("../projects/verificationState.js");
 
       const verification = deriveVerificationState({
-        status: candidate.status,
-        rejectionReason: candidate.rejectionReason,
+        status: verificationData.candidateStatus || candidate.status,
+        rejectionReason: verificationData.rejectionReason || candidate.rejectionReason,
         assignedProjectId: candidate.assignedProjectId,
         bookedSlotId: candidate.bookedSlotId,
         interviewStatus: candidate.interviewStatus,
@@ -140,14 +140,14 @@ router.get(
           candidate.projectSubmissionStatus,
         projectSubmission: {
           url:
-            candidate.projectSubmission?.url ||
-            verificationData.verificationResult?.verificationMetadata?.repositoryUrl,
+            verificationData.verificationResult?.verificationMetadata?.repositoryUrl ||
+            candidate.projectSubmission?.url,
           aiVerificationStatus:
-            candidate.projectSubmission?.aiVerificationStatus ||
-            verificationData.status,
+            verificationData.status ||
+            candidate.projectSubmission?.aiVerificationStatus,
           aiVerificationResult:
-            candidate.projectSubmission?.aiVerificationResult ||
-            verificationData.verificationResult
+            verificationData.verificationResult ||
+            candidate.projectSubmission?.aiVerificationResult
         }
       });
 

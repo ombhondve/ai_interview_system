@@ -43,7 +43,13 @@ export function isInterviewEligible(candidate) {
     submission.aiVerificationResult?.verificationStatus || ""
   ).toUpperCase();
 
-  if (submissionStatus === "rejected" || submissionStatus === "deadline_expired") {
+  if (
+    submissionStatus === "rejected" ||
+    submissionStatus === "deadline_expired" ||
+    submissionStatus === "needs_admin_review" ||
+    verificationStatus === "needs_admin_review" ||
+    resultStatus === "NEEDS_ADMIN_REVIEW"
+  ) {
     return false;
   }
 
@@ -115,7 +121,11 @@ export function deriveVerificationState(candidate) {
   }
 
   // --- Final AI verdict (authoritative when present) ---
-  if (resultStatus === "VERIFIED" || verificationStatus === "verified") {
+  if (
+    resultStatus === "VERIFIED" ||
+    verificationStatus === "verified" ||
+    submissionStatus === "verified"
+  ) {
     return state(
       "accepted",
       "Accepted",
@@ -124,17 +134,46 @@ export function deriveVerificationState(candidate) {
     );
   }
 
-  if (resultStatus === "REJECTED" || verificationStatus === "rejected") {
+  if (
+    resultStatus === "REJECTED" ||
+    verificationStatus === "rejected" ||
+    submissionStatus === "rejected"
+  ) {
     return state(
       "rejected",
       "Rejected",
-      "Your project did not meet the required project requirements.",
+      rejectionReason || "Your project did not meet the required project requirements.",
+      true
+    );
+  }
+
+  // Transient fetch failure flagged in metadata remains non-terminal
+  if (
+    submission.verificationMetadata?.repositoryFetchFailed ||
+    submission.aiVerificationResult?.verificationMetadata?.repositoryFetchFailed
+  ) {
+    return state(
+      "in_progress",
+      "Verification In Progress",
+      "Your project has been submitted and is currently being verified.",
+      false
+    );
+  }
+
+  if (
+    resultStatus === "NEEDS_ADMIN_REVIEW" ||
+    verificationStatus === "needs_admin_review" ||
+    submissionStatus === "needs_admin_review"
+  ) {
+    return state(
+      "under_review",
+      "Under Review",
+      "Your project has been submitted and is currently being reviewed by an administrator.",
       true
     );
   }
 
   // Any non-terminal verification response is still shown as progress.
-  // The final decision is always VERIFIED or REJECTED.
   // --- Verification running ---
   if (
     verificationStatus === "pending" ||

@@ -273,7 +273,7 @@ export async function updateVerificationProgress(candidateId, submissionId, prog
 export async function getVerificationResult(candidateId) {
   try {
     const candidate = await Candidate.findById(candidateId)
-      .select("projectSubmission projectSubmissionStatus")
+      .select("projectSubmission projectSubmissionStatus rejectionReason status")
       .lean();
     
     if (!candidate) {
@@ -285,6 +285,8 @@ export async function getVerificationResult(candidateId) {
       verificationResult: candidate.projectSubmission?.aiVerificationResult,
       status: candidate.projectSubmission?.aiVerificationStatus,
       submissionStatus: candidate.projectSubmissionStatus,
+      rejectionReason: candidate.rejectionReason,
+      candidateStatus: candidate.status,
       stats: candidate.projectSubmission?.verificationStats,
       ...toProgressPayload(candidate.projectSubmission),
       adminReview: candidate.projectSubmission?.adminReview

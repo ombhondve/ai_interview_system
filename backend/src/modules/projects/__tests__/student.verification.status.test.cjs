@@ -99,9 +99,8 @@ describe("student verification status mapping", () => {
     expect(result.label).toBe("Rejected");
     expect(result.isTerminal).toBe(true);
   });
-  // (4) NEEDS_ADMIN_REVIEW -> In Progress (the admin-review state was removed;
-  //     a non-terminal submission status is never shown as Rejected).
-  test("(4) NEEDS_ADMIN_REVIEW shows In Progress, not Rejected", () => {
+  // (4) NEEDS_ADMIN_REVIEW -> Under Review (terminal status stopping polling, not rejected)
+  test("(4) NEEDS_ADMIN_REVIEW shows Under Review, not Rejected", () => {
     const result = deriveVerificationState({
       projectSubmissionStatus: "needs_admin_review",
       projectSubmission: {
@@ -111,19 +110,22 @@ describe("student verification status mapping", () => {
       },
     });
 
-    expect(result.state).toBe("in_progress");
-    expect(result.label).toBe("Verification In Progress");
+    expect(result.state).toBe("under_review");
+    expect(result.label).toBe("Under Review");
     expect(result.state).not.toBe("rejected");
-    expect(result.isTerminal).toBe(false);
+    expect(result.state).not.toBe("accepted");
+    expect(result.isTerminal).toBe(true);
+    expect(result.interviewEligible).toBe(false);
   });
 
-  test("(4b) NEEDS_ADMIN_REVIEW via submission status alone shows In Progress", () => {
+  test("(4b) NEEDS_ADMIN_REVIEW via submission status alone shows Under Review", () => {
     const result = deriveVerificationState({
       projectSubmissionStatus: "needs_admin_review",
       projectSubmission: { url: URL, aiVerificationStatus: "pending" },
     });
 
-    expect(result.state).toBe("in_progress");
+    expect(result.state).toBe("under_review");
+    expect(result.isTerminal).toBe(true);
   });
 
   test("(4c) automated failure shows In Progress, not Rejected", () => {
