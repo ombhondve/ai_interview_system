@@ -23,9 +23,8 @@ const PORT = process.env.PORT || 5000;
  * every later fetch fails with HTTP 403 (rate limited).
  *
  * When that happens the verifier correctly refuses to guess and routes the
- * submission to NEEDS_ADMIN_REVIEW. So a missing token does NOT produce a wrong
- * REJECTED - it produces a large, silent flood of "Under Review" results that
- * look like AI uncertainty but are really infrastructure exhaustion.
+ * submission to a recoverable ERROR state. So a missing token does NOT produce a wrong
+ * REJECTED - it produces a retryable verification error that allows safe retry.
  *
  * Making this visible at boot is the difference between diagnosing that in
  * minutes and in days.
@@ -43,7 +42,7 @@ function logGitHubConfiguration() {
       "⚠️  GITHUB_TOKEN is not set. GitHub will rate-limit anonymous access to" +
       " 60 requests/hour per IP, and each verification uses ~27 requests." +
       " Set GITHUB_TOKEN (a fine-grained read-only public-repo token) to avoid" +
-      " spurious NEEDS_ADMIN_REVIEW results caused by rate limiting."
+      " rate-limiting verification errors."
     );
   }
 }

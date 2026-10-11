@@ -99,8 +99,8 @@ describe("student verification status mapping", () => {
     expect(result.label).toBe("Rejected");
     expect(result.isTerminal).toBe(true);
   });
-  // (4) NEEDS_ADMIN_REVIEW -> Under Review (terminal status stopping polling, not rejected)
-  test("(4) NEEDS_ADMIN_REVIEW shows Under Review, not Rejected", () => {
+  // (4) Legacy NEEDS_ADMIN_REVIEW -> recoverable error state (no under_review, not rejected)
+  test("(4) Legacy NEEDS_ADMIN_REVIEW maps to recoverable error, not under_review or rejected", () => {
     const result = deriveVerificationState({
       projectSubmissionStatus: "needs_admin_review",
       projectSubmission: {
@@ -110,32 +110,34 @@ describe("student verification status mapping", () => {
       },
     });
 
-    expect(result.state).toBe("under_review");
-    expect(result.label).toBe("Under Review");
+    expect(result.state).toBe("error");
+    expect(result.state).not.toBe("under_review");
     expect(result.state).not.toBe("rejected");
     expect(result.state).not.toBe("accepted");
     expect(result.isTerminal).toBe(true);
     expect(result.interviewEligible).toBe(false);
   });
 
-  test("(4b) NEEDS_ADMIN_REVIEW via submission status alone shows Under Review", () => {
+  test("(4b) Legacy NEEDS_ADMIN_REVIEW via submission status alone maps to recoverable error", () => {
     const result = deriveVerificationState({
       projectSubmissionStatus: "needs_admin_review",
       projectSubmission: { url: URL, aiVerificationStatus: "pending" },
     });
 
-    expect(result.state).toBe("under_review");
+    expect(result.state).toBe("error");
+    expect(result.state).not.toBe("under_review");
     expect(result.isTerminal).toBe(true);
   });
 
-  test("(4c) automated failure shows In Progress, not Rejected", () => {
+  test("(4c) Automated technical failure shows recoverable error, not Rejected", () => {
     const result = deriveVerificationState({
       projectSubmissionStatus: "ai_verification_failed",
       projectSubmission: { url: URL, aiVerificationStatus: "error" },
     });
 
-    expect(result.state).toBe("in_progress");
+    expect(result.state).toBe("error");
     expect(result.state).not.toBe("rejected");
+    expect(result.interviewEligible).toBe(false);
   });
 
   // (5)/(6) Old result cleared by a new submission

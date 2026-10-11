@@ -272,8 +272,8 @@ describe("RecruitAI Project Verification - 13 Regression Scenarios", () => {
 
     const result = await verifyProjectSubmission("cand-7", "proj-7", "https://github.com/student/repo");
 
-    expect(result.status).toBe(VERIFICATION_STATUS.REJECTED);
-    expect(result.summary).toMatch(/could not be fetched/i);
+    expect(result.status).toBe(VERIFICATION_STATUS.ERROR);
+    expect(result.summary).toMatch(/could not be (completed|fetched)/i);
     expect(aiService.generateStructuredAI).not.toHaveBeenCalled();
   });
 
@@ -305,8 +305,8 @@ describe("RecruitAI Project Verification - 13 Regression Scenarios", () => {
     expect(repoWithTruncatedTree.data.structure.isTruncated).toBe(true);
   });
 
-  // Scenario 10: Invalid AI response
-  test("Scenario 10: Invalid or malformed AI response is handled gracefully", async () => {
+    // Scenario 10: Invalid AI response
+  test("Scenario 10: Invalid or malformed AI response is handled gracefully as ERROR", async () => {
     repositoryService.fetchRepositoryContent.mockResolvedValue(validRepoContent());
     aiService.generateStructuredAI.mockResolvedValue({
       invalidKey: "broken response",
@@ -315,27 +315,28 @@ describe("RecruitAI Project Verification - 13 Regression Scenarios", () => {
 
     const result = await verifyProjectSubmission("cand-10", "proj-10", "https://github.com/student/repo");
 
-    // Falls into the safe AI failure handler
-    expect(result.status).toBe(VERIFICATION_STATUS.REJECTED);
-    expect(result.summary).toMatch(/AI analysis failed/i);
+    // Falls into the safe AI failure handler without false rejection
+    expect(result.status).toBe(VERIFICATION_STATUS.ERROR);
+    expect(result.summary).toMatch(/AI verification service encountered a processing error/i);
+    expect(result.verificationMetadata.retryable).toBe(true);
   });
 
-  // Scenario 11: A model response that reports uncertainty
-  test("Scenario 11: Model response reporting uncertainty is preserved as NEEDS_ADMIN_REVIEW", async () => {
+  // Scenario 11: AI returning invalid status (such as legacy NEEDS_ADMIN_REVIEW) is rejected by validator into ERROR
+  test("Scenario 11: AI returning NEEDS_ADMIN_REVIEW is rejected and produces recoverable ERROR", async () => {
     repositoryService.fetchRepositoryContent.mockResolvedValue(validRepoContent());
     aiService.generateStructuredAI.mockResolvedValue(
       buildAiResult(
         "NEEDS_ADMIN_REVIEW",
         0.65,
-        "Core requirements are implemented, but truncated files require human reviewer confirmation."
+        "Core requirements are implemented, but uncertainty requires admin review."
       )
     );
 
     const result = await verifyProjectSubmission("cand-11", "proj-11", "https://github.com/student/uncertain-project");
 
-    expect(result.status).toBe("NEEDS_ADMIN_REVIEW");
-    expect(result.verificationStatus).toBe("NEEDS_ADMIN_REVIEW");
-    expect(result.confidence).toBe(0.65);
+    expect(result.status).toBe(VERIFICATION_STATUS.ERROR);
+    expect(result.verificationStatus).toBe(VERIFICATION_STATUS.ERROR);
+    expect(result.verificationMetadata.retryable).toBe(true);
   });
 
   // Scenario 12: A repository that is complete but fails a genuine requirement
@@ -360,10 +361,9 @@ describe("RecruitAI Project Verification - 13 Regression Scenarios", () => {
     expect(result.verificationStatus).toBe("REJECTED");
   });
 
-  // Scenario 13: Correct status selection for VERIFIED, NEEDS_ADMIN_REVIEW, and REJECTED
+  // Scenario 13: Correct status selection for exactly two outcomes: VERIFIED and REJECTED
   test.each([
     ["VERIFIED", 0.9, "VERIFIED"],
-    ["NEEDS_ADMIN_REVIEW", 0.65, "NEEDS_ADMIN_REVIEW"],
     ["REJECTED", 0.2, "REJECTED"]
   ])("Scenario 13: Status selection contract preserves '%s'", async (aiStatus, conf, expectedStatus) => {
     repositoryService.fetchRepositoryContent.mockResolvedValue(validRepoContent());

@@ -59,26 +59,26 @@ describe("Verification Polling & Status Flow Regression Tests", () => {
     expect(state.rejectionReason).toBe("Core authentication middleware is missing.");
   });
 
-  // 3. Verification reaches NEEDS_ADMIN_REVIEW
-  test("3. Verification reaches NEEDS_ADMIN_REVIEW -> under_review, terminal, not accepted, not rejected", () => {
+  // 3. Technical failure produces error state
+  test("3. Technical failure produces error state, terminal for polling, recoverable, not accepted, not rejected", () => {
     const candidate = {
-      projectSubmissionStatus: "needs_admin_review",
+      projectSubmissionStatus: "ai_verification_failed",
       projectSubmission: {
         url: REPO_URL,
-        aiVerificationStatus: "needs_admin_review",
+        aiVerificationStatus: "error",
         aiVerificationResult: {
-          verificationStatus: "NEEDS_ADMIN_REVIEW",
-          summary: "Code structure requires manual inspection by admin.",
+          verificationStatus: "ERROR",
+          summary: "AI provider timeout occurred.",
         },
       },
     };
 
     const state = deriveVerificationState(candidate);
-    expect(state.state).toBe("under_review");
-    expect(state.label).toBe("Under Review");
+    expect(state.state).toBe("error");
     expect(state.isTerminal).toBe(true);
     expect(state.interviewEligible).toBe(false);
-    expect(state.rejectionReason).toBeNull();
+    expect(state.state).not.toBe("accepted");
+    expect(state.state).not.toBe("rejected");
   });
 
   // 4. A nonterminal status continues polling
@@ -107,7 +107,7 @@ describe("Verification Polling & Status Flow Regression Tests", () => {
   });
 
   // 5. A terminal status stops polling
-  test("5. A terminal status stops polling (isTerminal is true for accepted, rejected, under_review)", () => {
+  test("5. A terminal status stops polling (isTerminal is true for accepted, rejected, error)", () => {
     const terminalCases = [
       {
         candidate: {
@@ -132,7 +132,7 @@ describe("Verification Polling & Status Flow Regression Tests", () => {
             aiVerificationResult: { verificationStatus: "NEEDS_ADMIN_REVIEW" },
           },
         },
-        expectedState: "under_review",
+        expectedState: "error",
       },
     ];
 

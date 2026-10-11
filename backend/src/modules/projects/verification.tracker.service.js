@@ -276,8 +276,8 @@ class VerificationTracker {
           failed: false,
           message: result.status === "VERIFIED"
             ? "All verification checks passed."
-            : result.status === "NEEDS_ADMIN_REVIEW"
-              ? "Verification completed and referred for admin review."
+            : result.status === "ERROR"
+              ? "Verification encountered a technical error."
               : "Verification completed with a rejected result.",
           updatedAt: new Date().toISOString()
         };
@@ -288,7 +288,7 @@ class VerificationTracker {
         this.notifyStatusChange(candidateId, "VERIFICATION_COMPLETED", {
           status: result.status,
           confidence: result.confidence,
-          requiresAdminReview: storageResult.requiresAdminReview,
+          requiresAdminReview: false,
           attempt,
           totalTimeMs: Date.now() - new Date(verificationData.startedAt).getTime()
         });

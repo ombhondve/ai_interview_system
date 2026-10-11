@@ -26,7 +26,6 @@ import {
 
 const VERIFICATION_STATUS = {
   VERIFIED: "VERIFIED",
-  NEEDS_ADMIN_REVIEW: "NEEDS_ADMIN_REVIEW",
   REJECTED: "REJECTED",
   PENDING: "PENDING",
   ERROR: "ERROR"
@@ -459,7 +458,7 @@ function validateVerificationResult(result) {
     throw new Error("Empty verification result");
   }
   
-  const validStatuses = ["VERIFIED", "NEEDS_ADMIN_REVIEW", "REJECTED"];
+  const validStatuses = ["VERIFIED", "REJECTED"];
   
   if (!validStatuses.includes(result.verificationStatus)) {
     throw new Error(`Invalid verification status: ${result.verificationStatus}`);
@@ -639,12 +638,12 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
           `Project data access failed: ${projectError.message}`
         );
       }
-      // System/data error, not evidence of missing requirements -> manual review.
+      // System/data error accessing requirements -> technical ERROR
       return {
-        status: VERIFICATION_STATUS.REJECTED,
-        verificationStatus: VERIFICATION_STATUS.REJECTED,
-        confidence: 0.3,
-        summary: `Project data access failed, so automated verification could not obtain sufficient evidence: ${projectError.message}`,
+        status: VERIFICATION_STATUS.ERROR,
+        verificationStatus: VERIFICATION_STATUS.ERROR,
+        confidence: 0,
+        summary: `Project data access failed: ${projectError.message}`,
         detailedAnalysis: {
           repositoryValidity: {
             isValid: false,
@@ -653,16 +652,16 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
           },
           requirementsAssessment: [],
           technicalEvaluation: {
-            codeQuality: "POOR",
-            projectOrganization: "POOR",
-            documentation: "POOR",
+            codeQuality: "UNKNOWN",
+            projectOrganization: "UNKNOWN",
+            documentation: "UNKNOWN",
             issuesFound: ["Project data access error"]
           },
           overallAssessment: "Cannot verify project: System error accessing project requirements."
         },
         recommendations: {
           forStudent: ["System error occurred, please try again or contact support"],
-          forReviewer: ["Database error loading project, needs investigation"]
+          forReviewer: []
         },
         verificationMetadata: {
           filesAnalyzed: 0,
@@ -671,7 +670,8 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
           requirementsPartial: 0,
           requirementsMissing: 0,
           analysisTimestamp: new Date().toISOString(),
-          error: `Project fetch failed: ${projectError.message}`
+          error: `Project fetch failed: ${projectError.message}`,
+          retryable: true
         },
         rawData: null
       };
@@ -702,8 +702,6 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       // model is never fed empty/incomplete content produced by a failure.
       // -----------------------------------------------------------------
       const errorType = repoContent.metadata?.errorType || "repository_fetch_failure";
-      const reason =
-        "Repository could not be fetched, so automated verification could not obtain sufficient evidence.";
 
       logger.warn(
         `Failed to fetch repository (${errorType}): ${repoContent.error}`
@@ -718,16 +716,66 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
         );
       }
 
+      // If repository is confirmed empty: demonstrably fails feature implementation -> REJECTED
+      if (errorType === "empty_repository") {
+        return {
+          status: VERIFICATION_STATUS.REJECTED,
+          verificationStatus: VERIFICATION_STATUS.REJECTED,
+          confidence: 0.1,
+          summary: "The submitted repository appears to be empty or contains no project files.",
+          detailedAnalysis: {
+            repositoryValidity: {
+              isValid: false,
+              issues: ["Repository is empty"],
+              strengths: []
+            },
+            requirementsAssessment: [],
+            technicalEvaluation: {
+              codeQuality: "POOR",
+              projectOrganization: "POOR",
+              documentation: "POOR",
+              issuesFound: ["Empty repository"]
+            },
+            overallAssessment: "Repository contains no project implementation files. Mandatory requirements could not be met."
+          },
+          recommendations: {
+            forStudent: ["Please commit and push your project implementation files, then submit again."],
+            forReviewer: []
+          },
+          verificationMetadata: {
+            filesAnalyzed: 0,
+            requirementsTotal: projectRequirements.requirements.length,
+            requirementsMet: 0,
+            requirementsPartial: 0,
+            requirementsMissing: projectRequirements.requirements.length,
+            analysisTimestamp: new Date().toISOString(),
+            repositoryFetchFailed: true,
+            errorType,
+            error: repoContent.error
+          },
+          rawData: null
+        };
+      }
+
+      // For network errors, timeouts, rate limits, 404s, or temporary retrieval failures:
+      // Report a technical verification ERROR so the candidate can retry without being falsely rejected.
+      const isRateLimit = errorType === "rate_limit";
+      const isTimeout = errorType === "timeout";
+      const userMessage = isRateLimit
+        ? "GitHub API rate limit reached. Verification could not retrieve the repository. Please try again shortly."
+        : isTimeout
+          ? "Repository analysis timed out. Please verify repository access and try again."
+          : `Repository retrieval could not be completed (${repoContent.error}). Please verify repository access and try again.`;
 
       return {
-        status: VERIFICATION_STATUS.REJECTED,
-        verificationStatus: VERIFICATION_STATUS.REJECTED,
-        confidence: 0.3,
-        summary: `${reason} (${repoContent.error})`,
+        status: VERIFICATION_STATUS.ERROR,
+        verificationStatus: VERIFICATION_STATUS.ERROR,
+        confidence: 0,
+        summary: userMessage,
         detailedAnalysis: {
           repositoryValidity: {
             isValid: false,
-            issues: [`Repository could not be fetched: ${repoContent.error}`],
+            issues: [`Repository retrieval failed: ${repoContent.error}`],
             strengths: []
           },
           requirementsAssessment: [],
@@ -735,13 +783,13 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
             codeQuality: "UNKNOWN",
             projectOrganization: "UNKNOWN",
             documentation: "UNKNOWN",
-            issuesFound: ["Repository fetch failed - insufficient evidence"]
+            issuesFound: [`Repository fetch failure (${errorType})`]
           },
-          overallAssessment: `${reason} Failure type: '${errorType}'. A human reviewer must determine whether this is a transient GitHub/network problem or a genuinely inaccessible repository.`
+          overallAssessment: `Automated verification could not run because the repository could not be retrieved (${repoContent.error}). The submission has not been rejected.`
         },
         recommendations: {
-          forStudent: ["Your repository could not be fetched. Ensure it is public and the URL is correct, then try again."],
-          forReviewer: [`Automated verification skipped: repository fetch failed (${errorType}). Repository could not be fetched, so automated verification could not obtain sufficient evidence.`]
+          forStudent: ["Ensure your repository is publicly accessible and try verification again."],
+          forReviewer: []
         },
         verificationMetadata: {
           filesAnalyzed: 0,
@@ -752,7 +800,8 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
           analysisTimestamp: new Date().toISOString(),
           repositoryFetchFailed: true,
           errorType,
-          error: repoContent.error
+          error: repoContent.error,
+          retryable: true
         },
         rawData: null
       };
@@ -811,7 +860,7 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       return {
         status: VERIFICATION_STATUS.REJECTED,
         verificationStatus: VERIFICATION_STATUS.REJECTED,
-        confidence: 0.4,
+        confidence: 0.1,
         summary: "Insufficient repository content available for evidence-based verification. Verification could not be completed.",
         detailedAnalysis: {
           repositoryValidity: {
@@ -821,23 +870,23 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
           },
           requirementsAssessment: [],
           technicalEvaluation: {
-            codeQuality: "UNKNOWN",
-            projectOrganization: "UNKNOWN",
-            documentation: "UNKNOWN",
+            codeQuality: "POOR",
+            projectOrganization: "POOR",
+            documentation: "POOR",
             issuesFound: ["Cannot verify requirements without actual file content"]
           },
-          overallAssessment: "Repository structure exists but no actual file content could be analyzed. Filenames and metadata alone are insufficient for evidence-based verification. Manual admin review required."
+          overallAssessment: "Repository structure exists but no actual file content could be analyzed. Filenames and metadata alone are insufficient for evidence-based verification."
         },
         recommendations: {
-          forStudent: ["Your repository structure was found but actual file content could not be analyzed. Ensure your repository contains the actual project files."],
-          forReviewer: ["Insufficient file content for automated verification. Requires manual review of repository structure and metadata only."]
+          forStudent: ["Your repository structure was found but actual file content was missing. Ensure your repository contains the actual project implementation files."],
+          forReviewer: []
         },
         verificationMetadata: {
           filesAnalyzed: 0,
           requirementsTotal: projectRequirements.requirements.length,
           requirementsMet: 0,
           requirementsPartial: 0,
-          requirementsMissing: 0,
+          requirementsMissing: projectRequirements.requirements.length,
           analysisTimestamp: new Date().toISOString(),
           insufficientContent: true,
           note: "No actual file content available - filenames/metadata only"
@@ -864,36 +913,76 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
           "Repository content was unavailable at the AI verification stage."
         );
       }
+      if (!repoContent.success) {
+        return {
+          status: VERIFICATION_STATUS.ERROR,
+          verificationStatus: VERIFICATION_STATUS.ERROR,
+          confidence: 0,
+          summary: "Repository content was unavailable. Verification could not be completed.",
+          detailedAnalysis: {
+            repositoryValidity: {
+              isValid: false,
+              issues: ["Repository content unavailable at AI verification stage"],
+              strengths: []
+            },
+            requirementsAssessment: [],
+            technicalEvaluation: {
+              codeQuality: "UNKNOWN",
+              projectOrganization: "UNKNOWN",
+              documentation: "UNKNOWN",
+              issuesFound: ["No usable repository content for AI verification"]
+            },
+            overallAssessment: "Automated verification could not run because repository content was unavailable."
+          },
+          recommendations: {
+            forStudent: ["Your repository content could not be retrieved. Please check the repository and try again."],
+            forReviewer: []
+          },
+          verificationMetadata: {
+            filesAnalyzed: filesWithContent,
+            requirementsTotal: projectRequirements.requirements.length,
+            requirementsMet: 0,
+            requirementsPartial: 0,
+            requirementsMissing: 0,
+            analysisTimestamp: new Date().toISOString(),
+            aiSkipped: true,
+            reason: "no_usable_repository_content",
+            retryable: true
+          },
+          rawData: null
+        };
+      }
+
       return {
         status: VERIFICATION_STATUS.REJECTED,
         verificationStatus: VERIFICATION_STATUS.REJECTED,
-        confidence: 0.3,
-        summary: "Repository content was unavailable, so automated verification could not obtain sufficient evidence.",
+        confidence: 0.1,
+        summary: "Repository content was insufficient for verification. Implementation files are missing.",
         detailedAnalysis: {
           repositoryValidity: {
-            isValid: false,
-            issues: ["Repository content unavailable at AI verification stage"],
+            isValid: true,
+            issues: ["No implementation files found in repository"],
             strengths: []
           },
           requirementsAssessment: [],
           technicalEvaluation: {
-            codeQuality: "UNKNOWN",
-            projectOrganization: "UNKNOWN",
-            documentation: "UNKNOWN",
-            issuesFound: ["No usable repository content for AI verification"]
+            codeQuality: "POOR",
+            projectOrganization: "POOR",
+            documentation: "POOR",
+            issuesFound: ["No usable repository implementation files"]
           },
-          overallAssessment: "Automated verification could not run because repository content was unavailable."
+          overallAssessment: "Automated verification could not verify features because implementation code is missing from repository."
         },
         recommendations: {
-          forStudent: ["Your repository content could not be analyzed. Check the repository and try again."],
-          forReviewer: ["AI verification skipped: no usable repository content."]
+          forStudent: ["Please ensure your project code files are committed and pushed to the repository."],
+          forReviewer: []
         },
         verificationMetadata: {
           filesAnalyzed: filesWithContent,
           requirementsTotal: projectRequirements.requirements.length,
           requirementsMet: 0,
           requirementsPartial: 0,
-          requirementsMissing: 0,
+          requirementsMissing: projectRequirements.requirements.length,
           analysisTimestamp: new Date().toISOString(),
           aiSkipped: true,
           reason: "no_usable_repository_content"
@@ -933,16 +1022,16 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       }
 
       
-      // Handle AI failure gracefully
+      // Handle AI failure gracefully as a technical error (NOT false rejection)
       return {
-        status: VERIFICATION_STATUS.REJECTED,
-        verificationStatus: VERIFICATION_STATUS.REJECTED,
-        confidence: 0.3,
-        summary: `AI analysis failed: ${aiError.message}. Requires manual review.`,
+        status: VERIFICATION_STATUS.ERROR,
+        verificationStatus: VERIFICATION_STATUS.ERROR,
+        confidence: 0,
+        summary: `AI verification service encountered a processing error: ${aiError.message}. Verification could not be completed.`,
         detailedAnalysis: {
           repositoryValidity: {
             isValid: repoContent.success,
-            issues: [`AI verification failed: ${aiError.message}`],
+            issues: [`AI verification provider error: ${aiError.message}`],
             strengths: filesWithContent > 0 ? [`${filesWithContent} files analyzed`] : []
           },
           requirementsAssessment: [],
@@ -950,13 +1039,13 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
             codeQuality: "UNKNOWN",
             projectOrganization: "UNKNOWN",
             documentation: "UNKNOWN",
-            issuesFound: ["AI verification system error"]
+            issuesFound: ["AI provider processing error"]
           },
-          overallAssessment: "AI verification could not complete. Project requires manual review by administrator."
+          overallAssessment: "Automated AI verification could not complete due to a technical error with the AI service. The submission has not been rejected."
         },
         recommendations: {
-          forStudent: ["Verification system encountered an error. Your project will be reviewed manually."],
-          forReviewer: ["AI verification failed, requires manual review"]
+          forStudent: ["The verification engine encountered a temporary technical error. Please retry verification."],
+          forReviewer: []
         },
         verificationMetadata: {
           filesAnalyzed: filesWithContent,
@@ -966,7 +1055,8 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
           requirementsMissing: 0,
           analysisTimestamp: new Date().toISOString(),
           error: `AI verification failed: ${aiError.message}`,
-          aiFailed: true
+          aiFailed: true,
+          retryable: true
         },
         rawData: {
           projectRequirements,
@@ -1124,7 +1214,7 @@ export function processVerificationForStorage(verificationResult, candidateId, p
     };
   });
   
-  // Preserve critical evidence for admin review
+  // Preserve critical evidence for candidate feedback and detailed reporting
   const criticalEvidence = {};
   const criticalRequirements = requirementsAssessment.filter(req => 
     req.critical !== false && (req.status === "MISSING" || req.status === "PARTIAL")

@@ -194,15 +194,11 @@ router.get(
             recommendations: verificationData.verificationResult.recommendations?.forStudent || [],
             
             // Stats
-            stats: verificationData.stats || {},
-            
-            // Admin review status if applicable
-            adminReview: verificationData.adminReview
+            stats: verificationData.stats || {}
           } : null,
           
           // Metadata
           stats: verificationData.stats,
-          adminReview: verificationData.adminReview,
           
           // Verification metadata
           verificationMetadata: verificationData.verificationResult?.verificationMetadata || {}

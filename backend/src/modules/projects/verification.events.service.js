@@ -214,8 +214,8 @@ class NotificationEventHandler {
       }
 
       notifyAdmins({
-        type: data?.requiresAdminReview ? "verification_review_required" : "project_verified",
-        title: data?.requiresAdminReview ? "Project Requires Review" : "Project Verification Completed",
+        type: "project_verified",
+        title: "Project Verification Completed",
         message: `Candidate ${candidateId} project verification: ${status}`,
         entityType: "project",
         entityId: String(candidateId),
@@ -229,17 +229,12 @@ class NotificationEventHandler {
   }
 
   getVerificationCompletedMessage(data) {
-    const { status, confidence, requiresAdminReview } = data;
+    const { status, confidence } = data;
     
     if (status === 'VERIFIED') {
       return {
         subject: 'Project Verification Complete - Approved!',
         body: `Your project submission has been verified and approved. Confidence score: ${Math.round(confidence * 100)}%.`
-      };
-    } else if (status === 'NEEDS_ADMIN_REVIEW') {
-      return {
-        subject: 'Project Verification Complete - Under Review',
-        body: 'Your project submission has been processed and is now under admin review. You will be notified of the final decision.'
       };
     } else if (status === 'REJECTED') {
       return {

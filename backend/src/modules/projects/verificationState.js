@@ -48,7 +48,10 @@ export function isInterviewEligible(candidate) {
     submissionStatus === "deadline_expired" ||
     submissionStatus === "needs_admin_review" ||
     verificationStatus === "needs_admin_review" ||
-    resultStatus === "NEEDS_ADMIN_REVIEW"
+    resultStatus === "NEEDS_ADMIN_REVIEW" ||
+    submissionStatus === "ai_verification_failed" ||
+    verificationStatus === "error" ||
+    resultStatus === "ERROR"
   ) {
     return false;
   }
@@ -76,10 +79,13 @@ export function getPersistedRejectionReason(candidate) {
 /**
  * Derive the student-facing verification state from a candidate document.
  *
+ * Exactly two final outcomes exist for verified submissions: accepted or rejected.
+ * Technical errors or non-terminal states use "error" or "in_progress".
+ *
  * @param {object} candidate candidate (or projection) containing
  *   projectSubmissionStatus and projectSubmission
  * @returns {{
- *   state: "not_submitted"|"in_progress"|"accepted"|"rejected",
+ *   state: "not_submitted"|"in_progress"|"accepted"|"rejected"|"error",
  *   label: string,
  *   description: string,
  *   isTerminal: boolean,
@@ -97,7 +103,7 @@ export function deriveVerificationState(candidate) {
 
   const rejectionReason = getPersistedRejectionReason(candidate);
   
-  // VERIFIED => immediately interview eligible. Never "Under Review".
+  // VERIFIED => immediately interview eligible.
   const interviewEligible = isInterviewEligible(candidate);
 
   const state = (s, label, description, isTerminal) => ({
@@ -106,9 +112,9 @@ export function deriveVerificationState(candidate) {
     description,
     isTerminal,
     interviewEligible,
-    // Only surface a reason for a genuinely rejected candidate.
-    rejectionReason: s === "rejected" ? rejectionReason : null,
-    });
+    // Surface reason for rejected candidates or technical errors.
+    rejectionReason: s === "rejected" || s === "error" ? (rejectionReason || description) : null,
+  });
 
   // --- No submission at all ---
   if (!submission.url) {
@@ -147,7 +153,7 @@ export function deriveVerificationState(candidate) {
     );
   }
 
-  // Transient fetch failure flagged in metadata remains non-terminal
+  // Transient fetch failure flagged in metadata remains non-terminal (In Progress) while retrying
   if (
     submission.verificationMetadata?.repositoryFetchFailed ||
     submission.aiVerificationResult?.verificationMetadata?.repositoryFetchFailed
@@ -160,15 +166,30 @@ export function deriveVerificationState(candidate) {
     );
   }
 
+  // Technical failures or provider errors
+  if (
+    resultStatus === "ERROR" ||
+    verificationStatus === "error" ||
+    submissionStatus === "ai_verification_failed"
+  ) {
+    return state(
+      "error",
+      "Verification Incomplete",
+      rejectionReason || "Verification could not be completed due to a technical error. Please try verification again.",
+      true
+    );
+  }
+
+  // Legacy review status: handle safely by exposing a recoverable processing error state
   if (
     resultStatus === "NEEDS_ADMIN_REVIEW" ||
     verificationStatus === "needs_admin_review" ||
     submissionStatus === "needs_admin_review"
   ) {
     return state(
-      "under_review",
-      "Under Review",
-      "Your project has been submitted and is currently being reviewed by an administrator.",
+      "error",
+      "Verification Incomplete",
+      "Verification could not be completed automatically. Please retry verification to evaluate your repository.",
       true
     );
   }

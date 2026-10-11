@@ -40,7 +40,7 @@ type VerificationState = {
     | "in_progress"
     | "accepted"
     | "rejected"
-    | "under_review";
+    | "error";
   label: string;
   description: string;
   isTerminal: boolean;
@@ -120,12 +120,14 @@ function VerificationResultView({
   progressHistory = [],
   displayIndex,
   onScheduleInterview,
+  onRetry,
 }: {
   verification: VerificationState;
   progress: VerificationProgress | null;
   progressHistory?: VerificationStage[];
   displayIndex?: number;
   onScheduleInterview: () => void;
+  onRetry?: () => void;
 }) {
   const state = verification.state;
 
@@ -138,11 +140,21 @@ function VerificationResultView({
               ✓
             </div>
             <h2 className="text-2xl font-bold text-[#1B4332]">
-              Project Accepted & Verified
+              Project Verified
             </h2>
             <p className="text-sm leading-6 text-[#1F2937]">
-              Your project submission has successfully passed all automated repository checks and AI requirement verification.
+              Your project has successfully met the required verification criteria.
             </p>
+            {verification.description && verification.description !== "Your project passed verification." && (
+              <div className="rounded-xl border border-[#40916C]/25 bg-white p-4 text-left shadow-2xs">
+                <p className="text-xs font-bold uppercase tracking-wider text-[#15803D]">
+                  Verification Findings
+                </p>
+                <p className="mt-1 text-sm leading-6 text-[#1F2937]">
+                  {verification.description}
+                </p>
+              </div>
+            )}
             <span className="inline-flex rounded-full bg-[#15803D]/15 px-3 py-1 text-xs font-bold text-[#15803D]">
               Verified Candidate
             </span>
@@ -170,15 +182,15 @@ function VerificationResultView({
               ✕
             </div>
             <h2 className="text-2xl font-bold text-[#B91C1C]">
-              Submission Not Verified
+              Project Not Verified
             </h2>
             <p className="text-sm leading-6 text-[#1F2937]">
-              Your submission did not meet the required technical criteria. Please review the automated feedback below.
+              Your submission did not meet one or more required project criteria.
             </p>
             {verification.rejectionReason && (
               <div className="rounded-xl border border-[#B91C1C]/25 bg-white p-4 text-left shadow-2xs">
                 <p className="text-xs font-bold uppercase tracking-wider text-[#B91C1C]">
-                  Automated Feedback
+                  Rejection Findings & Actionable Feedback
                 </p>
                 <p className="mt-1 text-sm leading-6 text-[#1F2937]">
                   {verification.rejectionReason}
@@ -186,40 +198,63 @@ function VerificationResultView({
               </div>
             )}
             <span className="inline-flex rounded-full bg-[#B91C1C]/15 px-3 py-1 text-xs font-bold text-[#B91C1C]">
-              Changes Required
+              Requirements Not Met
             </span>
+            {onRetry && (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="bg-[#1B4332] hover:bg-[#143326] text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#1B4332] cursor-pointer"
+                >
+                  Submit Revised Repository →
+                </button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
     );
   }
 
-  if (state === "under_review") {
+  if (state === "error") {
     return (
-      <Card className="border-[#D97706]/40 bg-[#FFFBEB] shadow-sm">
+      <Card className="border-[#D6D3C8] bg-[#F5F1E8] shadow-sm">
         <CardContent className="p-8">
           <div className="mx-auto max-w-2xl text-center space-y-4">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#D97706] text-2xl font-bold text-white shadow-sm">
-              ℹ
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#B45309] text-2xl font-bold text-white shadow-sm">
+              !
             </div>
-            <h2 className="text-2xl font-bold text-[#92400E]">
-              Submission Under Administrator Review
+            <h2 className="text-2xl font-bold text-[#1B4332]">
+              Verification Could Not Be Completed
             </h2>
             <p className="text-sm leading-6 text-[#1F2937]">
-              Your project repository and verification findings have been received and forwarded to the evaluation team for manual review.
+              A technical issue occurred while retrieving or analyzing your repository. Your project has not been rejected.
             </p>
-            <div className="rounded-xl border border-[#D97706]/25 bg-white p-4 text-left shadow-2xs">
-              <p className="text-xs font-bold uppercase tracking-wider text-[#D97706]">
-                Review Notice
+            <div className="rounded-xl border border-[#D8CDBB] bg-white p-4 text-left shadow-2xs">
+              <p className="text-xs font-bold uppercase tracking-wider text-[#B45309]">
+                Technical Notice
               </p>
               <p className="mt-1 text-sm leading-6 text-[#1F2937]">
-                {verification.description ||
-                  "Automated verification completed with items requiring administrative review. You will be notified once the review is complete."}
+                {verification.rejectionReason ||
+                  verification.description ||
+                  "The verification engine encountered a temporary technical problem. Please check that your repository is public and retry."}
               </p>
             </div>
-            <span className="inline-flex rounded-full bg-[#D97706]/15 px-3 py-1 text-xs font-bold text-[#D97706]">
-              Pending Manual Review
+            <span className="inline-flex rounded-full bg-[#B45309]/15 px-3 py-1 text-xs font-bold text-[#B45309]">
+              Technical Retry Available
             </span>
+            {onRetry && (
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={onRetry}
+                  className="bg-[#1B4332] hover:bg-[#143326] text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#1B4332] cursor-pointer"
+                >
+                  Try Verification Again
+                </button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -1064,7 +1099,7 @@ export default function Project() {
         ) : verification?.state === "in_progress" ||
             verification?.state === "accepted" ||
             verification?.state === "rejected" ||
-            verification?.state === "under_review" ? (
+            verification?.state === "error" ? (
           <>
             {pollingTimedOut && verification?.state === "in_progress" && (
               <div
@@ -1094,6 +1129,14 @@ export default function Project() {
               progressHistory={verificationHistory}
               displayIndex={replayIndex}
               onScheduleInterview={() => router.push("/student/interview-scheduling")}
+              onRetry={() => {
+                setVerification(null);
+                setVerificationProgress(null);
+                setVerificationHistory([]);
+                setReplayIndex(0);
+                setPendingTerminalVerification(null);
+                setShowTerminalResult(false);
+              }}
             />
           </>
         ) : (

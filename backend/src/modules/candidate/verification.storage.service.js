@@ -41,22 +41,17 @@ export async function storeVerificationResult(candidateId, verificationResult, s
     
     // Determine next status based on verification result
     let nextSubmissionStatus = "verification_completed";
-    let nextAiVerificationStatus = verificationResult.status.toLowerCase();
+    let nextAiVerificationStatus = (verificationResult.status || "error").toLowerCase();
     
     if (verificationResult.status === "ERROR") {
-      // The student flow has only two terminal outcomes. Persist verification
-      // failures as REJECTED with the actual failure reason.
-      nextSubmissionStatus = "rejected";
-      nextAiVerificationStatus = "rejected";
-      verificationResult.status = "REJECTED";
-      verificationResult.verificationStatus = "REJECTED";
+      // Technical processing failure: preserve as error / ai_verification_failed
+      // Do NOT falsely reject the candidate.
+      nextSubmissionStatus = "ai_verification_failed";
+      nextAiVerificationStatus = "error";
     } else if (isVerificationApproved(verificationResult)) {
       nextSubmissionStatus = "verified";
       nextAiVerificationStatus = "verified";
-    } else if (verificationResult.status === "NEEDS_ADMIN_REVIEW") {
-      nextSubmissionStatus = "needs_admin_review";
-      nextAiVerificationStatus = "needs_admin_review";
-    } else if (verificationResult.status === "REJECTED") {
+    } else {
       nextSubmissionStatus = "rejected";
       nextAiVerificationStatus = "rejected";
     }
@@ -97,23 +92,6 @@ export async function storeVerificationResult(candidateId, verificationResult, s
       }
     };
     
-    // Admin review for NEEDS_ADMIN_REVIEW cases
-    if (verificationResult.status === "NEEDS_ADMIN_REVIEW") {
-      updateData["projectSubmission.adminReview"] = {
-        status: "pending",
-        reviewedBy: null,
-        reviewedAt: null,
-        reviewerNotes: "",
-        finalDecision: null,
-        decisionReason: null
-      };
-      
-      // Initialize admin review workflow (async, don't await)
-      initializeAdminReviewWorkflow(candidateId, verificationResult).catch(error => {
-        logger.error(`Failed to initialize admin review workflow for candidate ${candidateId}:`, error);
-      });
-    }
-    
     const updatedCandidate = await Candidate.findByIdAndUpdate(
       query,
       {
@@ -143,7 +121,7 @@ export async function storeVerificationResult(candidateId, verificationResult, s
         success: true,
         candidate: null,
         verificationStatus: verificationResult.status,
-        requiresAdminReview: verificationResult.status === "NEEDS_ADMIN_REVIEW",
+        requiresAdminReview: false,
         stats: processedData,
         stale: true
       };
@@ -155,7 +133,7 @@ export async function storeVerificationResult(candidateId, verificationResult, s
       success: true,
       candidate: updatedCandidate,
       verificationStatus: verificationResult.status,
-      requiresAdminReview: verificationResult.status === "NEEDS_ADMIN_REVIEW",
+      requiresAdminReview: false,
       stats: processedData
     };
     
