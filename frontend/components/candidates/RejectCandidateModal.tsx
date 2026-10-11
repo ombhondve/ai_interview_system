@@ -178,17 +178,17 @@ export function RejectCandidateModal({
           w-full
           rounded-lg
           border
-          border-slate-200
+          border-[#E2E8F0]
           bg-white
           px-3
           py-2
           text-sm
-          text-slate-900
+          text-[#111F33]
           placeholder:text-slate-400
-          focus:border-accent-500
+          focus:border-[#1976D2]
           focus:outline-none
           focus:ring-2
-          focus:ring-accent-500/30
+          focus:ring-[#1976D2]/20
           disabled:cursor-not-allowed
           disabled:opacity-60
           dark:border-white/10
@@ -204,7 +204,7 @@ export function RejectCandidateModal({
 
       {touched && !reason.trim() && (
 
-        <p className="mt-1.5 text-xs text-danger-600">
+        <p className="mt-1.5 text-xs text-[#DC2626]">
           A reason is required to reject a candidate.
         </p>
 

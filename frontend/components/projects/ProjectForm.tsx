@@ -1148,24 +1148,20 @@ export default function ProjectForm({
           className="
             group
             w-full
-            rounded-xl
+            rounded-lg
             border
-            border-indigo-200
-            bg-gradient-to-r
-            from-indigo-50
-            to-purple-50
+            border-[#1976D2]/30
+            bg-blue-50/50
             px-4
             py-3
             text-left
             transition
-            hover:border-indigo-300
-            hover:from-indigo-100
-            hover:to-purple-100
+            hover:border-[#1976D2]/50
+            hover:bg-blue-50/80
             disabled:cursor-not-allowed
             disabled:opacity-50
-            dark:border-indigo-500/20
-            dark:from-indigo-500/10
-            dark:to-purple-500/10
+            dark:border-[#1976D2]/30
+            dark:bg-blue-950/20
           "
         >
           <div
@@ -1184,7 +1180,7 @@ export default function ProjectForm({
                 items-center
                 justify-center
                 rounded-lg
-                bg-indigo-600
+                bg-[#1976D2]
                 text-lg
                 text-white
               "
@@ -2481,15 +2477,15 @@ export default function ProjectForm({
               loading
             }
             className="
-              rounded-xl
+              rounded-lg
               border
-              border-slate-200
+              border-[#E2E8F0]
               px-4
               py-2.5
               text-sm
               font-medium
               text-slate-700
-              hover:bg-slate-50
+              hover:bg-[#F5F7FA]
               disabled:opacity-50
               dark:border-white/10
               dark:text-slate-300
@@ -2505,15 +2501,15 @@ export default function ProjectForm({
             loading
           }
           className="
-            rounded-xl
-            bg-indigo-600
+            rounded-lg
+            bg-[#1976D2]
             px-5
             py-2.5
             text-sm
             font-medium
             text-white
             transition
-            hover:bg-indigo-700
+            hover:bg-[#1565C0]
             disabled:cursor-not-allowed
             disabled:opacity-50
           "

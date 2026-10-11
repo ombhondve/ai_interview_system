@@ -694,37 +694,37 @@ export function ProjectEditModal({
         role="dialog"
         aria-modal="true"
       >
-        <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-900">
+        <div className="w-full max-w-md overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-xl dark:bg-slate-900">
           <div className="px-6 py-8 text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
-              <Check className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
+              <Check className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
             </div>
 
-            <h2 className="mt-5 text-xl font-semibold text-slate-900 dark:text-white">
+            <h2 className="mt-4 text-lg font-semibold text-[#111F33] dark:text-white">
               Project Updated
             </h2>
 
-            <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-sm leading-6 text-[#64748B] dark:text-slate-400">
               The project has been updated successfully.
             </p>
 
-            <div className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-left dark:border-slate-700 dark:bg-slate-800/50">
-              <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            <div className="mt-5 rounded-lg border border-[#E2E8F0] bg-[#F5F7FA] p-4 text-left dark:border-slate-700 dark:bg-slate-800/50">
+              <p className="text-xs font-medium uppercase tracking-wide text-[#64748B] dark:text-slate-500">
                 Project
               </p>
 
-              <p className="mt-1 font-medium text-slate-900 dark:text-white">
+              <p className="mt-1 font-medium text-[#111F33] dark:text-white">
                 {savedProject.title ||
                   "Untitled Project"}
               </p>
             </div>
           </div>
 
-          <div className="border-t border-slate-200 px-6 py-4 dark:border-slate-700">
+          <div className="border-t border-[#E2E8F0] px-6 py-4 dark:border-slate-700">
             <button
               type="button"
               onClick={onClose}
-              className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+              className="w-full rounded-lg bg-[#1976D2] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#1565C0] focus:outline-none focus:ring-2 focus:ring-[#1976D2] focus:ring-offset-2"
             >
               Done
             </button>
@@ -747,7 +747,7 @@ export function ProjectEditModal({
       aria-labelledby="project-edit-title"
     >
       <div
-        className="relative flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-900"
+        className="relative flex max-h-[94vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-xl dark:bg-slate-900"
         onMouseDown={(event) =>
           event.stopPropagation()
         }
@@ -756,16 +756,16 @@ export function ProjectEditModal({
         {/* Header                                                           */}
         {/* ---------------------------------------------------------------- */}
 
-        <div className="flex shrink-0 items-start justify-between border-b border-slate-200 px-6 py-5 dark:border-slate-700">
+        <div className="flex shrink-0 items-start justify-between border-b border-[#E2E8F0] px-6 py-5 dark:border-slate-700">
           <div className="pr-8">
             <h2
               id="project-edit-title"
-              className="text-xl font-semibold text-slate-900 dark:text-white"
+              className="text-lg font-semibold text-[#111F33] dark:text-white"
             >
               Edit Project
             </h2>
 
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            <p className="mt-0.5 text-xs text-[#64748B] dark:text-slate-400">
               Update the project details below.
             </p>
           </div>
@@ -1252,9 +1252,9 @@ export function ProjectEditModal({
                     (requirement, index) => (
                       <div
                         key={`${requirement}-${index}`}
-                        className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800/50"
+                        className="flex items-start gap-3 rounded-lg border border-[#E2E8F0] bg-[#F5F7FA] px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800/50"
                       >
-                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-indigo-500" />
+                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#1976D2]" />
 
                         <span className="min-w-0 flex-1 text-sm leading-5 text-slate-700 dark:text-slate-300">
                           {requirement}
@@ -1332,12 +1332,12 @@ export function ProjectEditModal({
           {/* Footer                                                           */}
           {/* ---------------------------------------------------------------- */}
 
-          <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-slate-200 bg-white px-6 py-4 sm:flex-row sm:items-center sm:justify-end dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-[#E2E8F0] bg-white px-6 py-4 sm:flex-row sm:items-center sm:justify-end dark:border-slate-700 dark:bg-slate-900">
             <button
               type="button"
               onClick={handleClose}
               disabled={isSaving}
-              className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+              className="inline-flex items-center justify-center rounded-lg border border-[#E2E8F0] px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#F5F7FA] disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               Cancel
             </button>
@@ -1345,7 +1345,7 @@ export function ProjectEditModal({
             <button
               type="submit"
               disabled={isSaving}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1976D2] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[#1565C0] disabled:cursor-not-allowed disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-[#1976D2] focus:ring-offset-2"
             >
               {isSaving ? (
                 <>

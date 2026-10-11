@@ -223,11 +223,11 @@ export default function ProjectCreatedModal({
       aria-labelledby="project-created-title"
     >
       <div
-        className="relative flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-900"
+        className="relative flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-xl dark:bg-slate-900"
         onMouseDown={(event) => event.stopPropagation()}
       >
         {/* Header */}
-        <div className="border-b border-slate-200 px-6 py-5 dark:border-slate-700">
+        <div className="border-b border-[#E2E8F0] px-6 py-5 dark:border-slate-700">
           <button
             type="button"
             onClick={onClose}
@@ -238,19 +238,19 @@ export default function ProjectCreatedModal({
           </button>
 
           <div className="flex items-start gap-4 pr-10">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
-              <CheckCircle2 className="h-7 w-7 text-emerald-600 dark:text-emerald-400" />
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
+              <CheckCircle2 className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
             </div>
 
             <div>
               <h2
                 id="project-created-title"
-                className="text-xl font-semibold text-slate-900 dark:text-white"
+                className="text-lg font-semibold text-[#111F33] dark:text-white"
               >
                 Project Created Successfully
               </h2>
 
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              <p className="mt-0.5 text-xs text-[#64748B] dark:text-slate-400">
                 The project has been generated and is ready for review.
               </p>
             </div>
@@ -472,7 +472,7 @@ export default function ProjectCreatedModal({
                 <button
                   type="button"
                   onClick={handleAssign}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                  className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1976D2] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#1565C0] focus:outline-none focus:ring-2 focus:ring-[#1976D2] focus:ring-offset-2"
                 >
                   <UserPlus className="h-4 w-4" />
                   Assign Student
@@ -482,7 +482,7 @@ export default function ProjectCreatedModal({
               <button
                 type="button"
                 onClick={handleDone}
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#E2E8F0] px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-[#F5F7FA] dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
               >
                 Done
               </button>
@@ -505,7 +505,7 @@ interface InfoCardProps {
 
 function InfoCard({ label, value }: InfoCardProps) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+    <div className="rounded-lg border border-[#E2E8F0] bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
       <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
         {label}
       </p>

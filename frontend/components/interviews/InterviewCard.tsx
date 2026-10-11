@@ -16,7 +16,7 @@ export function InterviewCard({ interview, index }: { interview: Interview; inde
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04, duration: 0.25 }}
-      className="surface flex flex-col gap-3 rounded-xl border p-4 shadow-subtle sm:flex-row sm:items-center"
+      className="flex flex-col gap-3 rounded-lg border border-[#E2E8F0] bg-white p-4 shadow-xs sm:flex-row sm:items-center hover:border-[#1976D2]/40 transition-colors"
     >
       <div className="flex items-center gap-3 sm:flex-1">
         <Avatar name={interview.candidateName} />

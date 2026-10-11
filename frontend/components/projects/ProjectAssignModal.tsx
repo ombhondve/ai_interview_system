@@ -843,9 +843,11 @@ export default function ProjectAssignModal({
           max-w-2xl
           flex-col
           overflow-hidden
-          rounded-2xl
+          rounded-lg
+          border
+          border-[#E2E8F0]
           bg-white
-          shadow-2xl
+          shadow-xl
           dark:bg-[#11151d]
         "
       >
@@ -860,7 +862,7 @@ export default function ProjectAssignModal({
             items-center
             justify-between
             border-b
-            border-slate-200
+            border-[#E2E8F0]
             px-5
             py-4
             dark:border-white/10
@@ -876,7 +878,7 @@ export default function ProjectAssignModal({
                   items-center
                   justify-center
                   rounded-lg
-                  bg-indigo-600
+                  bg-[#1976D2]
                   text-white
                 "
               >
@@ -1672,15 +1674,15 @@ export default function ProjectAssignModal({
               onClick={onClose}
               disabled={assigning}
               className="
-                rounded-xl
+                rounded-lg
                 border
-                border-slate-200
+                border-[#E2E8F0]
                 px-4
-                py-2.5
+                py-2
                 text-sm
                 font-medium
                 text-slate-700
-                hover:bg-slate-50
+                hover:bg-[#F5F7FA]
                 disabled:opacity-50
                 dark:border-white/10
                 dark:text-slate-300
@@ -1705,14 +1707,14 @@ export default function ProjectAssignModal({
                 inline-flex
                 items-center
                 gap-2
-                rounded-xl
-                bg-indigo-600
+                rounded-lg
+                bg-[#1976D2]
                 px-4
-                py-2.5
+                py-2
                 text-sm
                 font-medium
                 text-white
-                hover:bg-indigo-700
+                hover:bg-[#1565C0]
                 disabled:cursor-not-allowed
                 disabled:opacity-50
               "

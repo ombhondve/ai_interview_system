@@ -831,9 +831,11 @@ export default function ProjectAIPreview({
           max-w-7xl
           flex-col
           overflow-hidden
-          rounded-2xl
+          rounded-lg
+          border
+          border-[#E2E8F0]
           bg-white
-          shadow-2xl
+          shadow-xl
           dark:bg-[#11151d]
         "
       >
@@ -849,7 +851,7 @@ export default function ProjectAIPreview({
             justify-between
             gap-4
             border-b
-            border-slate-200
+            border-[#E2E8F0]
             px-4
             py-3
             sm:px-5
@@ -865,8 +867,8 @@ export default function ProjectAIPreview({
                 shrink-0
                 items-center
                 justify-center
-                rounded-xl
-                bg-indigo-600
+                rounded-lg
+                bg-[#1976D2]
                 text-white
               "
             >
@@ -953,19 +955,19 @@ export default function ProjectAIPreview({
                   hidden
                   rounded-lg
                   border
-                  border-indigo-200
-                  bg-indigo-50
+                  border-[#1976D2]/30
+                  bg-[#1976D2]/5
                   px-3
                   py-2
                   text-xs
                   font-medium
-                  text-indigo-700
-                  hover:bg-indigo-100
+                  text-[#1976D2]
+                  hover:bg-[#1976D2]/10
                   disabled:opacity-50
                   sm:block
-                  dark:border-indigo-500/20
-                  dark:bg-indigo-500/10
-                  dark:text-indigo-300
+                  dark:border-[#1976D2]/30
+                  dark:bg-[#1976D2]/10
+                  dark:text-blue-300
                 "
               >
                 Edit
@@ -984,13 +986,13 @@ export default function ProjectAIPreview({
                   items-center
                   gap-1.5
                   rounded-lg
-                  bg-emerald-600
+                  bg-[#16A34A]
                   px-3
                   py-2
                   text-xs
                   font-medium
                   text-white
-                  hover:bg-emerald-700
+                  hover:bg-[#15803D]
                   disabled:cursor-not-allowed
                   disabled:opacity-50
                   sm:inline-flex

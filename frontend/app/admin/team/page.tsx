@@ -331,21 +331,21 @@ export default function TeamPage() {
   };
 
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen bg-[#F5F7FA]">
       <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
         {/* HEADER */}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-2 text-sm text-[#64748B]">
               <Users size={16} />
               Administration
             </div>
 
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#111F33] sm:text-3xl">
               Team & Admins
             </h1>
 
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-sm text-[#64748B]">
               Manage administrator accounts, roles and access.
             </p>
           </div>
@@ -353,7 +353,7 @@ export default function TeamPage() {
           <div className="flex flex-wrap gap-2">
             <Link
               href="/admin/settings"
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-white/10 dark:bg-[#151922] dark:text-slate-200 dark:hover:bg-white/5"
+              className="inline-flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white px-4 py-2.5 text-sm font-medium text-[#111F33] shadow-xs transition hover:bg-[#F5F7FA]"
             >
               Settings
             </Link>
@@ -361,7 +361,7 @@ export default function TeamPage() {
             <button
               type="button"
               onClick={openAddModal}
-              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-indigo-700"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#1976D2] px-4 py-2.5 text-sm font-medium text-white shadow-xs transition hover:bg-[#1565C0]"
             >
               <UserPlus size={17} />
               Add Admin
@@ -371,28 +371,28 @@ export default function TeamPage() {
 
         {/* SUCCESS / ERROR NOTICE */}
         {notice && (
-          <div className="fixed bottom-5 right-5 z-[100] flex max-w-sm items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-2xl dark:border-white/10 dark:bg-[#151922] dark:text-slate-200">
+          <div className="fixed bottom-5 right-5 z-[100] flex max-w-sm items-center gap-3 rounded-lg border border-[#E2E8F0] bg-white px-4 py-3 text-sm font-medium text-[#111F33] shadow-lg">
             <CheckCircle2
               size={18}
-              className="shrink-0 text-emerald-500"
+              className="shrink-0 text-[#16A34A]"
             />
             {notice}
           </div>
         )}
 
         {/* SECURITY NOTICE */}
-        <section className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5 dark:border-indigo-500/20 dark:bg-indigo-500/5 sm:p-6">
+        <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-xs sm:p-6">
           <div className="flex gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm dark:bg-[#151922] dark:text-indigo-400">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#F5F7FA] text-[#1976D2] border border-[#E2E8F0]">
               <ShieldCheck size={20} />
             </div>
 
             <div>
-              <h2 className="font-semibold text-indigo-900 dark:text-indigo-300">
+              <h2 className="font-semibold text-[#111F33]">
                 Administrator access
               </h2>
 
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-indigo-700 dark:text-indigo-400">
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#64748B]">
                 Only authorized administrators should have access
                 to the recruitment dashboard. Super Admins can
                 manage administrator accounts and permissions.
@@ -429,16 +429,16 @@ export default function TeamPage() {
         </div>
 
         {/* ADMIN LIST */}
-        <section className="surface overflow-hidden rounded-2xl border shadow-sm">
+        <section className="overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-xs">
           {/* SECTION HEADER */}
-          <div className="border-b border-slate-200 p-5 dark:border-white/10 sm:p-6">
+          <div className="border-b border-[#E2E8F0] p-5 sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <h2 className="font-semibold text-slate-900 dark:text-white">
+                <h2 className="font-semibold text-[#111F33]">
                   Administrators
                 </h2>
 
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                <p className="mt-1 text-sm text-[#64748B]">
                   {filteredAdmins.length} administrator
                   {filteredAdmins.length !== 1 ? "s" : ""} shown
                 </p>
@@ -447,7 +447,7 @@ export default function TeamPage() {
               <button
                 type="button"
                 onClick={resetFilters}
-                className="inline-flex items-center gap-2 self-start rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                className="inline-flex items-center gap-2 self-start rounded-lg border border-[#E2E8F0] px-3 py-2 text-xs font-medium text-[#64748B] hover:bg-[#F5F7FA] transition-colors"
               >
                 <RefreshCw size={14} />
                 Reset Filters
@@ -459,7 +459,7 @@ export default function TeamPage() {
               <div className="relative">
                 <Search
                   size={17}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]"
                 />
 
                 <input
@@ -469,7 +469,7 @@ export default function TeamPage() {
                     setSearch(event.target.value)
                   }
                   placeholder="Search by name, email or ID..."
-                  className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-white/10 dark:bg-[#10141d] dark:text-white"
+                  className="w-full rounded-lg border border-[#E2E8F0] bg-white py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-[#1976D2] text-[#111F33]"
                 />
               </div>
 
@@ -480,7 +480,7 @@ export default function TeamPage() {
                     event.target.value as "All" | AdminRole
                   )
                 }
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none dark:border-white/10 dark:bg-[#10141d] dark:text-white"
+                className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm outline-none text-[#111F33]"
               >
                 <option value="All">All Roles</option>
                 <option value="Super Admin">Super Admin</option>
@@ -496,7 +496,7 @@ export default function TeamPage() {
                       | AdminStatus
                   )
                 }
-                className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none dark:border-white/10 dark:bg-[#10141d] dark:text-white"
+                className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm outline-none text-[#111F33]"
               >
                 <option value="All">All Status</option>
                 <option value="Active">Active</option>
@@ -509,28 +509,28 @@ export default function TeamPage() {
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[850px]">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/70 dark:border-white/10 dark:bg-white/[0.02]">
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <tr className="border-b border-[#E2E8F0] bg-[#F5F7FA]">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#64748B]">
                     Administrator
                   </th>
 
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#64748B]">
                     Role
                   </th>
 
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#64748B]">
                     Status
                   </th>
 
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#64748B]">
                     Joined
                   </th>
 
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-[#64748B]">
                     Last Active
                   </th>
 
-                  <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-[#64748B]">
                     Actions
                   </th>
                 </tr>
@@ -568,22 +568,22 @@ export default function TeamPage() {
           {/* EMPTY STATE */}
           {filteredAdmins.length === 0 && (
             <div className="px-6 py-14 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-[#F5F7FA] text-[#64748B]">
                 <Users size={22} />
               </div>
 
-              <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">
+              <h3 className="mt-4 font-semibold text-[#111F33]">
                 No administrators found
               </h3>
 
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              <p className="mt-1 text-sm text-[#64748B]">
                 Try changing your search or filters.
               </p>
 
               <button
                 type="button"
                 onClick={resetFilters}
-                className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                className="mt-4 rounded-lg bg-[#1976D2] px-4 py-2 text-sm font-medium text-white hover:bg-[#1565C0] transition-colors"
               >
                 Clear Filters
               </button>
@@ -592,7 +592,7 @@ export default function TeamPage() {
         </section>
 
         {/* ROLE PERMISSIONS */}
-        <section className="surface rounded-2xl border p-5 shadow-sm sm:p-6">
+        <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-xs sm:p-6">
           <div>
             <h2 className="font-semibold text-slate-900 dark:text-white">
               Role Permissions
@@ -694,18 +694,18 @@ function StatCard({
   value: number;
 }) {
   return (
-    <div className="surface rounded-2xl border p-5 shadow-sm">
+    <div className="rounded-lg border border-[#E2E8F0] bg-white p-4 shadow-xs">
       <div className="flex items-center justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#F5F7FA] text-[#1976D2] border border-[#E2E8F0]">
           {icon}
         </div>
 
-        <span className="text-2xl font-semibold text-slate-900 dark:text-white">
+        <span className="text-2xl font-semibold text-[#111F33]">
           {value}
         </span>
       </div>
 
-      <p className="mt-4 text-sm font-medium text-slate-500 dark:text-slate-400">
+      <p className="mt-4 text-sm font-medium text-[#64748B]">
         {label}
       </p>
     </div>
@@ -1119,16 +1119,16 @@ function AdminFormModal({
 }) {
   return (
     <ModalBackdrop onClose={onClose}>
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#151922]">
-        <div className="flex items-start justify-between border-b border-slate-200 p-5 dark:border-white/10">
+      <div className="w-full max-w-lg overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-xl">
+        <div className="flex items-start justify-between border-b border-[#E2E8F0] p-5">
           <div>
-            <h2 className="font-semibold text-slate-900 dark:text-white">
+            <h2 className="font-semibold text-[#111F33]">
               {editingAdmin
                 ? "Edit Administrator"
                 : "Add Administrator"}
             </h2>
 
-            <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
+            <p className="mt-1 text-xs leading-5 text-[#64748B]">
               {editingAdmin
                 ? "Update the administrator's account information."
                 : "Create a new administrator for the recruitment dashboard."}
@@ -1138,7 +1138,7 @@ function AdminFormModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5"
+            className="rounded-lg p-2 text-[#64748B] hover:bg-[#F5F7FA] transition-colors"
           >
             <X size={18} />
           </button>
@@ -1165,7 +1165,7 @@ function AdminFormModal({
           />
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+            <label className="mb-1.5 block text-sm font-medium text-[#111F33]">
               Role
             </label>
 
@@ -1177,7 +1177,7 @@ function AdminFormModal({
                   event.target.value as AdminRole
                 )
               }
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-[#10141d] dark:text-white"
+              className="w-full rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#1976D2] text-[#111F33]"
             >
               <option value="Recruiter">Recruiter</option>
               <option value="Super Admin">
@@ -1188,14 +1188,14 @@ function AdminFormModal({
 
           {!editingAdmin && (
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+              <label className="mb-1.5 block text-sm font-medium text-[#111F33]">
                 Temporary Password
               </label>
 
               <div className="relative">
                 <Lock
                   size={16}
-                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]"
                 />
 
                 <input
@@ -1210,13 +1210,13 @@ function AdminFormModal({
                     )
                   }
                   placeholder="Minimum 6 characters"
-                  className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-10 text-sm outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-[#10141d] dark:text-white"
+                  className="w-full rounded-lg border border-[#E2E8F0] bg-white py-2.5 pl-10 pr-10 text-sm outline-none focus:border-[#1976D2] text-[#111F33]"
                 />
 
                 <button
                   type="button"
                   onClick={onTogglePassword}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B]"
                 >
                   {showPassword ? (
                     <EyeOff size={17} />
@@ -1226,7 +1226,7 @@ function AdminFormModal({
                 </button>
               </div>
 
-              <p className="mt-1.5 text-xs text-slate-400">
+              <p className="mt-1.5 text-xs text-[#64748B]">
                 Frontend demo only. Real password
                 creation must be handled securely by
                 the backend.
@@ -1235,11 +1235,11 @@ function AdminFormModal({
           )}
 
           {editingAdmin && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-500 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-400">
+            <div className="rounded-lg border border-[#E2E8F0] bg-[#F5F7FA] p-3 text-xs leading-5 text-[#64748B]">
               <div className="flex gap-2">
                 <ShieldCheck
                   size={15}
-                  className="mt-0.5 shrink-0 text-indigo-500"
+                  className="mt-0.5 shrink-0 text-[#1976D2]"
                 />
 
                 <span>
@@ -1252,11 +1252,11 @@ function AdminFormModal({
           )}
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-slate-200 p-5 dark:border-white/10">
+        <div className="flex justify-end gap-3 border-t border-[#E2E8F0] p-5">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 dark:border-white/10 dark:text-slate-300"
+            className="rounded-lg border border-[#E2E8F0] px-4 py-2.5 text-sm font-medium text-[#111F33] hover:bg-[#F5F7FA] transition-colors"
           >
             Cancel
           </button>
@@ -1264,7 +1264,7 @@ function AdminFormModal({
           <button
             type="button"
             onClick={onSave}
-            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-700"
+            className="inline-flex items-center gap-2 rounded-lg bg-[#1976D2] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#1565C0] transition-colors"
           >
             {editingAdmin ? (
               <>
@@ -1299,16 +1299,16 @@ function ViewAdminModal({
 }) {
   return (
     <ModalBackdrop onClose={onClose}>
-      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#151922]">
-        <div className="flex items-center justify-between border-b border-slate-200 p-5 dark:border-white/10">
-          <h2 className="font-semibold text-slate-900 dark:text-white">
+      <div className="w-full max-w-md overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-[#E2E8F0] p-5">
+          <h2 className="font-semibold text-[#111F33]">
             Administrator Details
           </h2>
 
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5"
+            className="rounded-lg p-2 text-[#64748B] hover:bg-[#F5F7FA] transition-colors"
           >
             <X size={18} />
           </button>
@@ -1319,11 +1319,11 @@ function ViewAdminModal({
             <Avatar initials={getInitials(admin.name)} />
 
             <div>
-              <h3 className="font-semibold text-slate-900 dark:text-white">
+              <h3 className="font-semibold text-[#111F33]">
                 {admin.name}
               </h3>
 
-              <p className="mt-0.5 text-sm text-slate-500">
+              <p className="mt-0.5 text-sm text-[#64748B]">
                 {admin.email}
               </p>
             </div>
@@ -1357,11 +1357,11 @@ function ViewAdminModal({
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-slate-200 p-5 dark:border-white/10">
+        <div className="flex justify-end gap-3 border-t border-[#E2E8F0] p-5">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 dark:border-white/10 dark:text-slate-300"
+            className="rounded-lg border border-[#E2E8F0] px-4 py-2.5 text-sm font-medium text-[#111F33] hover:bg-[#F5F7FA] transition-colors"
           >
             Close
           </button>
@@ -1369,7 +1369,7 @@ function ViewAdminModal({
           <button
             type="button"
             onClick={onEdit}
-            className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-indigo-700"
+            className="inline-flex items-center gap-2 rounded-lg bg-[#1976D2] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1565C0] transition-colors"
           >
             <Pencil size={15} />
             Edit
@@ -1395,36 +1395,36 @@ function DeleteModal({
 }) {
   return (
     <ModalBackdrop onClose={onClose}>
-      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#151922]">
+      <div className="w-full max-w-md overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-xl">
         <div className="p-6">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400">
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#DC2626]/10 text-[#DC2626]">
             <AlertTriangle size={21} />
           </div>
 
-          <h2 className="mt-4 text-lg font-semibold text-slate-900 dark:text-white">
+          <h2 className="mt-4 text-lg font-semibold text-[#111F33]">
             Remove administrator?
           </h2>
 
-          <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+          <p className="mt-2 text-sm leading-6 text-[#64748B]">
             You are about to remove{" "}
-            <span className="font-semibold text-slate-700 dark:text-slate-200">
+            <span className="font-semibold text-[#111F33]">
               {admin.name}
             </span>{" "}
             from the administrator team.
           </p>
 
-          <div className="mt-4 rounded-xl border border-red-100 bg-red-50 p-3 text-xs leading-5 text-red-700 dark:border-red-500/20 dark:bg-red-500/5 dark:text-red-400">
+          <div className="mt-4 rounded-lg border border-[#DC2626]/20 bg-[#DC2626]/5 p-3 text-xs leading-5 text-[#DC2626]">
             This is a frontend mock operation. The
             real backend should revoke the account and
             access tokens.
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-slate-200 p-5 dark:border-white/10">
+        <div className="flex justify-end gap-3 border-t border-[#E2E8F0] p-5">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 dark:border-white/10 dark:text-slate-300"
+            className="rounded-lg border border-[#E2E8F0] px-4 py-2.5 text-sm font-medium text-[#111F33] hover:bg-[#F5F7FA] transition-colors"
           >
             Cancel
           </button>
@@ -1432,7 +1432,7 @@ function DeleteModal({
           <button
             type="button"
             onClick={onConfirm}
-            className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700"
+            className="inline-flex items-center gap-2 rounded-lg bg-[#DC2626] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#B91C1C] transition-colors"
           >
             <Trash2 size={15} />
             Remove Admin
@@ -1462,7 +1462,7 @@ function FormField({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
+      <label className="mb-1.5 block text-sm font-medium text-[#111F33]">
         {label}
       </label>
 
@@ -1473,7 +1473,7 @@ function FormField({
         onChange={(event) =>
           onChange(event.target.value)
         }
-        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-white/10 dark:bg-[#10141d] dark:text-white"
+        className="w-full rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm outline-none transition focus:border-[#1976D2] text-[#111F33]"
       />
     </div>
   );

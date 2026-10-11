@@ -103,17 +103,22 @@ export function CandidateCard({
       }
 
       className="
-        surface
         flex
         w-full
         items-center
         gap-3
-        rounded-xl
+        rounded-lg
         border
+        border-[#E2E8F0]
+        bg-white
         p-4
         text-left
-        shadow-subtle
+        shadow-xs
+        transition-colors
+        hover:border-[#1976D2]/40
         active:scale-[0.99]
+        dark:border-white/10
+        dark:bg-white/[0.03]
       "
     >
 

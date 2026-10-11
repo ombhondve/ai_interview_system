@@ -270,7 +270,7 @@ export default function AnalyticsPage() {
         </section>
 
         {/* JD Match */}
-        <section className="surface rounded-2xl border p-5 shadow-sm">
+        <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-xs">
           <ChartHeader
             title="JD Match Distribution"
             description="How closely candidate profiles match the selected roles."

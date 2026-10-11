@@ -1,10 +1,10 @@
 import { cn, initials } from "@/lib/utils";
 
 const colorPalette = [
-  "bg-accent-100 text-accent-700 dark:bg-accent-500/15 dark:text-accent-400",
-  "bg-success-100 text-success-700 dark:bg-success-500/15 dark:text-success-500",
-  "bg-warning-100 text-warning-700 dark:bg-warning-500/15 dark:text-warning-500",
-  "bg-info-100 text-info-600 dark:bg-info-500/15 dark:text-info-500",
+  "bg-blue-50 text-[#1976D2] border border-blue-200",
+  "bg-emerald-50 text-[#16A34A] border border-emerald-200",
+  "bg-amber-50 text-[#D97706] border border-amber-200",
+  "bg-slate-100 text-[#64748B] border border-[#E2E8F0]",
 ];
 
 function colorFor(name: string) {
@@ -21,17 +21,22 @@ export function Avatar({
   size?: "sm" | "md" | "lg";
   className?: string;
 }) {
-  const sizeClasses = { sm: "h-7 w-7 text-xs", md: "h-9 w-9 text-sm", lg: "h-12 w-12 text-base" };
+  const sizeClasses = {
+    sm: "h-7 w-7 text-[11px]",
+    md: "h-9 w-9 text-xs",
+    lg: "h-11 w-11 text-sm",
+  };
+
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full font-semibold",
+        "flex shrink-0 items-center justify-center rounded-full font-semibold select-none",
         sizeClasses[size],
-        colorFor(name),
+        colorFor(name || "Unknown"),
         className
       )}
     >
-      {initials(name)}
+      {initials(name || "U")}
     </div>
   );
 }

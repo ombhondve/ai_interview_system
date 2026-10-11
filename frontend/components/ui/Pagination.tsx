@@ -23,30 +23,32 @@ export function Pagination({
   );
 
   return (
-    <div className="flex flex-col items-center justify-between gap-3 border-t border-slate-100 px-5 py-3.5 dark:border-white/5 sm:flex-row">
-      <p className="text-xs text-slate-500 dark:text-slate-400">
-        Showing <span className="font-medium text-slate-700 dark:text-slate-300">{start}-{end}</span> of{" "}
-        <span className="font-medium text-slate-700 dark:text-slate-300">{total}</span>
+    <div className="flex flex-col items-center justify-between gap-3 border-t border-[#E2E8F0] px-5 py-3 sm:flex-row bg-white">
+      <p className="text-xs text-[#64748B]">
+        Showing <span className="font-medium text-[#111F33]">{start}–{end}</span> of{" "}
+        <span className="font-medium text-[#111F33]">{total}</span> records
       </p>
       <div className="flex items-center gap-1">
         <button
+          type="button"
           onClick={() => onPageChange(page - 1)}
           disabled={page === 1}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-white/10"
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-[#E2E8F0] text-[#64748B] hover:bg-[#F5F7FA] hover:text-[#111F33] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           aria-label="Previous page"
         >
-          <ChevronLeft className="h-4 w-4" />
+          <ChevronLeft className="h-3.5 w-3.5" />
         </button>
         {pages.map((p, i) => (
           <span key={p} className="flex items-center">
-            {i > 0 && pages[i - 1] !== p - 1 && <span className="px-1 text-xs text-slate-400">…</span>}
+            {i > 0 && pages[i - 1] !== p - 1 && <span className="px-1 text-xs text-[#64748B]">…</span>}
             <button
+              type="button"
               onClick={() => onPageChange(p)}
               className={cn(
-                "flex h-7 w-7 items-center justify-center rounded-md text-xs font-medium",
+                "flex h-7 w-7 items-center justify-center rounded-md text-xs font-medium transition-colors",
                 p === page
-                  ? "bg-accent-600 text-white"
-                  : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-white/10"
+                  ? "bg-[#1976D2] text-white shadow-xs font-semibold"
+                  : "text-[#64748B] hover:bg-[#F5F7FA] hover:text-[#111F33]"
               )}
             >
               {p}
@@ -54,12 +56,13 @@ export function Pagination({
           </span>
         ))}
         <button
+          type="button"
           onClick={() => onPageChange(page + 1)}
           disabled={page === totalPages}
-          className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 disabled:opacity-40 dark:hover:bg-white/10"
+          className="flex h-7 w-7 items-center justify-center rounded-md border border-[#E2E8F0] text-[#64748B] hover:bg-[#F5F7FA] hover:text-[#111F33] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           aria-label="Next page"
         >
-          <ChevronRight className="h-4 w-4" />
+          <ChevronRight className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>

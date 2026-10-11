@@ -8,10 +8,12 @@ export function Dropdown({
   trigger,
   children,
   align = "right",
+  className,
 }: {
   trigger: React.ReactNode;
   children: React.ReactNode;
   align?: "left" | "right";
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -32,21 +34,22 @@ export function Dropdown({
   }, []);
 
   return (
-    <div className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
+    <div className="relative inline-block text-left" ref={ref}>
+      <div onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>
         {trigger}
-      </button>
+      </div>
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.96, y: -4 }}
+            initial={{ opacity: 0, scale: 0.98, y: -4 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: -4 }}
-            transition={{ duration: 0.12 }}
+            exit={{ opacity: 0, scale: 0.98, y: -4 }}
+            transition={{ duration: 0.12, ease: "easeOut" }}
             role="menu"
             className={cn(
-              "surface absolute z-50 mt-2 min-w-[180px] rounded-xl border p-1.5 shadow-popover",
-              align === "right" ? "right-0" : "left-0"
+              "absolute z-50 mt-1.5 min-w-[190px] rounded-lg border border-[#E2E8F0] bg-white p-1 shadow-lg ring-1 ring-black/5",
+              align === "right" ? "right-0" : "left-0",
+              className
             )}
             onClick={() => setOpen(false)}
           >
@@ -62,20 +65,27 @@ export function DropdownItem({
   children,
   onClick,
   danger,
+  disabled,
+  className,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   danger?: boolean;
+  disabled?: boolean;
+  className?: string;
 }) {
   return (
     <button
+      type="button"
       role="menuitem"
+      disabled={disabled}
       onClick={onClick}
       className={cn(
-        "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+        "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none",
         danger
-          ? "text-danger-600 hover:bg-danger-50 dark:hover:bg-danger-500/10"
-          : "text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-white/5"
+          ? "text-[#DC2626] hover:bg-red-50 focus:bg-red-50"
+          : "text-[#111F33] hover:bg-[#F5F7FA] focus:bg-[#F5F7FA]",
+        className
       )}
     >
       {children}
@@ -84,5 +94,5 @@ export function DropdownItem({
 }
 
 export function DropdownSeparator() {
-  return <div className="my-1.5 h-px bg-slate-100 dark:bg-white/10" />;
+  return <div className="my-1 h-px bg-[#E2E8F0]" />;
 }

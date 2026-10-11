@@ -1128,9 +1128,11 @@ export default function ProjectAIGeneratorModal({
           max-w-3xl
           flex-col
           overflow-hidden
-          rounded-2xl
+          rounded-lg
+          border
+          border-[#E2E8F0]
           bg-white
-          shadow-2xl
+          shadow-xl
           dark:bg-[#151922]
         "
       >
@@ -1145,7 +1147,7 @@ export default function ProjectAIGeneratorModal({
             items-center
             justify-between
             border-b
-            border-slate-200
+            border-[#E2E8F0]
             px-5
             py-4
             dark:border-white/10
@@ -1159,8 +1161,8 @@ export default function ProjectAIGeneratorModal({
                 w-10
                 items-center
                 justify-center
-                rounded-xl
-                bg-indigo-600
+                rounded-lg
+                bg-[#1976D2]
                 text-white
               "
             >
@@ -1172,7 +1174,7 @@ export default function ProjectAIGeneratorModal({
                 id="ai-project-generator-title"
                 className="
                   font-semibold
-                  text-slate-900
+                  text-[#111F33]
                   dark:text-white
                 "
               >
@@ -2562,8 +2564,8 @@ export default function ProjectAIGeneratorModal({
                 items-center
                 justify-center
                 gap-2
-                rounded-xl
-                bg-indigo-600
+                rounded-lg
+                bg-[#1976D2]
                 px-5
                 py-2.5
                 text-sm
@@ -2571,7 +2573,7 @@ export default function ProjectAIGeneratorModal({
                 text-white
                 shadow-sm
                 transition
-                hover:bg-indigo-700
+                hover:bg-[#1565C0]
                 disabled:cursor-not-allowed
                 disabled:opacity-50
               "

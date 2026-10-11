@@ -274,18 +274,20 @@ export function ApproveCandidateModal({
     ) {
 
       return `
-        border-primary
-        bg-primary/5
-        dark:border-primary
-        dark:bg-primary/10
+        border-[#1976D2]
+        bg-[#1976D2]/5
+        ring-1
+        ring-[#1976D2]
+        dark:border-[#1976D2]
+        dark:bg-[#1976D2]/10
       `;
     }
 
 
     return `
-      border-slate-200
+      border-[#E2E8F0]
       hover:border-slate-300
-      hover:bg-slate-50
+      hover:bg-[#F5F7FA]
       dark:border-white/10
       dark:hover:border-white/20
       dark:hover:bg-white/5

@@ -31,11 +31,11 @@ const icons = {
   info: Info,
 };
 
-const colors = {
-  success: "text-success-600 bg-success-50 dark:bg-success-500/10",
-  error: "text-danger-600 bg-danger-50 dark:bg-danger-500/10",
-  warning: "text-warning-600 bg-warning-50 dark:bg-warning-500/10",
-  info: "text-info-600 bg-info-50 dark:bg-info-500/10",
+const badgeStyles = {
+  success: "text-[#16A34A] bg-emerald-50 border border-emerald-200",
+  error: "text-[#DC2626] bg-red-50 border border-red-200",
+  warning: "text-[#D97706] bg-amber-50 border border-amber-200",
+  info: "text-[#1976D2] bg-blue-50 border border-blue-200",
 };
 
 export function ToastProvider({
@@ -46,8 +46,6 @@ export function ToastProvider({
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [mounted, setMounted] = useState(false);
 
-  // Wait until the component is mounted in the browser
-  // before creating the portal.
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -81,42 +79,43 @@ export function ToastProvider({
 
       {mounted &&
         createPortal(
-          <div className="fixed right-4 top-4 z-[200] flex w-full max-w-sm flex-col gap-2">
+          <div className="fixed right-4 top-4 z-[200] flex w-full max-w-sm flex-col gap-2.5 pointer-events-none">
             <AnimatePresence>
               {toasts.map((t) => {
-                const Icon = icons[t.type];
+                const Icon = icons[t.type] || Info;
 
                 return (
                   <motion.div
                     key={t.id}
-                    initial={{ opacity: 0, x: 40 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 40 }}
-                    transition={{ duration: 0.2 }}
-                    className="surface flex items-start gap-3 rounded-xl border p-3.5 shadow-popover"
+                    initial={{ opacity: 0, x: 20, scale: 0.96 }}
+                    animate={{ opacity: 1, x: 0, scale: 1 }}
+                    exit={{ opacity: 0, x: 20, scale: 0.96 }}
+                    transition={{ duration: 0.18, ease: "easeOut" }}
+                    className="pointer-events-auto flex items-start gap-3 rounded-lg border border-[#E2E8F0] bg-white p-3.5 shadow-lg"
                   >
                     <div
-                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${colors[t.type]}`}
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${badgeStyles[t.type] || badgeStyles.info}`}
                     >
                       <Icon className="h-4 w-4" />
                     </div>
 
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-slate-900 dark:text-white">
+                    <div className="flex-1 min-w-0 pr-1">
+                      <p className="text-xs font-semibold text-[#111F33]">
                         {t.title}
                       </p>
 
                       {t.description && (
-                        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                        <p className="mt-0.5 text-xs text-[#64748B] leading-relaxed">
                           {t.description}
                         </p>
                       )}
                     </div>
 
                     <button
+                      type="button"
                       onClick={() => dismiss(t.id)}
-                      className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                      aria-label="Dismiss"
+                      className="text-[#64748B] hover:text-[#111F33] p-0.5 rounded transition-colors"
+                      aria-label="Dismiss toast"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>

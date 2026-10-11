@@ -1589,19 +1589,19 @@ function AssignProjectModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
 
-      <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl">
+      <div className="w-full max-w-lg rounded-lg border border-[#E2E8F0] bg-white shadow-xl overflow-hidden">
 
         {/* Header */}
 
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-[#E2E8F0] px-6 py-4">
 
           <div>
 
-            <h2 className="text-lg font-semibold text-slate-900">
+            <h2 className="text-base font-semibold text-[#111F33]">
               Assign Existing Project
             </h2>
 
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-0.5 text-xs text-[#64748B]">
               Select an active project for this candidate.
             </p>
 
@@ -1630,7 +1630,7 @@ function AssignProjectModal({
 
         {/* Body */}
 
-        <div className="space-y-4 p-6">
+        <div className="space-y-4 p-6 max-h-[60vh] overflow-y-auto">
 
           {error && (
 
@@ -1647,7 +1647,7 @@ function AssignProjectModal({
             <div className="flex items-center justify-center py-10 text-sm text-slate-500">
 
               <Loader2
-                className="mr-2 h-5 w-5 animate-spin"
+                className="mr-2 h-5 w-5 animate-spin text-[#1976D2]"
               />
 
               Loading projects...
@@ -1657,13 +1657,13 @@ function AssignProjectModal({
           ) : projects.length ===
             0 ? (
 
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-5 text-center">
+            <div className="rounded-lg border border-[#E2E8F0] bg-[#F5F7FA] p-5 text-center">
 
               <p className="text-sm font-medium text-slate-700">
                 No active projects available.
               </p>
 
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-[#64748B]">
                 Create a new project instead.
               </p>
 
@@ -1689,11 +1689,11 @@ function AssignProjectModal({
                         project.id
                       )
                     }
-                    className={`w-full rounded-xl border p-4 text-left transition ${
+                    className={`w-full rounded-lg border p-4 text-left transition ${
                       selectedProjectId ===
                       project.id
-                        ? "border-slate-900 bg-slate-50 ring-1 ring-slate-900"
-                        : "border-slate-200 hover:border-slate-400 hover:bg-slate-50"
+                        ? "border-[#1976D2] bg-[#1976D2]/5 ring-1 ring-[#1976D2]"
+                        : "border-[#E2E8F0] hover:border-slate-300 hover:bg-[#F5F7FA]"
                     }`}
                   >
 
@@ -1701,13 +1701,13 @@ function AssignProjectModal({
 
                       <div>
 
-                        <p className="font-semibold text-slate-900">
+                        <p className="font-semibold text-[#111F33]">
                           {
                             project.title
                           }
                         </p>
 
-                        <p className="mt-1 text-sm text-slate-500">
+                        <p className="mt-1 text-xs text-[#64748B]">
                           {
                             project.role
                           }
@@ -1725,7 +1725,7 @@ function AssignProjectModal({
                     </div>
 
 
-                    <p className="mt-3 line-clamp-2 text-sm text-slate-500">
+                    <p className="mt-2 line-clamp-2 text-xs text-[#64748B]">
                       {
                         project.description
                       }
@@ -1734,7 +1734,7 @@ function AssignProjectModal({
 
                     <div className="mt-3 flex items-center justify-between">
 
-                      <span className="text-xs text-slate-400">
+                      <span className="text-xs text-[#64748B]">
                         {
                           project.assigned
                         }{" "}
@@ -1746,7 +1746,7 @@ function AssignProjectModal({
                         project.id && (
 
                         <CheckCircle2
-                          className="h-5 w-5 text-slate-900"
+                          className="h-4 w-4 text-[#1976D2]"
                         />
 
                       )}
@@ -1767,7 +1767,7 @@ function AssignProjectModal({
 
         {/* Footer */}
 
-        <div className="flex items-center justify-end gap-3 border-t border-slate-100 px-6 py-4">
+        <div className="flex items-center justify-end gap-3 border-t border-[#E2E8F0] px-6 py-4">
 
           <button
             type="button"
@@ -1777,7 +1777,7 @@ function AssignProjectModal({
             disabled={
               loading
             }
-            className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="rounded-lg border border-[#E2E8F0] px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
             Cancel
           </button>
@@ -1792,7 +1792,7 @@ function AssignProjectModal({
               loading ||
               !selectedProjectId
             }
-            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg bg-[#1976D2] px-4 py-2 text-sm font-medium text-white hover:bg-[#1565C0] disabled:cursor-not-allowed disabled:opacity-50"
           >
 
             {loading ? (

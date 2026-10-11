@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Users, X } from "lucide-react";
+import { Users, X, Loader2 } from "lucide-react";
 import { candidateService, CandidateFilters as Filters } from "@/services/candidate.api";
 import { Candidate } from "@/types";
 import { Card } from "@/components/ui/Card";
@@ -12,8 +12,9 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { Pagination } from "@/components/ui/Pagination";
 import { CandidateFiltersBar } from "@/components/candidates/CandidateFilters";
 import { CandidateTable } from "@/components/candidates/CandidateTable";
-import { CandidateCard } from "@/components/candidates/CandidateCard";
+import { RejectCandidateModal } from "@/components/candidates/RejectCandidateModal";
 import { Button } from "@/components/ui/Button";
+import { useToast } from "@/components/ui/Toast";
 
 const DEFAULT_FILTERS: Filters = { page: 1, pageSize: 6, sortBy: "receivedDate", sortDir: "desc" };
 
@@ -24,6 +25,10 @@ export default function CandidatesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [batchActionLoading, setBatchActionLoading] = useState(false);
+  const [rejectModalOpen, setRejectModalOpen] = useState(false);
+  const { toast } = useToast();
+
   const roles = candidateService.getRoles();
   const batches = candidateService.getBatches();
 
@@ -70,6 +75,59 @@ export default function CandidatesPage() {
 
   const clearSelection = () => setSelected(new Set());
 
+  const handleBatchApprove = async () => {
+    if (selected.size === 0) return;
+    setBatchActionLoading(true);
+    try {
+      const ids = Array.from(selected);
+      for (const id of ids) {
+        await candidateService.approveCandidate(id);
+      }
+      toast({
+        title: "Candidates Approved",
+        description: `Successfully approved ${ids.length} candidate${ids.length === 1 ? "" : "s"}.`,
+        type: "success",
+      });
+      clearSelection();
+      load(filters);
+    } catch (err) {
+      toast({
+        title: "Action Failed",
+        description: err instanceof Error ? err.message : "Failed to approve candidates.",
+        type: "error",
+      });
+    } finally {
+      setBatchActionLoading(false);
+    }
+  };
+
+  const handleBatchRejectConfirm = async (reason: string) => {
+    if (selected.size === 0) return;
+    setBatchActionLoading(true);
+    try {
+      const ids = Array.from(selected);
+      for (const id of ids) {
+        await candidateService.rejectCandidate(id, reason);
+      }
+      toast({
+        title: "Candidates Rejected",
+        description: `Successfully rejected ${ids.length} candidate${ids.length === 1 ? "" : "s"}.`,
+        type: "success",
+      });
+      setRejectModalOpen(false);
+      clearSelection();
+      load(filters);
+    } catch (err) {
+      toast({
+        title: "Action Failed",
+        description: err instanceof Error ? err.message : "Failed to reject candidates.",
+        type: "error",
+      });
+    } finally {
+      setBatchActionLoading(false);
+    }
+  };
+
   return (
     <div>
       {/* Header */}
@@ -80,29 +138,42 @@ export default function CandidatesPage() {
         className="mb-6 flex flex-wrap items-end justify-between gap-4"
       >
         <div>
-          <h1 className="text-xl font-semibold tracking-tight text-slate-900 dark:text-white">
+          <h1 className="text-xl font-semibold tracking-tight text-[#111F33] dark:text-white">
             Candidates
           </h1>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-1 text-sm text-[#64748B] dark:text-slate-400">
             {loading ? "Loading applications…" : `${total} application${total === 1 ? "" : "s"} on file`}
           </p>
         </div>
 
-        {/* Selection toolbar — replaces the subtitle area instead of stacking below it */}
+        {/* Selection toolbar */}
         {selected.size > 0 && (
           <motion.div
             initial={{ opacity: 0, scale: 0.97 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white py-1.5 pl-3 pr-1.5 shadow-sm dark:border-white/10 dark:bg-white/5"
+            className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white py-1.5 pl-3 pr-1.5 shadow-sm dark:border-white/10 dark:bg-white/5"
           >
-            <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+            <span className="text-sm font-medium text-[#111F33] dark:text-slate-300">
               {selected.size} selected
             </span>
-            <div className="mx-1 h-4 w-px bg-slate-200 dark:bg-white/10" />
-            <Button size="sm" variant="secondary">
+            <div className="mx-1 h-4 w-px bg-[#E2E8F0] dark:bg-white/10" />
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleBatchApprove}
+              disabled={batchActionLoading}
+            >
+              {batchActionLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+              ) : null}
               Approve
             </Button>
-            <Button size="sm" variant="destructive">
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={() => setRejectModalOpen(true)}
+              disabled={batchActionLoading}
+            >
               Reject
             </Button>
             <button
@@ -116,7 +187,7 @@ export default function CandidatesPage() {
         )}
       </motion.div>
 
-      {/* Filters — single horizontal row, wraps only if the viewport is too narrow */}
+      {/* Filters */}
       <Card className="mb-5 p-3">
         <CandidateFiltersBar
           filters={filters}
@@ -155,11 +226,6 @@ export default function CandidatesPage() {
               sortDir={filters.sortDir}
               onSort={handleSort}
             />
-            <div className="space-y-3 p-4 sm:hidden">
-              {candidates.map((c, i) => (
-                <CandidateCard key={c.id} candidate={c} index={i} />
-              ))}
-            </div>
             <Pagination
               page={filters.page ?? 1}
               pageSize={filters.pageSize ?? 6}
@@ -169,6 +235,15 @@ export default function CandidatesPage() {
           </>
         )}
       </Card>
+
+      {/* Bulk Reject Modal */}
+      <RejectCandidateModal
+        open={rejectModalOpen}
+        candidateName={`${selected.size} selected candidate${selected.size === 1 ? "" : "s"}`}
+        loading={batchActionLoading}
+        onClose={() => setRejectModalOpen(false)}
+        onConfirm={handleBatchRejectConfirm}
+      />
     </div>
   );
 }

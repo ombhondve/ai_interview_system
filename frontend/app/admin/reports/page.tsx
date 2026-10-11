@@ -265,9 +265,9 @@ export default function ReportsPage() {
         </div>
 
         {/* Filters */}
-        <section className="surface rounded-2xl border p-4 shadow-sm">
-          <div className="mb-3 flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-300">
-            <Filter size={16} />
+        <section className="rounded-lg border border-[#E2E8F0] bg-white p-4 shadow-xs">
+          <div className="mb-3 flex items-center gap-2 text-sm font-medium text-[#111F33]">
+            <Filter size={16} className="text-[#1976D2]" />
             Filters
           </div>
 
@@ -275,21 +275,21 @@ export default function ReportsPage() {
             <div className="relative">
               <Search
                 size={17}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]"
               />
 
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search candidate or ID..."
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-3 text-sm outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-[#10141d]"
+                className="w-full rounded-lg border border-[#E2E8F0] bg-white py-2.5 pl-10 pr-3 text-sm outline-none focus:border-[#1976D2] text-[#111F33]"
               />
             </div>
 
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-white/10 dark:bg-[#10141d]"
+              className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#111F33] outline-none focus:border-[#1976D2]"
             >
               <option value="All">All Statuses</option>
               <option value="Awaiting Decision">Awaiting Decision</option>
@@ -302,7 +302,7 @@ export default function ReportsPage() {
             <select
               value={role}
               onChange={(e) => setRole(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-white/10 dark:bg-[#10141d]"
+              className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#111F33] outline-none focus:border-[#1976D2]"
             >
               <option value="All">All Roles</option>
               {uniqueRoles.map((r) => (
@@ -315,7 +315,7 @@ export default function ReportsPage() {
             <select
               value={score}
               onChange={(e) => setScore(e.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-white/10 dark:bg-[#10141d]"
+              className="rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm text-[#111F33] outline-none focus:border-[#1976D2]"
             >
               <option value="All">All Scores</option>
               <option value="80+">80+</option>
@@ -326,11 +326,11 @@ export default function ReportsPage() {
         </section>
 
         {/* Table */}
-        <section className="surface overflow-hidden rounded-2xl border shadow-sm">
+        <section className="overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1050px]">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50/70 dark:border-white/10 dark:bg-white/[0.02]">
+                <tr className="border-b border-[#E2E8F0] bg-[#F5F7FA]">
                   <th className="px-5 py-4 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                     Candidate
                   </th>

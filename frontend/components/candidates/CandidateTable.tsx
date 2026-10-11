@@ -156,8 +156,7 @@ export function CandidateTable({
       <ArrowUpDown
         className={cn(
           "h-3 w-3",
-          sortBy === field &&
-            "text-accent-600 dark:text-accent-400"
+          sortBy === field && "text-[#1976D2] dark:text-[#1976D2]"
         )}
       />
     </button>
@@ -188,7 +187,7 @@ export function CandidateTable({
               justify-between
               rounded-lg
               border
-              border-slate-200
+              border-[#E2E8F0]
               bg-white
               px-4
               py-3
@@ -204,7 +203,7 @@ export function CandidateTable({
                 gap-2
                 text-sm
                 font-medium
-                text-slate-700
+                text-[#111F33]
                 dark:text-slate-300
               "
             >
@@ -216,9 +215,9 @@ export function CandidateTable({
                   h-4
                   w-4
                   rounded
-                  border-slate-300
-                  text-accent-600
-                  focus:ring-accent-500
+                  border-[#E2E8F0]
+                  text-[#1976D2]
+                  focus:ring-[#1976D2]
                 "
                 aria-label="Select all candidates"
               />
@@ -226,7 +225,7 @@ export function CandidateTable({
               Select all
             </label>
 
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-[#64748B]">
               {candidates.length} candidates
             </span>
 
@@ -247,13 +246,14 @@ export function CandidateTable({
             }
             className="
               cursor-pointer
-              rounded-xl
+              rounded-lg
               border
-              border-slate-200
+              border-[#E2E8F0]
               bg-white
               p-4
-              shadow-sm
-              transition
+              shadow-xs
+              transition-colors
+              hover:border-[#1976D2]/40
               active:scale-[0.99]
               dark:border-white/10
               dark:bg-white/[0.03]
@@ -288,9 +288,9 @@ export function CandidateTable({
                     h-4
                     w-4
                     rounded
-                    border-slate-300
-                    text-accent-600
-                    focus:ring-accent-500
+                    border-[#E2E8F0]
+                    text-[#1976D2]
+                    focus:ring-[#1976D2]
                   "
                   aria-label={`Select ${
                     candidate.name ||
@@ -574,7 +574,7 @@ export function CandidateTable({
 
           <thead>
 
-            <tr className="border-b border-slate-100 dark:border-white/5">
+            <tr className="border-b border-[#E2E8F0] bg-[#F5F7FA]/75 dark:border-white/5 dark:bg-white/[0.02]">
 
               {/* SELECT ALL */}
 
@@ -588,9 +588,9 @@ export function CandidateTable({
                     h-3.5
                     w-3.5
                     rounded
-                    border-slate-300
-                    text-accent-600
-                    focus:ring-accent-500
+                    border-[#E2E8F0]
+                    text-[#1976D2]
+                    focus:ring-[#1976D2]
                   "
                   aria-label="Select all candidates"
                 />
@@ -712,9 +712,9 @@ export function CandidateTable({
                 className="
                   cursor-pointer
                   border-b
-                  border-slate-50
+                  border-[#E2E8F0]
                   transition-colors
-                  hover:bg-slate-50
+                  hover:bg-[#F5F7FA]
                   dark:border-white/5
                   dark:hover:bg-white/[0.03]
                 "
@@ -743,9 +743,9 @@ export function CandidateTable({
                       h-3.5
                       w-3.5
                       rounded
-                      border-slate-300
-                      text-accent-600
-                      focus:ring-accent-500
+                      border-[#E2E8F0]
+                      text-[#1976D2]
+                      focus:ring-[#1976D2]
                     "
                     aria-label={`Select ${
                       candidate.name ||

@@ -502,30 +502,29 @@ export default function AuditLogPage() {
   };
 
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen bg-[#F5F7FA]">
       <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
         {/* HEADER */}
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-2 text-sm text-[#64748B]">
               <Activity size={16} />
               Security & Administration
             </div>
 
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#111F33] sm:text-3xl">
               Audit Log
             </h1>
 
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Track administrator actions and important
-              system events.
+            <p className="mt-1 text-sm text-[#64748B]">
+              Track administrator actions and important system events.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <Link
               href="/admin/settings"
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-white/10 dark:bg-[#151922] dark:text-slate-200 dark:hover:bg-white/5"
+              className="inline-flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white px-4 py-2.5 text-sm font-medium text-[#111F33] shadow-xs hover:bg-[#F5F7FA] transition-colors"
             >
               Settings
             </Link>
@@ -533,7 +532,7 @@ export default function AuditLogPage() {
             <button
               type="button"
               onClick={refreshLogs}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50 dark:border-white/10 dark:bg-[#151922] dark:text-slate-200 dark:hover:bg-white/5"
+              className="inline-flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white px-4 py-2.5 text-sm font-medium text-[#111F33] shadow-xs hover:bg-[#F5F7FA] transition-colors"
             >
               <RefreshCw
                 size={16}
@@ -549,7 +548,7 @@ export default function AuditLogPage() {
             <button
               type="button"
               onClick={exportLogs}
-              className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#1976D2] px-4 py-2.5 text-sm font-medium text-white shadow-xs hover:bg-[#1565C0] transition-colors"
             >
               <Download size={16} />
               Export CSV
@@ -559,28 +558,28 @@ export default function AuditLogPage() {
 
         {/* NOTICE */}
         {notice && (
-          <div className="fixed bottom-5 right-5 z-[100] flex max-w-sm items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-2xl dark:border-white/10 dark:bg-[#151922] dark:text-slate-200">
+          <div className="fixed bottom-5 right-5 z-[100] flex max-w-sm items-center gap-3 rounded-lg border border-[#E2E8F0] bg-white px-4 py-3 text-sm font-medium text-[#111F33] shadow-lg">
             <CheckCircle2
               size={18}
-              className="shrink-0 text-emerald-500"
+              className="shrink-0 text-[#16A34A]"
             />
             {notice}
           </div>
         )}
 
         {/* SECURITY INFO */}
-        <section className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5 dark:border-indigo-500/20 dark:bg-indigo-500/5 sm:p-6">
+        <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-xs sm:p-6">
           <div className="flex gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm dark:bg-[#151922] dark:text-indigo-400">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#F5F7FA] text-[#1976D2] border border-[#E2E8F0]">
               <Shield size={20} />
             </div>
 
             <div>
-              <h2 className="font-semibold text-indigo-900 dark:text-indigo-300">
+              <h2 className="font-semibold text-[#111F33]">
                 Activity monitoring
               </h2>
 
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-indigo-700 dark:text-indigo-400">
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#64748B]">
                 The audit log provides a record of important
                 administrator actions including authentication,
                 candidate decisions, scheduling, team changes
@@ -618,15 +617,15 @@ export default function AuditLogPage() {
         </div>
 
         {/* FILTER SECTION */}
-        <section className="surface rounded-2xl border shadow-sm">
+        <section className="rounded-lg border border-[#E2E8F0] bg-white shadow-xs">
           <div className="p-5 sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <h2 className="font-semibold text-slate-900 dark:text-white">
+                <h2 className="font-semibold text-[#111F33]">
                   Activity History
                 </h2>
 
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                <p className="mt-1 text-sm text-[#64748B]">
                   {filteredLogs.length} event
                   {filteredLogs.length !== 1
                     ? "s"
@@ -640,7 +639,7 @@ export default function AuditLogPage() {
                 onClick={() =>
                   setShowFilters((value) => !value)
                 }
-                className="inline-flex items-center gap-2 self-start rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                className="inline-flex items-center gap-2 self-start rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm font-medium text-[#64748B] hover:bg-[#F5F7FA] transition-colors"
               >
                 <Filter size={16} />
                 Filters
@@ -659,7 +658,7 @@ export default function AuditLogPage() {
             <div className="relative mt-5">
               <Search
                 size={17}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]"
               />
 
               <input
@@ -669,7 +668,7 @@ export default function AuditLogPage() {
                   setSearch(event.target.value)
                 }
                 placeholder="Search by action, admin, target, description, IP address..."
-                className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 dark:border-white/10 dark:bg-[#10141d] dark:text-white"
+                className="w-full rounded-lg border border-[#E2E8F0] bg-white py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-[#1976D2] text-[#111F33]"
               />
             </div>
 
@@ -821,7 +820,7 @@ export default function AuditLogPage() {
               <button
                 type="button"
                 onClick={resetFilters}
-                className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                className="mt-4 rounded-lg bg-[#1976D2] px-4 py-2 text-sm font-medium text-white hover:bg-[#1565C0] transition-colors"
               >
                 Clear Filters
               </button>
@@ -830,19 +829,19 @@ export default function AuditLogPage() {
         </section>
 
         {/* ACTION INFORMATION */}
-        <section className="surface rounded-2xl border p-5 shadow-sm sm:p-6">
+        <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-xs sm:p-6">
           <div className="flex items-center gap-2">
             <Shield
               size={18}
-              className="text-indigo-600 dark:text-indigo-400"
+              className="text-[#1976D2]"
             />
 
-            <h2 className="font-semibold text-slate-900 dark:text-white">
+            <h2 className="font-semibold text-[#111F33]">
               Audited Operations
             </h2>
           </div>
 
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <p className="mt-1 text-sm text-[#64748B]">
             Important operations that should be recorded by
             the production backend.
           </p>
@@ -891,14 +890,14 @@ export default function AuditLogPage() {
         </section>
 
         {/* DEMO DATA CONTROL */}
-        <section className="rounded-2xl border border-amber-100 bg-amber-50 p-5 dark:border-amber-500/20 dark:bg-amber-500/5">
+        <section className="rounded-lg border border-[#D97706]/20 bg-[#D97706]/5 p-5">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="font-semibold text-amber-900 dark:text-amber-300">
+              <h2 className="font-semibold text-[#D97706]">
                 Frontend demo data
               </h2>
 
-              <p className="mt-1 text-xs leading-5 text-amber-700 dark:text-amber-400">
+              <p className="mt-1 text-xs leading-5 text-[#D97706]/90">
                 These audit events are currently stored in
                 frontend state. A production implementation
                 should store immutable audit records in the
@@ -910,7 +909,7 @@ export default function AuditLogPage() {
               type="button"
               onClick={clearDemoLogs}
               disabled={logs.length === 0}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-amber-200 bg-white px-4 py-2.5 text-sm font-medium text-amber-700 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-500/20 dark:bg-transparent dark:text-amber-400 dark:hover:bg-amber-500/10"
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-[#D97706]/30 bg-white px-4 py-2.5 text-sm font-medium text-[#D97706] hover:bg-[#D97706]/10 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
             >
               <Trash2 size={15} />
               Clear Demo Logs
@@ -944,18 +943,18 @@ function StatCard({
   value: number;
 }) {
   return (
-    <div className="surface rounded-2xl border p-5 shadow-sm">
+    <div className="rounded-lg border border-[#E2E8F0] bg-white p-4 shadow-xs">
       <div className="flex items-center justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#F5F7FA] text-[#1976D2] border border-[#E2E8F0]">
           {icon}
         </div>
 
-        <span className="text-2xl font-semibold text-slate-900 dark:text-white">
+        <span className="text-2xl font-semibold text-[#111F33]">
           {value}
         </span>
       </div>
 
-      <p className="mt-4 text-sm font-medium text-slate-500 dark:text-slate-400">
+      <p className="mt-4 text-sm font-medium text-[#64748B]">
         {label}
       </p>
     </div>
@@ -979,7 +978,7 @@ function FilterSelect({
 }) {
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-medium text-slate-500 dark:text-slate-400">
+      <label className="mb-1.5 block text-xs font-medium text-[#64748B]">
         {label}
       </label>
 
@@ -988,7 +987,7 @@ function FilterSelect({
         onChange={(event) =>
           onChange(event.target.value)
         }
-        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-[#10141d] dark:text-white"
+        className="w-full rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#1976D2] text-[#111F33]"
       >
         {options.map((option) => (
           <option key={option} value={option}>
@@ -1228,8 +1227,8 @@ function OperationCard({
   label: string;
 }) {
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-xs font-medium text-slate-600 dark:border-white/10 dark:text-slate-300">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400">
+    <div className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] p-3 text-xs font-medium text-[#64748B] bg-white">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#F5F7FA] text-[#1976D2] border border-[#E2E8F0]">
         {icon}
       </div>
 
@@ -1275,7 +1274,7 @@ function AuditDetailsModal({
 }) {
   return (
     <ModalBackdrop onClose={onClose}>
-      <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#151922]">
+      <div className="w-full max-w-lg overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-xl">
         <div className="flex items-start justify-between border-b border-slate-200 p-5 dark:border-white/10">
           <div className="flex items-center gap-3">
             <ActionIcon action={log.action} />

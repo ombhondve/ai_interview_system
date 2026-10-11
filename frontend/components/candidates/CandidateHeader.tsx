@@ -105,7 +105,7 @@ export function CandidateHeader({
         opacity: 1,
         y: 0,
       }}
-      className="surface rounded-2xl border p-6 shadow-subtle"
+      className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-xs dark:border-white/10 dark:bg-white/[0.03]"
     >
       <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
 

@@ -199,11 +199,11 @@ export default function AdminReportDetailPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen p-6 sm:p-8">
+      <main className="min-h-screen p-6 sm:p-8 bg-[#F5F7FA]">
         <div className="mx-auto max-w-5xl space-y-4">
-          <div className="h-6 w-32 animate-pulse rounded bg-slate-200 dark:bg-white/10" />
-          <div className="h-32 animate-pulse rounded-2xl bg-slate-100 dark:bg-white/5" />
-          <div className="h-64 animate-pulse rounded-2xl bg-slate-100 dark:bg-white/5" />
+          <div className="h-6 w-32 animate-pulse rounded bg-slate-200" />
+          <div className="h-32 animate-pulse rounded-lg border border-[#E2E8F0] bg-white" />
+          <div className="h-64 animate-pulse rounded-lg border border-[#E2E8F0] bg-white" />
         </div>
       </main>
     );
@@ -211,16 +211,16 @@ export default function AdminReportDetailPage() {
 
   if (!interview) {
     return (
-      <main className="min-h-screen p-6 sm:p-8">
-        <div className="mx-auto max-w-md rounded-2xl border p-8 text-center shadow-sm">
-          <AlertCircle className="mx-auto text-red-500" size={36} />
-          <h2 className="mt-4 text-lg font-semibold text-slate-900 dark:text-white">Report Not Found</h2>
-          <p className="mt-1 text-sm text-slate-500">
+      <main className="min-h-screen p-6 sm:p-8 bg-[#F5F7FA]">
+        <div className="mx-auto max-w-md rounded-lg border border-[#E2E8F0] bg-white p-8 text-center shadow-xs">
+          <AlertCircle className="mx-auto text-[#DC2626]" size={36} />
+          <h2 className="mt-4 text-lg font-semibold text-[#111F33]">Report Not Found</h2>
+          <p className="mt-1 text-sm text-[#64748B]">
             {notice?.text || "The requested interview report does not exist."}
           </p>
           <button
             onClick={() => router.push("/admin/reports")}
-            className="mt-5 inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-medium text-white hover:bg-indigo-700"
+            className="mt-5 inline-flex items-center gap-1.5 rounded-lg bg-[#1976D2] px-4 py-2 text-xs font-medium text-white hover:bg-[#1565C0] transition-colors"
           >
             <ArrowLeft size={14} /> Back to Reports
           </button>
@@ -246,24 +246,21 @@ export default function AdminReportDetailPage() {
   const candidateIntroTurn = interview.transcript.find(
     (t) => t.speaker === "CANDIDATE" && (t.section === "OPENING" || t.section === "PRECHECK")
   );
-  const projectUnderstandingTurn = interview.transcript.find(
-    (t) => t.speaker === "CANDIDATE" && (t.section === "PROJECT_CONFIRMATION" || t.section === "PROJECT_UNDERSTANDING")
-  );
 
   return (
-    <main className="min-h-screen pb-16">
+    <main className="min-h-screen bg-[#F5F7FA] pb-16">
       <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6 lg:p-8">
         {/* Top Navigation */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Link
               href="/admin/reports"
-              className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-indigo-600 dark:text-slate-400"
+              className="inline-flex items-center gap-1 text-sm text-[#64748B] hover:text-[#1976D2] transition-colors"
             >
               <ArrowLeft size={16} /> Reports
             </Link>
-            <span className="text-slate-300">/</span>
-            <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+            <span className="text-[#E2E8F0]">/</span>
+            <span className="text-sm font-medium text-[#111F33]">
               {candidate?.name || "Candidate Report"}
             </span>
           </div>
@@ -271,17 +268,17 @@ export default function AdminReportDetailPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => void loadReport()}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-medium text-[#64748B] hover:bg-[#F5F7FA] transition-colors"
             >
               <RefreshCw size={13} className={busy ? "animate-spin" : ""} /> Refresh
             </button>
             <span
               className={`rounded-full px-3 py-1 text-xs font-semibold ${
                 interview.adminDecision?.status && interview.adminDecision.status !== "pending"
-                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
+                  ? "bg-[#16A34A]/10 text-[#16A34A] border border-[#16A34A]/30"
                   : analysis
-                  ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
-                  : "bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-300"
+                  ? "bg-[#D97706]/10 text-[#D97706] border border-[#D97706]/30"
+                  : "bg-[#F5F7FA] text-[#64748B] border border-[#E2E8F0]"
               }`}
             >
               {interview.adminDecision?.status && interview.adminDecision.status !== "pending"
@@ -295,10 +292,10 @@ export default function AdminReportDetailPage() {
 
         {notice && (
           <div
-            className={`rounded-xl border p-4 text-sm ${
+            className={`rounded-lg border p-4 text-sm ${
               notice.type === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300"
-                : "border-red-200 bg-red-50 text-red-800 dark:border-red-500/20 dark:bg-red-500/10 dark:text-red-300"
+                ? "border-[#16A34A]/30 bg-[#16A34A]/10 text-[#16A34A]"
+                : "border-[#DC2626]/30 bg-[#DC2626]/10 text-[#DC2626]"
             }`}
           >
             {notice.text}
@@ -306,11 +303,11 @@ export default function AdminReportDetailPage() {
         )}
 
         {/* 1. CANDIDATE INFORMATION & INTERVIEW SUMMARY */}
-        <section className="surface rounded-2xl border p-6 shadow-sm">
+        <section className="rounded-lg border border-[#E2E8F0] bg-white p-6 shadow-xs">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
             <div>
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-lg font-bold text-white shadow-sm">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-[#111F33] text-base font-bold text-white shadow-xs">
                   {candidate?.name
                     ? candidate.name
                         .split(/\s+/)
@@ -321,10 +318,10 @@ export default function AdminReportDetailPage() {
                     : "NA"}
                 </div>
                 <div>
-                  <h1 className="text-xl font-bold text-slate-900 dark:text-white">
+                  <h1 className="text-xl font-bold text-[#111F33]">
                     {candidate?.name || "Unknown Candidate"}
                   </h1>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-[#64748B]">
                     {candidate?.email} · {candidate?.role || "Developer"}
                   </p>
                 </div>
@@ -332,26 +329,26 @@ export default function AdminReportDetailPage() {
             </div>
 
             {analysis && (
-              <div className="flex items-center gap-4 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 dark:border-indigo-500/10 dark:bg-indigo-500/5">
+              <div className="flex items-center gap-4 rounded-lg border border-[#E2E8F0] bg-[#F5F7FA] p-4">
                 <div className="text-right">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[#1976D2]">
                     AI Evaluation Score
                   </p>
-                  <p className="text-3xl font-extrabold text-slate-900 dark:text-white">
+                  <p className="text-3xl font-extrabold text-[#111F33]">
                     {analysis.overallScore}
-                    <span className="text-sm font-normal text-slate-500">/100</span>
+                    <span className="text-sm font-normal text-[#64748B]">/100</span>
                   </p>
                 </div>
-                <div className="h-10 w-[1px] bg-indigo-200 dark:bg-white/10" />
+                <div className="h-10 w-[1px] bg-[#E2E8F0]" />
                 <div>
-                  <p className="text-xs text-slate-500">AI Recommendation</p>
+                  <p className="text-xs text-[#64748B]">AI Recommendation</p>
                   <span
                     className={`inline-block mt-0.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                       analysis.recommendation === "STRONG"
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
+                        ? "bg-[#16A34A]/10 text-[#16A34A] border border-[#16A34A]/30"
                         : analysis.recommendation === "WEAK"
-                        ? "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
-                        : "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300"
+                        ? "bg-[#DC2626]/10 text-[#DC2626] border border-[#DC2626]/30"
+                        : "bg-[#D97706]/10 text-[#D97706] border border-[#D97706]/30"
                     }`}
                   >
                     {analysis.recommendation === "STRONG"
@@ -365,28 +362,28 @@ export default function AdminReportDetailPage() {
             )}
           </div>
 
-          <div className="mt-6 grid grid-cols-2 gap-4 border-t border-slate-100 pt-4 text-xs sm:grid-cols-4 dark:border-white/5">
+          <div className="mt-6 grid grid-cols-2 gap-4 border-t border-[#E2E8F0] pt-4 text-xs sm:grid-cols-4">
             <div>
-              <span className="text-slate-400">Candidate ID</span>
-              <p className="mt-0.5 font-medium text-slate-700 dark:text-slate-300 font-mono">
+              <span className="text-[#64748B]">Candidate ID</span>
+              <p className="mt-0.5 font-medium text-[#111F33] font-mono">
                 {candidate?._id || "—"}
               </p>
             </div>
             <div>
-              <span className="text-slate-400">Interview ID</span>
-              <p className="mt-0.5 font-medium text-slate-700 dark:text-slate-300 font-mono">
+              <span className="text-[#64748B]">Interview ID</span>
+              <p className="mt-0.5 font-medium text-[#111F33] font-mono">
                 {interview._id}
               </p>
             </div>
             <div>
-              <span className="text-slate-400">Interview Date</span>
-              <p className="mt-0.5 font-medium text-slate-700 dark:text-slate-300">
+              <span className="text-[#64748B]">Interview Date</span>
+              <p className="mt-0.5 font-medium text-[#111F33]">
                 {interview.scheduledAt ? new Date(interview.scheduledAt).toLocaleString() : "—"}
               </p>
             </div>
             <div>
-              <span className="text-slate-400">Interview Duration</span>
-              <p className="mt-0.5 font-medium text-slate-700 dark:text-slate-300">
+              <span className="text-[#64748B]">Interview Duration</span>
+              <p className="mt-0.5 font-medium text-[#111F33]">
                 {durationText}
               </p>
             </div>
@@ -395,27 +392,27 @@ export default function AdminReportDetailPage() {
 
         {/* 2. PROJECT OVERVIEW & CANDIDATE INTRODUCTION */}
         <section className="grid grid-cols-1 gap-6 md:grid-cols-2">
-          <div className="surface rounded-2xl border p-5 shadow-sm space-y-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-white">
-              <Briefcase size={16} className="text-indigo-600" />
+          <div className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-xs space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#111F33]">
+              <Briefcase size={16} className="text-[#1976D2]" />
               Assigned Project & Tech Stack
             </div>
-            <p className="text-base font-semibold text-slate-900 dark:text-white">
+            <p className="text-base font-semibold text-[#111F33]">
               {project?.title || "Assigned Project"}
             </p>
-            <div className="text-xs space-y-1.5 text-slate-600 dark:text-slate-400">
+            <div className="text-xs space-y-1.5 text-[#64748B]">
               <p>
-                <b>Technologies Claimed / Stack:</b>{" "}
+                <b className="text-[#111F33]">Technologies Claimed / Stack:</b>{" "}
                 {project?.technologies?.length ? project.technologies.join(", ") : "Not listed"}
               </p>
               <p>
-                <b>Repository URL:</b>{" "}
+                <b className="text-[#111F33]">Repository URL:</b>{" "}
                 {submission?.url ? (
                   <a
                     href={submission.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-indigo-600 underline"
+                    className="text-[#1976D2] underline hover:text-[#1565C0]"
                   >
                     {submission.url}
                   </a>
@@ -424,37 +421,37 @@ export default function AdminReportDetailPage() {
                 )}
               </p>
               <p>
-                <b>Verification Status:</b>{" "}
-                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                <b className="text-[#111F33]">Verification Status:</b>{" "}
+                <span className="font-semibold text-[#111F33]">
                   {verification?.verificationStatus || submission?.aiVerificationStatus || "Unverified"}
                 </span>
               </p>
               {verification?.summary && (
-                <p className="mt-1 rounded-lg bg-slate-50 p-2 text-slate-600 dark:bg-white/[0.02]">
+                <p className="mt-1 rounded-md bg-[#F5F7FA] border border-[#E2E8F0] p-2 text-[#64748B]">
                   {verification.summary}
                 </p>
               )}
             </div>
           </div>
 
-          <div className="surface rounded-2xl border p-5 shadow-sm space-y-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-white">
-              <User size={16} className="text-indigo-600" />
+          <div className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-xs space-y-3">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#111F33]">
+              <User size={16} className="text-[#1976D2]" />
               Candidate Introduction & Background
             </div>
             {candidateIntroTurn ? (
-              <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-700 leading-relaxed dark:bg-white/[0.02] dark:text-slate-300">
-                <span className="font-semibold text-slate-900 dark:text-white">Candidate: </span>
+              <div className="rounded-md bg-[#F5F7FA] border border-[#E2E8F0] p-3 text-xs text-[#111F33] leading-relaxed">
+                <span className="font-semibold text-[#111F33]">Candidate: </span>
                 {candidateIntroTurn.text}
               </div>
             ) : (
-              <p className="text-xs italic text-slate-400">
+              <p className="text-xs italic text-[#64748B]">
                 Candidate self-introduction recorded during early turns.
               </p>
             )}
 
-            <div className="pt-2 border-t border-slate-100 dark:border-white/5 text-xs text-slate-600 dark:text-slate-400">
-              <b>Resume Skills:</b> {candidate?.skills?.join(", ") || "Not provided"}
+            <div className="pt-2 border-t border-[#E2E8F0] text-xs text-[#64748B]">
+              <b className="text-[#111F33]">Resume Skills:</b> {candidate?.skills?.join(", ") || "Not provided"}
             </div>
           </div>
         </section>
@@ -462,7 +459,7 @@ export default function AdminReportDetailPage() {
         {/* 3. FOUR CORE EVALUATION SCORES */}
         {analysis ? (
           <section className="space-y-4">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+            <h2 className="text-lg font-bold text-[#111F33]">
               Core Competency Scores & Assessments
             </h2>
 
@@ -490,24 +487,24 @@ export default function AdminReportDetailPage() {
             </div>
 
             {/* AI Executive Summary */}
-            <div className="surface rounded-2xl border p-5 shadow-sm space-y-2">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">
+            <div className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-xs space-y-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-[#1976D2]">
                 AI Executive Summary
               </h3>
-              <p className="text-sm leading-relaxed text-slate-700 dark:text-slate-300">
+              <p className="text-sm leading-relaxed text-[#64748B]">
                 {analysis.summary || "No executive summary provided."}
               </p>
             </div>
           </section>
         ) : (
-          <section className="surface rounded-2xl border p-8 text-center shadow-sm">
-            <HelpCircle className="mx-auto text-amber-500" size={36} />
-            <h3 className="mt-3 text-base font-semibold text-slate-900 dark:text-white">
+          <section className="rounded-lg border border-[#E2E8F0] bg-white p-8 text-center shadow-xs">
+            <HelpCircle className="mx-auto text-[#D97706]" size={36} />
+            <h3 className="mt-3 text-base font-semibold text-[#111F33]">
               {interview.status === "ANALYSIS_PENDING" || interview.status === "COMPLETING"
                 ? "AI Report Generation in Progress"
                 : "AI Evaluation Not Yet Generated"}
             </h3>
-            <p className="mt-1 text-xs text-slate-500 max-w-md mx-auto">
+            <p className="mt-1 text-xs text-[#64748B] max-w-md mx-auto">
               {interview.analysisError
                 ? `Error: ${interview.analysisError}`
                 : "The interview transcript is ready. Click below to generate the structured AI evaluation and report."}
@@ -515,7 +512,7 @@ export default function AdminReportDetailPage() {
             <button
               onClick={() => void handleRetryAnalysis()}
               disabled={busy}
-              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-medium text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-50"
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#1976D2] px-4 py-2 text-xs font-medium text-white shadow-xs transition hover:bg-[#1565C0] disabled:opacity-50"
             >
               <RefreshCw size={14} className={busy ? "animate-spin" : ""} />
               Generate / Retry AI Report
@@ -526,16 +523,16 @@ export default function AdminReportDetailPage() {
         {/* 4. STRENGTHS, WEAKNESSES, KNOWLEDGE GAPS & PROJECT OWNERSHIP */}
         <section className="grid grid-cols-1 gap-6 md:grid-cols-2">
           {/* Strengths & Demonstrated Areas */}
-          <div className="surface rounded-2xl border p-5 shadow-sm space-y-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+          <div className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-xs space-y-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#16A34A]">
               <TrendingUp size={18} />
               Demonstrated Strengths
             </div>
             {analysis?.strengths?.length ? (
-              <ul className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
+              <ul className="space-y-2 text-xs text-[#64748B]">
                 {analysis.strengths.map((str, i) => (
                   <li key={i} className="flex items-start gap-2">
-                    <CheckCircle size={14} className="mt-0.5 shrink-0 text-emerald-600" />
+                    <CheckCircle size={14} className="mt-0.5 shrink-0 text-[#16A34A]" />
                     <span>{str}</span>
                   </li>
                 ))}
@@ -545,21 +542,21 @@ export default function AdminReportDetailPage() {
                 {interview.candidateStrengths.map((s, i) => (
                   <span
                     key={i}
-                    className="rounded-lg bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                    className="rounded-md bg-[#16A34A]/10 border border-[#16A34A]/20 px-2.5 py-1 text-xs font-medium text-[#16A34A]"
                   >
                     {s}
                   </span>
                 ))}
               </div>
             ) : (
-              <p className="text-xs italic text-slate-400">Not sufficiently demonstrated</p>
+              <p className="text-xs italic text-[#64748B]">Not sufficiently demonstrated</p>
             )}
 
-            <div className="border-t border-slate-100 pt-3 dark:border-white/5">
-              <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+            <div className="border-t border-[#E2E8F0] pt-3">
+              <span className="text-xs font-semibold text-[#111F33]">
                 Technical Areas Demonstrated:
               </span>
-              <p className="mt-1 text-xs text-slate-700 dark:text-slate-300">
+              <p className="mt-1 text-xs text-[#64748B]">
                 {interview.technicalAreas?.length
                   ? interview.technicalAreas.join(", ")
                   : "Not sufficiently demonstrated"}
@@ -568,16 +565,16 @@ export default function AdminReportDetailPage() {
           </div>
 
           {/* Weaknesses & Knowledge Gaps */}
-          <div className="surface rounded-2xl border p-5 shadow-sm space-y-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-amber-700 dark:text-amber-400">
+          <div className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-xs space-y-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#D97706]">
               <TrendingDown size={18} />
               Weaknesses & Knowledge Gaps
             </div>
             {analysis?.areasForImprovement?.length ? (
-              <ul className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
+              <ul className="space-y-2 text-xs text-[#64748B]">
                 {analysis.areasForImprovement.map((area, i) => (
                   <li key={i} className="flex items-start gap-2">
-                    <XCircle size={14} className="mt-0.5 shrink-0 text-amber-600" />
+                    <XCircle size={14} className="mt-0.5 shrink-0 text-[#D97706]" />
                     <span>{area}</span>
                   </li>
                 ))}
@@ -587,21 +584,21 @@ export default function AdminReportDetailPage() {
                 {interview.candidateWeaknesses.map((w, i) => (
                   <span
                     key={i}
-                    className="rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"
+                    className="rounded-md bg-[#D97706]/10 border border-[#D97706]/20 px-2.5 py-1 text-xs font-medium text-[#D97706]"
                   >
                     {w}
                   </span>
                 ))}
               </div>
             ) : (
-              <p className="text-xs italic text-slate-400">Not sufficiently demonstrated</p>
+              <p className="text-xs italic text-[#64748B]">Not sufficiently demonstrated</p>
             )}
 
-            <div className="border-t border-slate-100 pt-3 dark:border-white/5">
-              <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+            <div className="border-t border-[#E2E8F0] pt-3">
+              <span className="text-xs font-semibold text-[#111F33]">
                 Identified Knowledge Gaps:
               </span>
-              <p className="mt-1 text-xs text-slate-700 dark:text-slate-300">
+              <p className="mt-1 text-xs text-[#64748B]">
                 {interview.knowledgeGaps?.length
                   ? interview.knowledgeGaps.join(", ")
                   : "None noted during questioning"}
@@ -611,19 +608,19 @@ export default function AdminReportDetailPage() {
         </section>
 
         {/* 5. INTERVIEW RECORDING (CLOUDINARY) */}
-        <section className="surface rounded-2xl border p-5 shadow-sm space-y-3">
+        <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-white">
-              <Volume2 size={17} className="text-indigo-600" />
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#111F33]">
+              <Volume2 size={17} className="text-[#1976D2]" />
               Master Interview Audio Recording
             </div>
             <span
               className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${
                 interview.recordingStatus === "UPLOADED"
-                  ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
+                  ? "bg-[#16A34A]/10 text-[#16A34A] border border-[#16A34A]/30"
                   : interview.recordingStatus === "UPLOAD_FAILED"
-                  ? "bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-300"
-                  : "bg-slate-100 text-slate-700 dark:bg-white/10 dark:text-slate-300"
+                  ? "bg-[#DC2626]/10 text-[#DC2626] border border-[#DC2626]/30"
+                  : "bg-[#F5F7FA] text-[#64748B] border border-[#E2E8F0]"
               }`}
             >
               {interview.recordingStatus === "UPLOADED"
@@ -635,22 +632,22 @@ export default function AdminReportDetailPage() {
           </div>
 
           {interview.recordingUrl ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/[0.02] space-y-2">
+            <div className="rounded-lg border border-[#E2E8F0] bg-[#F5F7FA] p-4 space-y-2">
               <audio controls src={interview.recordingUrl} className="w-full h-10" />
-              <div className="flex justify-between items-center text-xs text-slate-500">
+              <div className="flex justify-between items-center text-xs text-[#64748B]">
                 <span>Duration: {Math.round(interview.recordingDuration || 0)}s</span>
                 <a
                   href={interview.recordingUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-indigo-600 hover:underline"
+                  className="text-[#1976D2] hover:underline"
                 >
                   Open Audio in New Tab ↗
                 </a>
               </div>
             </div>
           ) : (
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-[#64748B]">
               {interview.recordingError
                 ? `Recording error: ${interview.recordingError}`
                 : "No cloud recording uploaded. Master audio file preserved locally or recording was disabled."}
@@ -659,42 +656,42 @@ export default function AdminReportDetailPage() {
         </section>
 
         {/* 6. FULL INTERVIEW TRANSCRIPT */}
-        <section className="surface rounded-2xl border p-5 shadow-sm space-y-4">
+        <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-white">
-              <MessageSquare size={17} className="text-indigo-600" />
+            <div className="flex items-center gap-2 text-sm font-semibold text-[#111F33]">
+              <MessageSquare size={17} className="text-[#1976D2]" />
               Complete Synchronized Interview Transcript ({interview.transcript.length} Turns)
             </div>
           </div>
 
           <div className="max-h-96 space-y-2.5 overflow-y-auto pr-1">
             {interview.transcript.length === 0 ? (
-              <p className="p-4 text-center text-xs text-slate-400">
+              <p className="p-4 text-center text-xs text-[#64748B]">
                 No transcript turns recorded for this interview session.
               </p>
             ) : (
               interview.transcript.map((turn, i) => (
                 <div
                   key={i}
-                  className={`rounded-xl p-3 text-xs leading-relaxed ${
+                  className={`rounded-lg p-3 text-xs leading-relaxed ${
                     turn.speaker === "AI"
-                      ? "border border-indigo-100 bg-indigo-50/40 text-slate-800 dark:border-indigo-500/10 dark:bg-indigo-500/5 dark:text-slate-200"
+                      ? "border border-[#1976D2]/20 bg-[#1976D2]/5 text-[#111F33]"
                       : turn.speaker === "CANDIDATE"
-                      ? "border border-slate-200 bg-white text-slate-900 dark:border-white/10 dark:bg-white/[0.03] dark:text-slate-100"
-                      : "bg-slate-100 text-slate-500 dark:bg-white/5"
+                      ? "border border-[#E2E8F0] bg-white text-[#111F33]"
+                      : "bg-[#F5F7FA] text-[#64748B] border border-[#E2E8F0]"
                   }`}
                 >
                   <div className="flex items-center justify-between font-semibold">
                     <span
                       className={
                         turn.speaker === "AI"
-                          ? "text-indigo-600 dark:text-indigo-400"
-                          : "text-emerald-700 dark:text-emerald-400"
+                          ? "text-[#1976D2]"
+                          : "text-[#16A34A]"
                       }
                     >
                       {turn.speaker === "AI" ? "AI Interviewer" : candidate?.name || "Candidate"}
                     </span>
-                    <span className="text-[10px] text-slate-400 font-normal">
+                    <span className="text-[10px] text-[#64748B] font-normal">
                       {turn.section || "QUESTIONING"} · {new Date(turn.timestamp).toLocaleTimeString()}
                     </span>
                   </div>
@@ -706,25 +703,25 @@ export default function AdminReportDetailPage() {
         </section>
 
         {/* 7. FINAL ADMIN DECISION (HUMAN DECISION ONLY) */}
-        <section className="surface rounded-2xl border p-6 shadow-sm space-y-4">
+        <section className="rounded-lg border border-[#E2E8F0] bg-white p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+              <h2 className="text-base font-bold text-[#111F33]">
                 Final Admin Hiring Decision
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-[#64748B]">
                 The AI provides an advisory assessment. The final hiring decision is made by the Admin.
               </p>
             </div>
             {interview.adminDecision?.status && interview.adminDecision.status !== "pending" && (
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 border border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400">
+              <span className="rounded-full bg-[#16A34A]/10 px-3 py-1 text-xs font-semibold text-[#16A34A] border border-[#16A34A]/30">
                 Current: {interview.adminDecision.status.toUpperCase()}
               </span>
             )}
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-700 dark:text-slate-300">
+            <label className="block text-xs font-medium text-[#111F33]">
               Admin Decision Notes / Rationale
             </label>
             <textarea
@@ -733,7 +730,7 @@ export default function AdminReportDetailPage() {
               placeholder="Add review feedback, justification, or interview follow-up notes..."
               rows={3}
               maxLength={2000}
-              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white p-3 text-xs outline-none focus:border-indigo-500 dark:border-white/10 dark:bg-[#10141d]"
+              className="mt-1.5 w-full rounded-lg border border-[#E2E8F0] bg-white p-3 text-xs outline-none focus:border-[#1976D2] text-[#111F33] transition-colors"
             />
           </div>
 
@@ -741,7 +738,7 @@ export default function AdminReportDetailPage() {
             <button
               onClick={() => void handleAdminDecision("selected")}
               disabled={busy}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#16A34A] px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition hover:bg-[#15803D] disabled:opacity-50"
             >
               <CheckCircle size={15} /> Select Candidate (Hire)
             </button>
@@ -749,7 +746,7 @@ export default function AdminReportDetailPage() {
             <button
               onClick={() => void handleAdminDecision("rejected")}
               disabled={busy}
-              className="inline-flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#DC2626] px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition hover:bg-[#B91C1C] disabled:opacity-50"
             >
               <XCircle size={15} /> Reject Candidate
             </button>
@@ -757,14 +754,14 @@ export default function AdminReportDetailPage() {
             <button
               onClick={() => void handleAdminDecision("another_interview")}
               disabled={busy}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+              className="inline-flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white px-4 py-2.5 text-xs font-semibold text-[#111F33] transition hover:bg-[#F5F7FA] disabled:opacity-50"
             >
               <Clock size={15} /> Hold / Request Another Interview
             </button>
           </div>
 
           {interview.adminDecision?.decidedAt && (
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-[#64748B]">
               Decided on {new Date(interview.adminDecision.decidedAt).toLocaleString()}
               {interview.adminDecision.decidedBy ? ` by ${interview.adminDecision.decidedBy}` : ""}
             </p>
@@ -777,23 +774,23 @@ export default function AdminReportDetailPage() {
 
 function ScoreCard({ title, score, summary }: { title: string; score: number; summary: string }) {
   return (
-    <div className="surface rounded-2xl border p-4 shadow-sm flex flex-col justify-between">
+    <div className="rounded-lg border border-[#E2E8F0] bg-white p-4 shadow-xs flex flex-col justify-between">
       <div>
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-500">{title}</span>
+          <span className="text-xs font-semibold text-[#64748B]">{title}</span>
           <span
             className={`text-lg font-bold ${
               score >= 80
-                ? "text-emerald-600 dark:text-emerald-400"
+                ? "text-[#16A34A]"
                 : score >= 60
-                ? "text-amber-600 dark:text-amber-400"
-                : "text-red-600 dark:text-red-400"
+                ? "text-[#D97706]"
+                : "text-[#DC2626]"
             }`}
           >
             {score}/100
           </span>
         </div>
-        <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400 line-clamp-4">
+        <p className="mt-2 text-xs leading-relaxed text-[#64748B] line-clamp-4">
           {summary || "No specific feedback generated for this category."}
         </p>
       </div>
