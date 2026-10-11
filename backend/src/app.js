@@ -18,6 +18,8 @@ import googleCalendarOAuthRoutes from "./modules/calendar/googleCalendar.oauth.r
 import interviewSessionRoutes from "./modules/interview/interview.routes.js";
 import interviewVoiceRoutes from "./modules/interview/interview.voice.routes.js";
 import botControlRoutes from "./modules/botControl/botControl.routes.js";
+import notificationRoutes from "./modules/notifications/notification.routes.js";
+import teamManagementRoutes from "./modules/admin/teamManagement.routes.js";
 import cookieParser from "./middleware/cookieParser.middleware.js";
 import { initializeGoogleOAuth } from "./config/googleOAuth.js";
 import connectDatabase from "./config/database.js";
@@ -367,6 +369,24 @@ app.use(
   calendarRoutes
 );
 app.use("/api/admin/google-calendar", googleCalendarOAuthRoutes);
+
+// =====================================================
+// NOTIFICATIONS
+// =====================================================
+
+app.use(
+  "/api/notifications",
+  notificationRoutes
+);
+
+// =====================================================
+// ADMIN TEAM MANAGEMENT
+// =====================================================
+
+app.use(
+  "/api/admin/team",
+  teamManagementRoutes
+);
 
 // =====================================================
 // 404 HANDLER

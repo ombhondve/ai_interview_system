@@ -10,6 +10,7 @@ import logger from "../../utils/logger.js";
 import { analyzeAndPersist } from "./interview.analysis.persistence.js";
 import { isProjectVerified } from "../projects/deadline.service.js";
 import { requireInternalServiceSession } from "./interview.voice.auth.js";
+import { notifyAdmins } from "../notifications/notification.service.js";
 
 const router = express.Router();
 const answerAttempts = new Map();
@@ -88,6 +89,15 @@ router.post("/:interviewId/admin-decision", requireAuth, requireRole("superadmin
   if (!input.ok) return res.status(400).json({ success: false, message: input.message });
   try {
     const interview = await answerService.saveAdminDecision(req.params.interviewId, { ...input, decidedBy: req.user.id });
+    notifyAdmins({
+      type: "evaluation_completed",
+      title: "Hiring Decision Finalized",
+      message: `A final hiring decision was submitted for interview ${interview._id}.`,
+      entityType: "interview",
+      entityId: String(interview._id),
+      actionUrl: "/admin/interviews",
+      dedupKeyPrefix: `eval_decision_${interview._id}`,
+    }).catch((err) => logger.error("Notification dispatch error:", err.message));
     return res.json({ success: true, interview });
   } catch (error) { return handleError(res, error); }
 });
@@ -260,6 +270,16 @@ router.post("/internal/:interviewId/complete", validInterviewId, async (req, res
     const waitForAnalysis = Boolean(req.body?.waitForAnalysis);
     const reason = req.body?.reason ? String(req.body.reason).trim() : null;
     const updated = await answerService.endInterview(interview._id, null, { waitForAnalysis, reason });
+
+    notifyAdmins({
+      type: "interview_completed",
+      title: "Interview Completed",
+      message: `AI interview ended for interview session ${interview._id}.`,
+      entityType: "interview",
+      entityId: String(interview._id),
+      actionUrl: "/admin/interviews",
+      dedupKeyPrefix: `interview_completed_${interview._id}`,
+    }).catch((err) => logger.error("Notification dispatch error:", err.message));
 
     return res.json({
       success: true,

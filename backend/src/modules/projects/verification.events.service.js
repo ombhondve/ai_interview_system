@@ -1,4 +1,5 @@
 import verificationTracker from "./verification.tracker.service.js";
+import { notifyAdmins } from "../notifications/notification.service.js";
 import logger from "../../utils/logger.js";
 
 /**
@@ -206,9 +207,21 @@ class NotificationEventHandler {
       }
 
       if (message) {
-        await this.notificationService.sendNotification(candidateId, notificationType, message);
+        if (this.notificationService && typeof this.notificationService.sendNotification === "function") {
+          await this.notificationService.sendNotification(candidateId, notificationType, message);
+        }
         logger.debug(`Notification sent for ${status} to candidate ${candidateId}`);
       }
+
+      notifyAdmins({
+        type: data?.requiresAdminReview ? "verification_review_required" : "project_verified",
+        title: data?.requiresAdminReview ? "Project Requires Review" : "Project Verification Completed",
+        message: `Candidate ${candidateId} project verification: ${status}`,
+        entityType: "project",
+        entityId: String(candidateId),
+        actionUrl: "/admin/projects",
+        dedupKeyPrefix: `verif_${candidateId}_${status}`,
+      }).catch((err) => logger.debug("Admin verification notification error:", err?.message));
 
     } catch (error) {
       logger.error(`Failed to send notification for candidate ${candidateId}:`, error);

@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import Candidate from "./candidate.model.js";
+import { notifyAdmins } from "../notifications/notification.service.js";
 
 import {
     getCandidates,
@@ -294,9 +295,16 @@ export async function approveCandidateController(
         );
 
 
-        // =================================================
-        // SUCCESS RESPONSE
-        // =================================================
+        // Dispatch notification
+        notifyAdmins({
+            type: "candidate_status_updated",
+            title: "Candidate Approved",
+            message: `${updatedCandidate.name || "Candidate"} was approved by an administrator.`,
+            entityType: "candidate",
+            entityId: String(updatedCandidate._id),
+            actionUrl: `/admin/candidates/${updatedCandidate._id}`,
+            dedupKeyPrefix: `cand_approved_${updatedCandidate._id}`,
+        }).catch((err) => console.error("Notification error:", err.message));
 
         return res.status(200).json({
 
@@ -405,9 +413,15 @@ export async function rejectCandidateController(
         }
 
 
-        // =================================================
-        // SUCCESS
-        // =================================================
+        notifyAdmins({
+            type: "candidate_status_updated",
+            title: "Candidate Rejected",
+            message: `${candidate.name || "Candidate"} was rejected: ${reason}`,
+            entityType: "candidate",
+            entityId: String(candidate._id),
+            actionUrl: `/admin/candidates/${candidate._id}`,
+            dedupKeyPrefix: `cand_rejected_${candidate._id}`,
+        }).catch((err) => console.error("Notification error:", err.message));
 
         return res.status(200).json({
 
@@ -618,9 +632,15 @@ export async function assignProjectToCandidateController(
         );
 
 
-        // =================================================
-        // SUCCESS
-        // =================================================
+        notifyAdmins({
+            type: "project_assigned",
+            title: "Project Assigned",
+            message: `Project assigned to candidate ${updatedCandidate.name || "Candidate"}.`,
+            entityType: "project",
+            entityId: String(projectId),
+            actionUrl: `/admin/projects/${projectId}`,
+            dedupKeyPrefix: `proj_assign_${candidateId}_${projectId}`,
+        }).catch((err) => console.error("Notification error:", err.message));
 
         return res.status(200).json({
 

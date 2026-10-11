@@ -26,6 +26,18 @@ const adminSchema = new mongoose.Schema(
             enum: ["superadmin", "recruiter"],
             required: true,
             default: "recruiter"
+        },
+
+        status: {
+            type: String,
+            enum: ["active", "inactive"],
+            default: "active",
+            index: true
+        },
+
+        lastLogin: {
+            type: Date,
+            default: null
         }
     },
     {

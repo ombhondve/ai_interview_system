@@ -27,12 +27,10 @@ import { Button } from "@/components/ui/Button";
 const navItems = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
   { label: "Candidates", href: "/admin/candidates", icon: Users },
-  { label: "Batches", href: "/admin/batches", icon: Layers },
-  { label: "Interviews", href: "/admin/interviews", icon: Video },
-  { label: "Schedule", href: "/admin/schedule", icon: CalendarDays },
   { label: "Projects", href: "/admin/projects", icon: FolderKanban },
+  { label: "Schedule", href: "/admin/schedule", icon: CalendarDays },
+  { label: "Interviews", href: "/admin/interviews", icon: Video },
   { label: "Reports", href: "/admin/reports", icon: FileBarChart },
-  { label: "Analytics", href: "/admin/analytics", icon: BarChart3 },
   { label: "Notifications", href: "/admin/notifications", icon: Bell },
 ];
 

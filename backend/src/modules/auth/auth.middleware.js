@@ -1,4 +1,6 @@
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
+import Admin from "../admin/admin.model.js";
 
 /**
  * Authentication middleware for verifying JWT tokens
@@ -10,14 +12,15 @@ function getSecret() {
   return secret;
 }
 
-
 /**
  * Middleware to require authentication
- * Verifies JWT token from cookies
+ * Verifies JWT token from Authorization header or cookies
  */
-export const requireAuth = (req, res, next) => {
+export const requireAuth = async (req, res, next) => {
   try {
-    const token = req.cookies?.recruitai_admin;
+    const authHeader = req.headers?.authorization;
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    const token = bearerToken || req.cookies?.recruitai_admin;
     
     if (!token) {
       return res.status(401).json({ 
@@ -39,6 +42,21 @@ export const requireAuth = (req, res, next) => {
     const allowedRoles = ["superadmin", "recruiter", "admin"];
     if (!allowedRoles.includes(payload.role)) {
       return res.status(403).json({ success: false, message: "Insufficient permissions." });
+    }
+
+    // If this is a persisted DB admin, check if account is active
+    if (mongoose.Types.ObjectId.isValid(payload.adminId)) {
+      try {
+        const adminDoc = await Admin.findById(payload.adminId).select("status role").lean();
+        if (adminDoc && adminDoc.status === "inactive") {
+          return res.status(403).json({
+            success: false,
+            message: "Your account has been deactivated. Please contact an administrator.",
+          });
+        }
+      } catch (dbErr) {
+        // Continue if DB check fails transiently
+      }
     }
 
     req.user = {
@@ -100,7 +118,9 @@ export const requireRole = (...allowedRoles) => {
  */
 export const optionalAuth = (req, res, next) => {
   try {
-    const token = req.cookies?.recruitai_admin;
+    const authHeader = req.headers?.authorization;
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    const token = bearerToken || req.cookies?.recruitai_admin;
     
     if (token) {
       const payload = jwt.verify(token, getSecret());

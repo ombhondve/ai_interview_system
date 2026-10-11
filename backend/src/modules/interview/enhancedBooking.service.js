@@ -4,6 +4,7 @@ import Candidate from "../candidate/candidate.model.js";
 import enhancedSlotService from "../scheduling/enhancedSlot.service.js";
 import calendarIntegrationService from "./calendar.integration.service.js";
 import interviewNotificationService from "./notification.service.js";
+import { notifyAdmins } from "../notifications/notification.service.js";
 import logger from "../../utils/logger.js";
 import { v4 as uuidv4 } from "uuid";
 
@@ -198,6 +199,16 @@ class EnhancedBookingService {
           candidate
         );
         logger.info(`Booking confirmation notification sent for interview ${populatedInterview._id}`);
+
+        notifyAdmins({
+          type: "interview_scheduled",
+          title: "Interview Scheduled",
+          message: `Interview booked for candidate ${candidate.name || candidate.email}.`,
+          entityType: "interview",
+          entityId: String(populatedInterview._id),
+          actionUrl: "/admin/interviews",
+          dedupKeyPrefix: `booking_${populatedInterview._id}`,
+        }).catch((err) => logger.error("Admin booking notification error:", err));
       } catch (notificationError) {
         // Don't fail booking if notification fails
         logger.error(`Booking notification error for interview ${populatedInterview._id}:`, notificationError);
@@ -615,6 +626,16 @@ class EnhancedBookingService {
             reason
           );
           logger.info(`Rescheduling notification sent for interview ${interviewId}`);
+
+          notifyAdmins({
+            type: "interview_rescheduled",
+            title: "Interview Rescheduled",
+            message: `Interview rescheduled for candidate ${candidate.name || candidate.email}.`,
+            entityType: "interview",
+            entityId: String(interviewId),
+            actionUrl: "/admin/interviews",
+            dedupKeyPrefix: `rescheduled_${interviewId}_${Date.now()}`,
+          }).catch((err) => logger.error("Admin rescheduling notification error:", err));
         }
       } catch (notificationError) {
         logger.error(`Rescheduling notification error for interview ${interviewId}:`, notificationError);

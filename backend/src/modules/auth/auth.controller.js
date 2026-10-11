@@ -1,4 +1,7 @@
 import jwt from "jsonwebtoken";
+import bcrypt from "bcrypt";
+import mongoose from "mongoose";
+import Admin from "../admin/admin.model.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -14,7 +17,7 @@ function getCredentials() {
   const email = process.env.DEMO_ADMIN_EMAIL;
   const password = process.env.DEMO_ADMIN_PASSWORD;
   if (!email || !password) {
-    throw new Error("Admin login credentials are not configured.");
+    return null;
   }
   return { email: email.trim().toLowerCase(), password };
 }
@@ -30,8 +33,9 @@ function getAdmin() {
   return {
     id: process.env.DEMO_ADMIN_ID || "env-admin",
     name: process.env.DEMO_ADMIN_NAME || "Admin User",
-    email: credentials.email,
+    email: credentials?.email || "admin@recruitai.com",
     role: process.env.DEMO_ADMIN_ROLE || "superadmin",
+    status: "active",
     active: true,
   };
 }
@@ -40,25 +44,70 @@ export async function login(req, res) {
   try {
     const email = String(req.body?.email || "").trim().toLowerCase();
     const password = String(req.body?.password || "");
-    const credentials = getCredentials();
 
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required." });
     }
 
-    if (email !== credentials.email || password !== credentials.password) {
-      return res.status(401).json({ message: "Invalid email or password." });
+    // 1. Check if user exists in MongoDB Admin collection
+    let dbAdmin = null;
+    try {
+      dbAdmin = await Admin.findOne({ email });
+    } catch (err) {
+      console.warn("DB Admin lookup warning:", err.message);
     }
 
-    const admin = getAdmin();
-    const token = jwt.sign(
-      { adminId: admin.id, email: admin.email, role: admin.role },
-      getSecret(),
-      { expiresIn: "8h" }
-    );
+    if (dbAdmin) {
+      if (dbAdmin.status === "inactive") {
+        return res.status(403).json({
+          message: "Your account has been deactivated. Please contact an administrator.",
+        });
+      }
 
-    res.cookie("recruitai_admin", token, cookieOptions);
-    return res.status(200).json({ user: admin });
+      const isMatch = await bcrypt.compare(password, dbAdmin.passwordHash);
+      if (!isMatch) {
+        return res.status(401).json({ message: "Invalid email or password." });
+      }
+
+      // Update lastLogin timestamp
+      dbAdmin.lastLogin = new Date();
+      await dbAdmin.save().catch(() => {});
+
+      const userPayload = {
+        id: String(dbAdmin._id),
+        name: dbAdmin.name,
+        email: dbAdmin.email,
+        role: dbAdmin.role,
+        status: dbAdmin.status,
+        lastLogin: dbAdmin.lastLogin,
+        active: dbAdmin.status === "active",
+      };
+
+      const token = jwt.sign(
+        { adminId: String(dbAdmin._id), email: dbAdmin.email, role: dbAdmin.role },
+        getSecret(),
+        { expiresIn: "8h" }
+      );
+
+      res.cookie("recruitai_admin", token, cookieOptions);
+      return res.status(200).json({ user: userPayload, token });
+    }
+
+    // 2. Fall back to demo environment credentials
+    const credentials = getCredentials();
+    if (credentials && email === credentials.email && password === credentials.password) {
+      const admin = getAdmin();
+      const token = jwt.sign(
+        { adminId: admin.id, email: admin.email, role: admin.role },
+        getSecret(),
+        { expiresIn: "8h" }
+      );
+
+      res.cookie("recruitai_admin", token, cookieOptions);
+      return res.status(200).json({ user: admin, token });
+    }
+
+    return res.status(401).json({ message: "Invalid email or password." });
   } catch (error) {
     console.error("Admin login error:", error);
     return res.status(500).json({ message: "Unable to login." });
@@ -67,12 +116,35 @@ export async function login(req, res) {
 
 export async function me(req, res) {
   try {
-    const token = req.cookies?.recruitai_admin;
+    const authHeader = req.headers?.authorization;
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    const token = bearerToken || req.cookies?.recruitai_admin;
+
     if (!token) return res.status(401).json({ message: "Unauthorized" });
 
     const payload = jwt.verify(token, getSecret());
     if (!payload || typeof payload !== "object" || !payload.adminId) {
       return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    if (mongoose.Types.ObjectId.isValid(payload.adminId)) {
+      const dbAdmin = await Admin.findById(payload.adminId).select("-passwordHash").lean();
+      if (dbAdmin) {
+        if (dbAdmin.status === "inactive") {
+          return res.status(403).json({ message: "Account has been deactivated." });
+        }
+        return res.status(200).json({
+          user: {
+            id: String(dbAdmin._id),
+            name: dbAdmin.name,
+            email: dbAdmin.email,
+            role: dbAdmin.role,
+            status: dbAdmin.status,
+            lastLogin: dbAdmin.lastLogin,
+            active: dbAdmin.status === "active",
+          },
+        });
+      }
     }
 
     return res.status(200).json({ user: getAdmin() });

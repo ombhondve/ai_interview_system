@@ -1,21 +1,27 @@
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
 
 const auditLogSchema = new mongoose.Schema(
     {
         actor: {
-            type: mongoose.Schema.Types.ObjectId,
+            type: mongoose.Schema.Types.Mixed,
             ref: "Admin",
             required: true
         },
 
         action: {
             type: String,
-            required: true
+            required: true,
+            index: true
         },
 
         targetId: {
-            type: mongoose.Schema.Types.ObjectId,
+            type: mongoose.Schema.Types.Mixed,
             required: true
+        },
+
+        details: {
+            type: mongoose.Schema.Types.Mixed,
+            default: null
         },
 
         beforeState: {
@@ -28,16 +34,24 @@ const auditLogSchema = new mongoose.Schema(
             default: null
         },
 
+        ipAddress: {
+            type: String,
+            default: null
+        },
+
         timestamp: {
             type: Date,
-            default: Date.now
+            default: Date.now,
+            index: true
         }
+    },
+    {
+        timestamps: true
     }
 );
 
-const AuditLog = mongoose.model(
-    "AuditLog",
-    auditLogSchema
-);
+auditLogSchema.index({ action: 1, timestamp: -1 });
 
-module.exports = AuditLog;
+const AuditLog = mongoose.models.AuditLog || mongoose.model("AuditLog", auditLogSchema);
+
+export default AuditLog;

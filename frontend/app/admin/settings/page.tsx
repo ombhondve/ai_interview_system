@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { apiUrl } from "@/lib/client";
+import { TeamManagementSection } from "@/components/settings/TeamManagementSection";
 
 type AdminRole = "Super Admin" | "Recruiter";
 
@@ -386,15 +387,7 @@ export default function SettingsPage() {
             )}
 
             {activeSection === "team" && (
-              <TeamSection
-                admins={admins}
-                activeAdmins={activeAdmins}
-                recruiterCount={recruiterCount}
-                onAdd={openAddAdminModal}
-                onEdit={openEditAdminModal}
-                onToggle={toggleAdminStatus}
-                onDelete={setDeleteAdmin}
-              />
+              <TeamManagementSection />
             )}
 
             {activeSection === "appearance" && (

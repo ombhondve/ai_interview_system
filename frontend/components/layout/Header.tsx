@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
@@ -20,6 +20,29 @@ import { Dropdown, DropdownItem, DropdownSeparator } from "@/components/ui/Dropd
 import { Avatar } from "@/components/ui/Avatar";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { cn } from "@/lib/utils";
+import {
+  fetchNotifications,
+  fetchUnreadCount,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+  NotificationItem,
+} from "@/services/notification.api";
+
+function formatTimeAgo(dateString?: string | null) {
+  if (!dateString) return "Recently";
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInSec = Math.floor((now.getTime() - date.getTime()) / 1000);
+  if (diffInSec < 60) return "Just now";
+  const diffInMin = Math.floor(diffInSec / 60);
+  if (diffInMin < 60) return `${diffInMin}m ago`;
+  const diffInHours = Math.floor(diffInMin / 60);
+  if (diffInHours < 24) return `${diffInHours}h ago`;
+  const diffInDays = Math.floor(diffInHours / 24);
+  if (diffInDays < 7) return `${diffInDays}d ago`;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -31,8 +54,30 @@ export function Header({ onMenuClick }: HeaderProps) {
   const [dark, setDark] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState(3);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [recentNotifications, setRecentNotifications] = useState<NotificationItem[]>([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
+
+  const loadNotificationData = useCallback(async () => {
+    try {
+      const [count, data] = await Promise.all([
+        fetchUnreadCount(),
+        fetchNotifications({ limit: 5 }),
+      ]);
+      setUnreadCount(count);
+      setRecentNotifications(data.notifications || []);
+    } catch {
+      // Ignore transient errors
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadNotificationData();
+    const interval = setInterval(() => {
+      void loadNotificationData();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [loadNotificationData]);
 
   // Sync theme
   useEffect(() => {
@@ -117,37 +162,108 @@ export function Header({ onMenuClick }: HeaderProps) {
               >
                 <Bell className="h-4 w-4" />
                 {unreadCount > 0 && (
-                  <span className="absolute top-1.5 right-1.5 flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#1976D2] opacity-75" />
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#1976D2]" />
+                  <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#1976D2] px-1 text-[10px] font-bold text-white shadow-xs">
+                    {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
               </button>
             }
           >
-            <div className="w-72 p-2">
+            <div className="w-80 p-2">
               <div className="flex items-center justify-between px-2 py-1.5 border-b border-[#E2E8F0] pb-2">
-                <span className="text-xs font-semibold text-[#111F33]">Notifications</span>
-                <button
-                  type="button"
-                  onClick={() => setUnreadCount(0)}
-                  className="text-[11px] text-[#1976D2] hover:underline"
-                >
-                  Mark all read
-                </button>
-              </div>
-              <div className="py-2 space-y-1 text-xs">
-                <div className="p-2 rounded hover:bg-[#F5F7FA] transition-colors">
-                  <p className="font-medium text-[#111F33]">New candidate submission</p>
-                  <p className="text-[11px] text-[#64748B]">GitHub repository submitted for review</p>
-                  <span className="text-[10px] text-slate-400">10m ago</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-[#111F33]">Notifications</span>
+                  {unreadCount > 0 && (
+                    <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-[#1976D2]">
+                      {unreadCount} new
+                    </span>
+                  )}
                 </div>
-                <div className="p-2 rounded hover:bg-[#F5F7FA] transition-colors">
-                  <p className="font-medium text-[#111F33]">Interview completed</p>
-                  <p className="text-[11px] text-[#64748B]">AI evaluation report ready for review</p>
-                  <span className="text-[10px] text-slate-400">1h ago</span>
-                </div>
+                {unreadCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      try {
+                        await markAllNotificationsAsRead();
+                        setUnreadCount(0);
+                        setRecentNotifications((prev) =>
+                          prev.map((n) => ({ ...n, read: true }))
+                        );
+                      } catch {}
+                    }}
+                    className="text-[11px] font-medium text-[#1976D2] hover:underline"
+                  >
+                    Mark all read
+                  </button>
+                )}
               </div>
+
+              <div className="max-h-72 overflow-y-auto py-1 space-y-1 text-xs">
+                {recentNotifications.length === 0 ? (
+                  <div className="py-6 text-center text-xs text-[#64748B]">
+                    No notifications yet
+                  </div>
+                ) : (
+                  recentNotifications.map((notif) => (
+                    <div
+                      key={notif._id}
+                      onClick={async () => {
+                        if (!notif.read) {
+                          try {
+                            await markNotificationAsRead(notif._id);
+                            setUnreadCount((c) => Math.max(0, c - 1));
+                            setRecentNotifications((prev) =>
+                              prev.map((n) =>
+                                n._id === notif._id ? { ...n, read: true } : n
+                              )
+                            );
+                          } catch {}
+                        }
+                        if (notif.actionUrl && notif.actionUrl.startsWith("/admin")) {
+                          router.push(notif.actionUrl);
+                        } else {
+                          router.push("/admin/notifications");
+                        }
+                      }}
+                      className={cn(
+                        "group relative flex cursor-pointer items-start gap-2.5 rounded-md p-2 transition-colors",
+                        notif.read
+                          ? "hover:bg-[#F5F7FA]"
+                          : "bg-blue-50/50 hover:bg-blue-50"
+                      )}
+                    >
+                      <div className="mt-0.5 shrink-0">
+                        <div
+                          className={cn(
+                            "h-2 w-2 rounded-full",
+                            notif.read ? "bg-transparent" : "bg-[#1976D2]"
+                          )}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p
+                          className={cn(
+                            "truncate text-xs",
+                            notif.read
+                              ? "font-normal text-[#111F33]"
+                              : "font-semibold text-[#111F33]"
+                          )}
+                        >
+                          {notif.title}
+                        </p>
+                        <p className="line-clamp-2 text-[11px] text-[#64748B]">
+                          {notif.message}
+                        </p>
+                        <span className="mt-1 block text-[10px] text-slate-400">
+                          {formatTimeAgo(notif.createdAt)}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
               <DropdownSeparator />
               <Link
                 href="/admin/notifications"
