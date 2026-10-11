@@ -188,6 +188,9 @@ router.post(
         });
       }
 
+      // Preflight check: verify calendar integration is connected and ready BEFORE DB mutations
+      const calendarAdminId = await getActiveCalendarConnectionAdminId();
+
       const booking = await bookInterview({
         config,
         candidate: req.candidate,
@@ -211,13 +214,9 @@ router.post(
         logger.info("[BOOKING_DIAG] Stage 2: Interview session created/resolved", { sessionId: interviewSession?._id?.toString() });
 
         const candidate = await Candidate.findById(req.candidate._id);
-        logger.info("[BOOKING_DIAG] Stage 3: Resolving active calendar admin ID...");
-        const calendarAdminId = await getActiveCalendarConnectionAdminId();
-        logger.info("[BOOKING_DIAG] Stage 3: Active calendar admin ID resolved", { calendarAdminId });
-
-        logger.info("[BOOKING_DIAG] Stage 4 & 5: Initiating calendar meeting creation...");
+        logger.info("[BOOKING_DIAG] Stage 3: Initiating calendar meeting creation with admin ID...", { calendarAdminId });
         meeting = await createInterviewMeeting({ session: interviewSession, booking: bookingDocument, candidate, adminId: calendarAdminId });
-        logger.info("[BOOKING_DIAG] Stage 6 & 7: Meet conference link returned", { eventId: meeting.eventId, hasMeetLink: Boolean(meeting.meetLink) });
+        logger.info("[BOOKING_DIAG] Stage 4: Meet conference link returned", { eventId: meeting.eventId, hasMeetLink: Boolean(meeting.meetLink) });
 
         bookingDocument.meetLink = meeting.meetLink;
         bookingDocument.calendarEventId = meeting.eventId;
@@ -230,7 +229,7 @@ router.post(
         interviewSession.conferenceId = meeting.conferenceId || null;
         interviewSession.calendarAdminId = meeting.adminId;
         await interviewSession.save();
-        logger.info("[BOOKING_DIAG] Stage 8: Booking and session persistence complete", { bookingId: booking.id });
+        logger.info("[BOOKING_DIAG] Stage 5: Booking and session persistence complete", { bookingId: booking.id });
 
         return res.status(201).json({
           success: true,
@@ -266,7 +265,9 @@ router.post(
         await InterviewBooking.findOneAndDelete({ _id: booking.id, candidateId: req.candidate._id }).catch((cleanupError) => logger.error("Interview booking cleanup failed", { bookingId: booking.id, code: cleanupError?.code || "BOOKING_CLEANUP_FAILED" }));
         await Candidate.findByIdAndUpdate(req.candidate._id, { $set: { interviewStatus: "pending" }, $unset: { interviewDate: "", interviewBookedAt: "" } }).catch((cleanupError) => logger.error("Candidate booking mirror cleanup failed", { bookingId: booking.id, code: cleanupError?.code || "CANDIDATE_CLEANUP_FAILED" }));
         const status = integrationError?.status || 503;
-        return res.status(status).json({ success: false, code: integrationError?.code || "INTERVIEW_SETUP_FAILED", message: integrationError?.safeMessage || "Unable to set up the interview meeting. Please try booking again." });
+        const code = integrationError?.code || "INTERVIEW_SETUP_FAILED";
+        const message = integrationError?.safeMessage || integrationError?.message || "Unable to set up the interview meeting. Please try booking again.";
+        return res.status(status).json({ success: false, code, message });
       }
     } catch (error) {
       if (error instanceof BookingError) {
@@ -277,10 +278,16 @@ router.post(
         });
       }
 
-      console.error("Error booking interview:", error);
-      return res
-        .status(500)
-        .json({ message: "Unable to book the interview." });
+      logger.error("Error booking interview:", {
+        code: error?.code,
+        status: error?.status,
+        message: error?.message,
+      });
+
+      const status = error?.status || 500;
+      const code = error?.code || "INTERNAL_ERROR";
+      const message = error?.safeMessage || error?.message || "Unable to complete interview booking.";
+      return res.status(status).json({ success: false, code, message });
     }
   }
 );

@@ -58,12 +58,15 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
 
+    const normalizedOrigin = String(origin).trim().replace(/\/+$/, "");
+
     // Use the dynamic allowedOrigins array that includes regex patterns
     for (const allowedOrigin of allowedOrigins) {
-      if (typeof allowedOrigin === 'string' && allowedOrigin === origin) {
-        return callback(null, true);
-      }
-      if (allowedOrigin instanceof RegExp && allowedOrigin.test(origin)) {
+      if (typeof allowedOrigin === 'string') {
+        if (allowedOrigin.trim().replace(/\/+$/, "") === normalizedOrigin) {
+          return callback(null, true);
+        }
+      } else if (allowedOrigin instanceof RegExp && allowedOrigin.test(normalizedOrigin)) {
         return callback(null, true);
       }
     }

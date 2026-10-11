@@ -140,15 +140,47 @@ export async function persistCalendarConnection({ adminId, email, encryptedRefre
   return connection;
 }
 
+export function isPlaceholderToken(token) {
+  if (!token || typeof token !== "string") return true;
+  const trimmed = token.trim();
+  return /^(your|example|placeholder|dummy|test)/i.test(trimmed) || trimmed.length < 20;
+}
+
+export function hasValidEnvCalendarConfig() {
+  const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
+  const refreshToken = process.env.GOOGLE_CALENDAR_REFRESH_TOKEN;
+  return Boolean(clientId && clientSecret && refreshToken && !isPlaceholderToken(refreshToken));
+}
+
 export async function getActiveCalendarConnectionAdminId() {
   const connections = await GoogleCalendarConnection.find({ status: "connected" }).select("adminId").limit(2).lean();
-  if (connections.length !== 1 || !connections[0]?.adminId) {
-    const error = new Error(connections.length ? "Exactly one company Google Calendar must be configured." : "Google Calendar is not connected by an administrator.");
+  if (connections.length === 1 && connections[0]?.adminId) {
+    return connections[0].adminId;
+  }
+  if (connections.length > 1) {
+    const error = new Error("Multiple company Google Calendars are connected. Exactly one company Google Calendar must be configured.");
     error.status = 503;
-    error.code = connections.length ? "GOOGLE_CALENDAR_CONNECTION_AMBIGUOUS" : "GOOGLE_CALENDAR_NOT_CONNECTED";
+    error.code = "GOOGLE_CALENDAR_CONNECTION_AMBIGUOUS";
+    error.safeMessage = "Multiple company Google Calendars are connected. Exactly one company Google Calendar must be configured.";
     throw error;
   }
-  return connections[0].adminId;
+
+  // If no DB connection exists, check if valid system environment variables are configured
+  if (hasValidEnvCalendarConfig()) {
+    return "system";
+  }
+
+  const rawRefresh = process.env.GOOGLE_CALENDAR_REFRESH_TOKEN;
+  if (rawRefresh && isPlaceholderToken(rawRefresh)) {
+    console.warn("[GoogleCalendar] GOOGLE_CALENDAR_REFRESH_TOKEN is a placeholder value. Real credentials or admin OAuth connection required.");
+  }
+
+  const error = new Error("Google Calendar is not connected by an administrator. Please connect Google Calendar in admin settings.");
+  error.status = 503;
+  error.code = "GOOGLE_CALENDAR_NOT_CONNECTED";
+  error.safeMessage = "Interview scheduling is temporarily unavailable because the interview calendar has not been connected. Please contact the recruitment team.";
+  throw error;
 }
 
 export async function getAdminCalendarConnection(adminId) {

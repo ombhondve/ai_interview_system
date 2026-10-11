@@ -21,26 +21,57 @@ class GoogleCalendarService {
       const error = new Error('Google Calendar connection is required.');
       error.code = 'GOOGLE_CALENDAR_NOT_CONNECTED';
       error.status = 503;
+      error.safeMessage = 'Google Calendar has not been connected by an administrator. Please contact the recruitment team.';
       throw error;
     }
     const key = String(adminId);
     const cached = this.clientCache.get(key);
     if (cached) return cached;
+
+    if (key === "system" || key === "env_system") {
+      const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID;
+      const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
+      const refreshToken = process.env.GOOGLE_CALENDAR_REFRESH_TOKEN;
+      const redirectUri = process.env.GOOGLE_CALENDAR_CALLBACK_URL ||
+        (process.env.BACKEND_URL ? `${process.env.BACKEND_URL.replace(/\/+$/, "")}/api/admin/google-calendar/callback` : "http://localhost:5000/api/admin/google-calendar/callback");
+
+      if (!clientId || !clientSecret || !refreshToken) {
+        const error = new Error('Google Calendar is not configured.');
+        error.code = 'GOOGLE_CALENDAR_NOT_CONFIGURED';
+        error.status = 503;
+        error.safeMessage = 'Google Calendar configuration is missing on the server.';
+        throw error;
+      }
+
+      const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
+      oauth2Client.setCredentials({ refresh_token: refreshToken });
+      const context = {
+        calendar: google.calendar({ version: 'v3', auth: oauth2Client }),
+        oauth2Client,
+        calendarId: process.env.GOOGLE_CALENDAR_CALENDAR_ID || this.calendarId,
+        adminId: "system",
+      };
+      this.clientCache.set(key, context);
+      return context;
+    }
+
     const connection = await GoogleCalendarConnection.findOne({ adminId: key, status: 'connected' }).select('+refreshTokenEncrypted');
     if (!connection?.refreshTokenEncrypted) {
       const error = new Error('Google Calendar is not connected by an administrator.');
       error.code = 'GOOGLE_CALENDAR_NOT_CONNECTED';
       error.status = 503;
+      error.safeMessage = 'Google Calendar has not been connected by an administrator. Please contact the recruitment team.';
       throw error;
     }
     const clientId = process.env.GOOGLE_CALENDAR_CLIENT_ID;
     const clientSecret = process.env.GOOGLE_CALENDAR_CLIENT_SECRET;
     const callbackUrl = process.env.GOOGLE_CALENDAR_CALLBACK_URL ||
-      (process.env.BACKEND_URL ? `${process.env.BACKEND_URL.replace(/\/+$/, "")}/api/admin/google-calendar/callback` : null);
-    if (!clientId || !clientSecret || !callbackUrl) {
+      (process.env.BACKEND_URL ? `${process.env.BACKEND_URL.replace(/\/+$/, "")}/api/admin/google-calendar/callback` : "http://localhost:5000/api/admin/google-calendar/callback");
+    if (!clientId || !clientSecret) {
       const error = new Error('Google Calendar OAuth is not configured.');
       error.code = 'GOOGLE_CALENDAR_NOT_CONFIGURED';
       error.status = 503;
+      error.safeMessage = 'Google Calendar OAuth client credentials are missing on the server.';
       throw error;
     }
     const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, callbackUrl);
@@ -82,11 +113,12 @@ class GoogleCalendarService {
       await this.getCalendarContext(adminId);
       return true;
     } catch (error) {
-      if (error.code === 'GOOGLE_CALENDAR_NOT_CONNECTED' || error.code === 'GOOGLE_CALENDAR_NOT_CONFIGURED') throw error;
+      if (error.code === 'GOOGLE_CALENDAR_NOT_CONNECTED' || error.code === 'GOOGLE_CALENDAR_NOT_CONFIGURED' || error.code === 'GOOGLE_CALENDAR_CONNECTION_AMBIGUOUS') throw error;
       logger.error('Failed to initialize connected Google Calendar', { code: error.code || error.response?.status || 'CALENDAR_AUTH_ERROR' });
       const safe = new Error('The connected Google Calendar authorization is invalid or unavailable. Reconnect it in admin settings.');
       safe.code = 'GOOGLE_CALENDAR_AUTH_FAILED';
       safe.status = 503;
+      safe.safeMessage = "The recruitment team's Google Calendar authorization has expired or is invalid. Please contact the recruitment team.";
       throw safe;
     }
   }
@@ -152,13 +184,45 @@ class GoogleCalendarService {
       };
 
     } catch (error) {
+      const googleErr = error?.response?.data?.error;
+      const googleDesc = error?.response?.data?.error_description || "";
+      const isInvalidGrant = googleErr === "invalid_grant" ||
+        error?.message?.includes("invalid_grant") ||
+        googleDesc.includes("Bad Request");
+
+      let code = error.code || "CALENDAR_API_ERROR";
+      let status = error.status || error.response?.status || 502;
+      let safeMsg = error.safeMessage;
+
+      if (isInvalidGrant || status === 401) {
+        code = "GOOGLE_CALENDAR_AUTH_FAILED";
+        status = 502;
+        safeMsg = "The recruitment team's Google Calendar authorization has expired or is invalid. Please contact the recruitment team to reconnect the calendar.";
+      } else if (status === 403) {
+        code = "GOOGLE_CALENDAR_FORBIDDEN";
+        status = 502;
+        safeMsg = "Google Calendar does not have sufficient permissions to create meetings. Please contact support.";
+      } else if (status === 429) {
+        code = "GOOGLE_CALENDAR_RATE_LIMITED";
+        status = 429;
+        safeMsg = "Google Calendar is temporarily rate limited. Please try again shortly.";
+      } else if (status === 500 || status === 503) {
+        code = "GOOGLE_CALENDAR_UNAVAILABLE";
+        status = 503;
+        safeMsg = "Google Calendar service is temporarily unavailable. Please try again in a few moments.";
+      }
+
       logger.error('Failed to create calendar event for interview', {
         interviewId: String(interview._id),
-        code: error.code || error.response?.status || 'CALENDAR_API_ERROR',
-        status: error.status || error.response?.status,
+        code,
+        status,
         message: error.message,
-        googleApiError: error.response?.data?.error || error.errors,
+        googleApiError: typeof googleErr === "string" ? googleErr : (error.response?.data?.error || error.errors),
       });
+
+      error.code = code;
+      error.status = status;
+      if (safeMsg) error.safeMessage = safeMsg;
       throw error;
     }
   }

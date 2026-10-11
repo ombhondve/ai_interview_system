@@ -245,9 +245,16 @@ function futureSlot(hour = 10, minute = 30) {
   return zonedWallClockToUtc(base, hour, minute, TZ);
 }
 
+const { getActiveCalendarConnectionAdminId } = require("../../calendar/googleCalendar.connection.service.js");
+const { createInterviewMeeting } = require("../../interview/interview.booking.integration.js");
+
 beforeEach(() => {
   InterviewBookingModel.__reset();
   delete verifiedCandidate.bookedSlotId;
+  getActiveCalendarConnectionAdminId.mockReset();
+  getActiveCalendarConnectionAdminId.mockResolvedValue("calendar-admin");
+  createInterviewMeeting.mockReset();
+  createInterviewMeeting.mockResolvedValue({ meetLink: "https://meet.google.com/test-link", eventId: "event-1" });
 });
 
 describe("GET /api/student/interview/config", () => {
@@ -496,6 +503,74 @@ describe("POST /api/student/interview/book", () => {
       .set("x-no-session", "1")
       .send({ startAt: futureSlot().toISOString() })
       .expect(401);
+  });
+
+  test("returns 503 with safe diagnostic message when Google Calendar is not connected", async () => {
+    const err = new Error("Google Calendar is not connected by an administrator.");
+    err.status = 503;
+    err.code = "GOOGLE_CALENDAR_NOT_CONNECTED";
+    err.safeMessage = "Interview scheduling is temporarily unavailable because the interview calendar has not been connected. Please contact the recruitment team.";
+    getActiveCalendarConnectionAdminId.mockRejectedValueOnce(err);
+
+    const response = await request(buildApp())
+      .post("/api/student/interview/book")
+      .send({ startAt: futureSlot(10, 30).toISOString() })
+      .expect(503);
+
+    expect(response.body.code).toBe("GOOGLE_CALENDAR_NOT_CONNECTED");
+    expect(response.body.message).toContain("calendar has not been connected");
+    expect(InterviewBookingModel.__store).toHaveLength(0);
+  });
+
+  test("returns 502 and rolls back when Google Calendar token is expired or invalid (invalid_grant)", async () => {
+    const err = new Error("invalid_grant");
+    err.status = 502;
+    err.code = "GOOGLE_CALENDAR_AUTH_FAILED";
+    err.safeMessage = "The recruitment team's Google Calendar authorization has expired or is invalid. Please contact the recruitment team to reconnect the calendar.";
+    createInterviewMeeting.mockRejectedValueOnce(err);
+
+    const response = await request(buildApp())
+      .post("/api/student/interview/book")
+      .send({ startAt: futureSlot(10, 30).toISOString() })
+      .expect(502);
+
+    expect(response.body.code).toBe("GOOGLE_CALENDAR_AUTH_FAILED");
+    expect(response.body.message).toContain("authorization has expired or is invalid");
+    expect(InterviewBookingModel.__store).toHaveLength(0);
+  });
+
+  test("returns 429 and rolls back when Google API is rate limited", async () => {
+    const err = new Error("Rate limit exceeded");
+    err.status = 429;
+    err.code = "GOOGLE_CALENDAR_RATE_LIMITED";
+    err.safeMessage = "Google Calendar is temporarily rate limited. Please try again shortly.";
+    createInterviewMeeting.mockRejectedValueOnce(err);
+
+    const response = await request(buildApp())
+      .post("/api/student/interview/book")
+      .send({ startAt: futureSlot(10, 30).toISOString() })
+      .expect(429);
+
+    expect(response.body.code).toBe("GOOGLE_CALENDAR_RATE_LIMITED");
+    expect(response.body.message).toContain("temporarily rate limited");
+    expect(InterviewBookingModel.__store).toHaveLength(0);
+  });
+
+  test("returns 502 and cleans up when Meet link generation fails", async () => {
+    const err = new Error("Meet conference URL missing");
+    err.status = 502;
+    err.code = "MEET_LINK_UNAVAILABLE";
+    err.safeMessage = "Google Meet link could not be generated for this interview slot. Please try booking again.";
+    createInterviewMeeting.mockRejectedValueOnce(err);
+
+    const response = await request(buildApp())
+      .post("/api/student/interview/book")
+      .send({ startAt: futureSlot(10, 30).toISOString() })
+      .expect(502);
+
+    expect(response.body.code).toBe("MEET_LINK_UNAVAILABLE");
+    expect(response.body.message).toContain("Google Meet link could not be generated");
+    expect(InterviewBookingModel.__store).toHaveLength(0);
   });
 });
 
