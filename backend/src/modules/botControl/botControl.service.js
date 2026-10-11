@@ -451,6 +451,7 @@ export async function claimNextJob(workerId, { currentTime } = {}) {
       candidateId: authoritativeCandidateId ? String(authoritativeCandidateId) : "",
       meetUrl: claimedJob.meetLink,
       scheduledAt: claimedJob.scheduledAt,
+      durationMinutes: interview?.durationMinutes || 30,
       leaseDurationMs: leaseMs,
       leaseExpiresAt: claimedJob.leaseExpiresAt,
       attemptCount: claimedJob.attemptCount,
@@ -523,6 +524,7 @@ export async function validateJobPreflight(jobId, workerId, { currentTime } = {}
     interviewId: String(job.interviewId),
     candidateId: authoritativeCandidateId ? String(authoritativeCandidateId) : "",
     scheduledAt: job.scheduledAt,
+    durationMinutes: interview?.durationMinutes || 30,
     backendTime: now.toISOString(),
     message: "Preflight checks passed. Job is eligible for launch.",
   };

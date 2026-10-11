@@ -49,6 +49,7 @@ const aiInterviewSchema = new mongoose.Schema({
   durationMinutes: { type: Number, default: 30 },
   noShowAt: { type: Date, default: null },
   noShowReason: { type: String, trim: true, default: null },
+  completionReason: { type: String, trim: true, default: null },
   analysisError: { type: String, trim: true, default: null },
   analysisAttempts: { type: Number, min: 0, default: 0 },
   analysisUpdatedAt: { type: Date, default: null },

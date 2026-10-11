@@ -67,56 +67,82 @@ class DeepgramClient:
             f"[Deepgram] Sending {len(audio_bytes)} bytes of audio to Deepgram (model: {self.model})..."
         )
 
-        try:
-            response = requests.post(
-                url,
-                params=params,
-                headers=headers,
-                data=audio_bytes,
-                timeout=self.timeout_seconds,
-            )
-
-            if response.status_code == 401 or response.status_code == 403:
-                logger.error("[Deepgram] Authentication failed with Deepgram API.")
-                raise PermissionError("Invalid Deepgram API credentials.")
-
-            if response.status_code != 200:
-                logger.error(
-                    f"[Deepgram] API request failed with status {response.status_code}: {response.text}"
-                )
-                raise RuntimeError(
-                    f"Deepgram transcription failed (HTTP {response.status_code})."
+        max_retries = 3
+        last_error = None
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    url,
+                    params=params,
+                    headers=headers,
+                    data=audio_bytes,
+                    timeout=self.timeout_seconds,
                 )
 
-            data = response.json()
-            channel = data.get("results", {}).get("channels", [{}])[0]
-            alternative = channel.get("alternatives", [{}])[0]
-            transcript = alternative.get("transcript", "").strip()
-            confidence = alternative.get("confidence", 0.0)
-            words = alternative.get("words", [])
-            duration = data.get("metadata", {}).get("duration", 0.0)
+                if response.status_code in (401, 403):
+                    logger.error("[Deepgram] Authentication failed with Deepgram API.")
+                    raise PermissionError("Invalid Deepgram API credentials.")
 
-            logger.info(
-                f"[Deepgram] Transcription completed successfully. "
-                f"Transcript: '{transcript}' (Confidence: {round(confidence, 3)}, Duration: {round(duration, 2)}s)"
-            )
+                if response.status_code >= 500:
+                    logger.warning(
+                        f"[Deepgram] Transient server error ({response.status_code}) on attempt {attempt + 1}/{max_retries}"
+                    )
+                    last_error = RuntimeError(f"Deepgram transcription failed (HTTP {response.status_code}).")
+                    if attempt < max_retries - 1:
+                        import time
+                        time.sleep(1.0 * (attempt + 1))
+                        continue
+                    raise last_error
 
-            return {
-                "success": True,
-                "transcript": transcript,
-                "confidence": confidence,
-                "wordsCount": len(words),
-                "durationSeconds": duration,
-                "model": self.model,
-            }
+                if response.status_code != 200:
+                    logger.error(
+                        f"[Deepgram] API request failed with status {response.status_code}: {response.text}"
+                    )
+                    raise RuntimeError(
+                        f"Deepgram transcription failed (HTTP {response.status_code})."
+                    )
 
-        except requests.exceptions.Timeout:
-            logger.error("[Deepgram] Request timed out while waiting for transcription.")
-            raise TimeoutError("Deepgram transcription request timed out.")
-        except Exception as e:
-            if not isinstance(e, (ValueError, PermissionError, TimeoutError, RuntimeError)):
-                logger.exception(f"[Deepgram] Unexpected error during transcription: {e}")
-            raise
+                data = response.json()
+                channel = data.get("results", {}).get("channels", [{}])[0]
+                alternative = channel.get("alternatives", [{}])[0]
+                transcript = alternative.get("transcript", "").strip()
+                confidence = alternative.get("confidence", 0.0)
+                words = alternative.get("words", [])
+                duration = data.get("metadata", {}).get("duration", 0.0)
+
+                logger.info(
+                    f"[Deepgram] Transcription completed successfully. "
+                    f"Transcript: '{transcript}' (Confidence: {round(confidence, 3)}, Duration: {round(duration, 2)}s)"
+                )
+
+                return {
+                    "success": True,
+                    "transcript": transcript,
+                    "confidence": confidence,
+                    "wordsCount": len(words),
+                    "durationSeconds": duration,
+                    "model": self.model,
+                    "isFinal": True,
+                }
+
+            except requests.exceptions.Timeout as t_err:
+                logger.warning(f"[Deepgram] Request timed out on attempt {attempt + 1}/{max_retries}")
+                last_error = TimeoutError("Deepgram transcription request timed out.")
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(1.0 * (attempt + 1))
+                    continue
+                raise last_error
+            except Exception as e:
+                if isinstance(e, (PermissionError, RuntimeError, TimeoutError)):
+                    raise
+                logger.warning(f"[Deepgram] Network exception on attempt {attempt + 1}/{max_retries}: {e}")
+                last_error = e
+                if attempt < max_retries - 1:
+                    import time
+                    time.sleep(1.0 * (attempt + 1))
+                    continue
+                raise last_error
 
     def transcribe_file(self, file_path: str) -> Dict[str, Any]:
         """Transcribe an audio file from disk."""

@@ -404,6 +404,18 @@ class MeetingBot:
                 else:
                     logger.warning("[VOICE] AI speaking finished with failure / incomplete")
 
+    def get_media_monitor(self):
+        """Retrieve active ParticipantMediaMonitor instance if available."""
+        if self._navigator and hasattr(self._navigator, "media_monitor"):
+            return self._navigator.media_monitor
+        return None
+
+    async def is_candidate_present(self) -> bool:
+        """Check if candidate is currently present inside meeting."""
+        if self._navigator:
+            return await self._navigator.is_candidate_present()
+        return False
+
     async def is_candidate_camera_on(self) -> Optional[bool]:
         """Check if candidate camera is currently ON."""
         if self._navigator:

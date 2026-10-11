@@ -444,6 +444,7 @@ class AudioCaptureService:
         min_speech_duration_sec: Optional[float] = None,
         max_utterance_sec: Optional[float] = None,
         pre_roll_sec: Optional[float] = None,
+        max_initial_wait_sec: Optional[float] = None,
         check_interval: float = 0.05,
     ) -> Optional[Dict[str, Any]]:
         """
@@ -452,6 +453,8 @@ class AudioCaptureService:
             - short silence (0.5s - 1.5s) -> CANDIDATE_PAUSED (keeps buffer open, triggers on_speech_pause)
             - if speech resumes -> CANDIDATE_SPEAKING (keeps buffer open, triggers on_speech_resume)
             - only sustained silence >= confirm_limit (1.8s+) -> finalize answer
+        If max_initial_wait_sec is provided and no speech begins within that period,
+        returns None to allow the caller to handle periodic tasks, silence counters, and timeouts.
         """
         import asyncio
 
@@ -481,10 +484,11 @@ class AudioCaptureService:
         speech_start_time: Optional[float] = None
         last_speech_time: Optional[float] = None
         audio_clock: Optional[float] = None
+        listen_start_monotonic = time.monotonic()
 
         logger.debug(
             f"[VAD] Started utterance listening (start_thresh={start_thresh}, end_thresh={end_thresh}, "
-            f"silence_limit={silence_limit}s, confirm_limit={confirm_limit}s)"
+            f"silence_limit={silence_limit}s, confirm_limit={confirm_limit}s, initial_wait={max_initial_wait_sec}s)"
         )
 
         while self.is_running():
@@ -515,6 +519,11 @@ class AudioCaptureService:
                         break
                 await asyncio.sleep(0.05)
                 continue
+
+            # Check initial silence wait timeout when waiting for speech to begin
+            if not in_speech and max_initial_wait_sec is not None:
+                if (time.monotonic() - listen_start_monotonic) >= max_initial_wait_sec:
+                    break
 
             # Read all available chunks from queue
             chunks_read = []

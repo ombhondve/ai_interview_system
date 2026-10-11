@@ -240,8 +240,9 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
       };
       actionType = "FOLLOW_UP";
       acknowledgment = "Understood.";
-    } else if (phase === "CLOSING") {
+    } else if (phase === "CLOSING" || opts?.closing === true) {
       // Dedicated final-turn / candidate question handling
+      phase = "CLOSING";
       const closingIntent = classifyClosingIntent(clean);
       logger.info(`Candidate closing turn received ${doc._id}: intent=${closingIntent.intent}`);
 
@@ -563,10 +564,13 @@ export async function endInterview(interviewId, candidateId = null, options = {}
   }
   doc.status = "COMPLETING";
   doc.endedAt = doc.endedAt || new Date();
+  if (options?.reason) {
+    doc.completionReason = String(options.reason).slice(0, 500);
+  }
   doc.analysisError = null;
   doc.transcript.forEach((entry, index) => { if (entry.sequence == null) entry.sequence = index; });
   await doc.save();
-  logger.info(`Interview completed ${doc._id}`);
+  logger.info(`Interview completed ${doc._id} (reason: ${doc.completionReason || "NORMAL"})`);
 
   // Mark candidate status if applicable
   try {

@@ -147,12 +147,13 @@ router.post("/internal/:interviewId/answer", validInterviewId, async (req, res) 
 
     const effectiveCandidateId = interview.candidateId;
     const cameraOn = typeof req.body?.cameraOn === "boolean" ? req.body.cameraOn : null;
+    const closing = typeof req.body?.closing === "boolean" ? req.body.closing : false;
     const result = await answerService.submitAnswer(
       interview._id,
       effectiveCandidateId,
       input.text,
       input.requestId,
-      { cameraOn }
+      { cameraOn, closing }
     );
 
     return res.json({
@@ -211,6 +212,7 @@ router.get("/internal/:interviewId/session", validInterviewId, async (req, res) 
       readinessStatus,
       isDue,
       scheduledAt: interview.scheduledAt,
+      durationMinutes: interview.durationMinutes || 30,
       meetLink: interview.meetLink || null,
       currentQuestionIndex: interview.currentQuestionIndex,
       totalQuestions: interview.questions.length,
@@ -236,8 +238,10 @@ router.post("/internal/:interviewId/candidate-joined", validInterviewId, async (
     return res.json({
       success: true,
       interviewId: String(updated._id),
+      candidateId: String(updated.candidateId),
       status: updated.status,
       phase: updated.phase,
+      durationMinutes: updated.durationMinutes || 30,
       currentQuestionIndex: updated.currentQuestionIndex,
       firstQuestion: firstQ?.question || null,
       started: Boolean(result.started),
@@ -254,7 +258,8 @@ router.post("/internal/:interviewId/complete", validInterviewId, async (req, res
 
     logger.info("[INTERVIEW] Bot signaled interview complete", { interviewId: String(interview._id) });
     const waitForAnalysis = Boolean(req.body?.waitForAnalysis);
-    const updated = await answerService.endInterview(interview._id, null, { waitForAnalysis });
+    const reason = req.body?.reason ? String(req.body.reason).trim() : null;
+    const updated = await answerService.endInterview(interview._id, null, { waitForAnalysis, reason });
 
     return res.json({
       success: true,

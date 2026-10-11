@@ -118,6 +118,11 @@ class MeetNavigator:
 
     def __init__(self, page: Page):
         self.page = page
+        try:
+            from app.media_monitor import ParticipantMediaMonitor
+            self.media_monitor = ParticipantMediaMonitor(page)
+        except Exception:
+            self.media_monitor = None
 
     async def prepare_prejoin(self) -> None:
         """
@@ -1296,49 +1301,31 @@ class MeetNavigator:
     async def is_candidate_camera_on(self) -> Optional[bool]:
         """
         Check if remote candidate camera appears to be ON in the Google Meet UI.
-        Inspects remote video elements, avatars, and camera-off indicators.
-        Returns:
-            True if candidate video is actively streaming.
-            False if camera is off (avatar or camera off icon present).
-            None if unable to determine or candidate not yet present.
+        Excludes self-view tile to ensure local bot camera/avatar is not confused.
         """
+        if getattr(self, "media_monitor", None):
+            from app.media_monitor import MediaState
+            state = await self.media_monitor.check_candidate_camera()
+            if state == MediaState.ON:
+                return True
+            if state == MediaState.OFF:
+                return False
+            return None
+
+        # Fallback if media_monitor is not available
         try:
-            # First verify more than 1 participant is present
             if not await self.is_candidate_present():
                 return None
-
-            # Look for active video element not belonging to local self-view
-            # Remote participant video tags usually have class or are inside participant tiles
-            video_locator = self.page.locator('div[data-allocation-index] video, div[data-participant-id] video')
+            video_locator = self.page.locator('div[data-allocation-index]:not([data-self-name]) video, div[data-participant-id]:not([data-self-name]) video')
             count = await video_locator.count()
             for idx in range(count):
                 vid = video_locator.nth(idx)
                 if await vid.is_visible():
-                    # Check if video has non-zero width/height and is playing
                     is_playing = await vid.evaluate(
                         '(v) => !v.paused && !v.ended && v.readyState >= 2 && v.videoWidth > 0'
                     )
                     if is_playing:
                         return True
-
-            # Check if camera off indicator or avatar/profile icon is shown for remote user
-            avatar_locator = self.page.locator(
-                'div[data-allocation-index] img, div[data-allocation-index] [aria-label*="camera off" i], '
-                'div[data-participant-id] [aria-label*="camera off" i], div[data-participant-id] img'
-            )
-            if await avatar_locator.count() > 0 and await avatar_locator.first.is_visible():
-                return False
-
-            # If there's any visible video tag in the meeting stage
-            any_video = self.page.locator('video')
-            if await any_video.count() > 0:
-                for idx in range(await any_video.count()):
-                    v = any_video.nth(idx)
-                    if await v.is_visible():
-                        playing = await v.evaluate('(v) => !v.paused && v.readyState >= 2 && v.videoWidth > 0')
-                        if playing:
-                            return True
-
             return False
         except Exception as e:
             logger.debug(f"[MEET] Camera state check exception: {e}")
@@ -1347,26 +1334,31 @@ class MeetNavigator:
     async def is_candidate_mic_muted(self) -> Optional[bool]:
         """
         Check if remote candidate's microphone appears muted in Google Meet UI.
-        Looks for mute icons or badges on remote participant tiles.
+        Excludes self-view tile and bot toolbar controls.
         """
+        if getattr(self, "media_monitor", None):
+            from app.media_monitor import MediaState
+            state = await self.media_monitor.check_candidate_mic()
+            if state == MediaState.MUTED:
+                return True
+            if state == MediaState.UNMUTED:
+                return False
+            return None
+
+        # Fallback if media_monitor is not available
         try:
             if not await self.is_candidate_present():
                 return None
-
-            # Google Meet displays a red/gray mic-off icon on participant tiles when muted
             remote_mute_indicators = [
-                'div[data-allocation-index] [aria-label*="muted" i]',
-                'div[data-allocation-index] [data-is-muted="true"]',
-                'div[data-participant-id] [aria-label*="muted" i]',
-                'div[data-participant-id] [data-is-muted="true"]',
-                '[data-participant-id] i:has-text("mic_off")',
-                'div[data-allocation-index] i:has-text("mic_off")',
+                'div[data-allocation-index]:not([data-self-name]) [aria-label*="muted" i]',
+                'div[data-allocation-index]:not([data-self-name]) [data-is-muted="true"]',
+                'div[data-participant-id]:not([data-self-name]) [aria-label*="muted" i]',
+                'div[data-participant-id]:not([data-self-name]) [data-is-muted="true"]',
             ]
             for sel in remote_mute_indicators:
                 loc = self.page.locator(sel)
                 if await loc.count() > 0 and await loc.first.is_visible():
                     return True
-
             return False
         except Exception as e:
             logger.debug(f"[MEET] Candidate mic check exception: {e}")

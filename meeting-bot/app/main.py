@@ -41,6 +41,25 @@ logger = logging.getLogger("MeetingBot.Main")
 # ==============================================================================
 
 class ConversationState(str, Enum):
+    # Explicit conversation lifecycle states
+    ASKING_QUESTION = "ASKING_QUESTION"
+    WAITING_FOR_ANSWER = "WAITING_FOR_ANSWER"
+    ANSWER_DETECTED = "ANSWER_DETECTED"
+    PROCESSING_ANSWER = "PROCESSING_ANSWER"
+    GENERATING_NEXT_QUESTION = "GENERATING_NEXT_QUESTION"
+    PLAYING_RESPONSE = "PLAYING_RESPONSE"
+    HANDLING_SILENCE = "HANDLING_SILENCE"
+    RECOVERING = "RECOVERING"
+    INVITING_STUDENT_QUESTIONS = "INVITING_STUDENT_QUESTIONS"
+    LISTENING_TO_STUDENT = "LISTENING_TO_STUDENT"
+    ANSWERING_STUDENT_QUESTION = "ANSWERING_STUDENT_QUESTION"
+    CHECKING_FOR_MORE_QUESTIONS = "CHECKING_FOR_MORE_QUESTIONS"
+    CLOSING_INTERVIEW = "CLOSING_INTERVIEW"
+    LEAVING_MEETING = "LEAVING_MEETING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+
+    # Backward-compatible phase and action states
     PRECHECK = "PRECHECK"
     CAMERA_CHECK = "CAMERA_CHECK"
     OPENING = "OPENING"
@@ -52,7 +71,6 @@ class ConversationState(str, Enum):
     WAITING_FOR_CANDIDATE = "WAITING_FOR_CANDIDATE"
     CANDIDATE_SPEAKING = "CANDIDATE_SPEAKING"
     CANDIDATE_PAUSED = "CANDIDATE_PAUSED"
-    PROCESSING_ANSWER = "PROCESSING_ANSWER"
     ACKNOWLEDGING = "ACKNOWLEDGING"
     ASKING_FOLLOWUP = "ASKING_FOLLOWUP"
     ASKING_NEXT_QUESTION = "ASKING_NEXT_QUESTION"
@@ -68,11 +86,18 @@ class ConversationState(str, Enum):
 
 class ConversationManager:
     """
-    Manages conversational lifecycle states, silence timers, and AI interviewer flow.
-    Ensures VAD determines speech activity, while the state machine coordinates turn-taking.
+    Manages conversational lifecycle states, silence timers, participant media states,
+    and AI interviewer flow. Coordinates turn-taking, inactivity recovery, and time-aware closing.
     """
 
-    def __init__(self, bot, audio_capture, recruitai_client, deepgram_client):
+    def __init__(
+        self,
+        bot,
+        audio_capture,
+        recruitai_client,
+        deepgram_client,
+        duration_minutes: float = 30.0,
+    ):
         self.bot = bot
         self.audio_capture = audio_capture
         self.recruitai_client = recruitai_client
@@ -84,13 +109,45 @@ class ConversationManager:
         self.answer_finalized: bool = False
         self.current_question: Optional[str] = None
         self.last_speech_time: float = time.monotonic()
-        self.no_response_step: int = 0  # 0: waiting, 1: reminded ("Take your time"), 2: offered repeat
+        self.interview_start_time: float = time.monotonic()
+        self.duration_minutes: float = float(duration_minutes)
+        self.no_response_step: int = 0  # 0: waiting, 1: reminded ("Take your time"), 2: offered repeat/audio check
+        self.empty_transcript_count: int = 0
+        self.student_question_count: int = 0
+        self.lock = asyncio.Lock()
+        self.disconnect_start_time: Optional[float] = None
+
+    def get_elapsed_time_sec(self) -> float:
+        """Elapsed time since interview loop started in seconds."""
+        return time.monotonic() - self.interview_start_time
+
+    def get_remaining_time_sec(self) -> float:
+        """Estimated remaining interview time in seconds."""
+        total_sec = max(60.0, self.duration_minutes * 60.0)
+        return max(0.0, total_sec - self.get_elapsed_time_sec())
+
+    def is_in_closing_window(self) -> bool:
+        """
+        Determines whether the interview is nearing the end of its scheduled duration.
+        For a 30-min interview: closing window starts when remaining time is <= 3.5 minutes (210s).
+        Scales dynamically with interview duration (approx 12% of total duration).
+        """
+        total_sec = max(60.0, self.duration_minutes * 60.0)
+        threshold_sec = min(300.0, max(90.0, total_sec * 0.12))
+        return self.get_remaining_time_sec() <= threshold_sec
+
+    def is_hard_deadline_reached(self) -> bool:
+        """Checks if the scheduled hard deadline has arrived."""
+        return self.get_remaining_time_sec() <= 0.0
 
     def set_state(self, new_state: ConversationState, decision: str = "") -> None:
+        prev = self.state.value if hasattr(self.state, "value") else str(self.state)
         self.state = new_state
+        rem = round(self.get_remaining_time_sec(), 1)
         logger.info(
-            f"[CONVERSATION] state={self.state.value} candidate_is_speaking={self.candidate_is_speaking} "
-            f"candidate_paused={self.candidate_paused} answer_finalized={self.answer_finalized} decision={decision}"
+            f"[CONVERSATION] state={self.state.value} prev={prev} remaining={rem}s "
+            f"candidate_speaking={self.candidate_is_speaking} candidate_paused={self.candidate_paused} "
+            f"answer_finalized={self.answer_finalized} decision={decision}"
         )
 
     def on_speech_start(self) -> None:
@@ -191,6 +248,7 @@ async def run_cli():
     # Phase 3 CLI commands
     parser.add_argument("--interview-id", type=str, help="AiInterviewSession ID to associate with the meeting bot")
     parser.add_argument("--candidate-id", type=str, help="Candidate ID to verify with the interview session")
+    parser.add_argument("--duration-minutes", type=float, default=30.0, help="Scheduled interview duration in minutes (default: 30.0)")
     parser.add_argument("--submit-test-transcript", action="store_true", help="Submit test transcript to RecruitAI backend internal API")
     parser.add_argument("--text", type=str, default="Hello, I am ready for the interview.", help="Text content for --submit-test-transcript")
     # Phase 4 CLI commands
@@ -371,6 +429,12 @@ async def run_cli():
                     if resolved_cand and resolved_cand not in ("null", "None") and resolved_cand != args.candidate_id:
                         logger.info(f"[BACKEND] Synchronized authoritative candidateId: {resolved_cand}")
                         args.candidate_id = resolved_cand
+                if session_check.get("durationMinutes"):
+                    try:
+                        args.duration_minutes = float(session_check["durationMinutes"])
+                        logger.info(f"[BACKEND] Synchronized scheduled duration: {args.duration_minutes} minutes")
+                    except Exception:
+                        pass
             except Exception as pre_backend_err:
                 logger.error(f"[BACKEND] Backend session pre-flight failed ({pre_backend_err}). Aborting meeting join to prevent unlinked interview.")
                 sys.exit(1)
@@ -463,6 +527,12 @@ async def run_cli():
                         args.interview_id, candidate_id=cand_param
                     )
                     first_question = join_res.get("firstQuestion")
+                    if join_res.get("durationMinutes"):
+                        try:
+                            args.duration_minutes = float(join_res["durationMinutes"])
+                            logger.info(f"[BACKEND] Synchronized scheduled duration: {args.duration_minutes} minutes")
+                        except Exception:
+                            pass
                     logger.info(f"[INTERVIEW] Backend successfully transitioned to IN_PROGRESS (started={join_res.get('started')}).")
                 except Exception as sess_err:
                     logger.error(
@@ -501,15 +571,17 @@ async def run_cli():
                 audio_capture=audio_capture,
                 recruitai_client=recruitai_client,
                 deepgram_client=deepgram_client,
+                duration_minutes=args.duration_minutes,
             )
 
-            # Periodic camera check tracking
+            # Periodic monitoring and presence tracking
             last_camera_check_time = time.monotonic()
-            camera_recovery_attempts = 0
+            last_presence_check_time = time.monotonic()
+            disconnect_start_time: Optional[float] = None
 
             if first_question:
                 conv_mgr.current_question = first_question
-                conv_mgr.set_state(ConversationState.PRECHECK, decision="precheck_question_delivered")
+                conv_mgr.set_state(ConversationState.ASKING_QUESTION, decision="first_question_delivered")
                 conv_mgr.last_speech_time = time.monotonic()
 
             logger.info("[PERF] candidate_listening_started")
@@ -517,7 +589,7 @@ async def run_cli():
             logger.info("[AUDIO] Candidate listening started")
             logger.info(f"[AUDIO] Capture device: {dev_info.get('deviceName', 'Unknown')}")
             logger.info("[AUDIO] Waiting for speech...")
-            conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="listening_for_candidate")
+            conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="listening_for_candidate")
 
             try:
                 while True:
@@ -527,48 +599,170 @@ async def run_cli():
                         await asyncio.sleep(0.3)
                         continue
 
-                    # Continuous utterance-based capture with silence detection
-                    # Automatically segments speech, applies pre-roll, and detects end of speech
+                    # Continuous utterance-based capture with silence detection and non-blocking wait
                     utterance = await audio_capture.capture_utterance(
                         is_ai_speaking_fn=bot_instance.is_ai_speaking,
                         on_speech_start=conv_mgr.on_speech_start,
                         on_speech_pause=conv_mgr.on_speech_pause,
                         on_speech_resume=conv_mgr.on_speech_resume,
+                        max_initial_wait_sec=2.5,
                     )
 
-                    # Silence / No Response monitoring when no speech is captured
+                    media_monitor = bot_instance.get_media_monitor()
+
+                    # Periodic Participant Presence Monitoring (every ~5 seconds)
+                    if media_monitor and (time.monotonic() - last_presence_check_time >= 5.0):
+                        last_presence_check_time = time.monotonic()
+                        try:
+                            is_present = await media_monitor.is_candidate_present()
+                            if not is_present:
+                                if disconnect_start_time is None:
+                                    disconnect_start_time = time.monotonic()
+                                    logger.warning("[MEET][PRESENCE] Candidate not detected in Google Meet. Starting 75s disconnect grace timer.")
+                                else:
+                                    elapsed_dc = time.monotonic() - disconnect_start_time
+                                    logger.warning(f"[MEET][PRESENCE] Candidate absent for {elapsed_dc:.1f}s / 75s grace period.")
+                                    if elapsed_dc >= 75.0:
+                                        logger.error("[MEET][PRESENCE] Candidate disconnected beyond grace period. Concluding interview as failed.")
+                                        conv_mgr.set_state(ConversationState.FAILED, decision="candidate_disconnected_timeout")
+                                        if args.interview_id:
+                                            try:
+                                                recruitai_client.complete_interview(
+                                                    interview_id=args.interview_id,
+                                                    candidate_id=args.candidate_id,
+                                                    reason="CANDIDATE_DISCONNECTED",
+                                                    wait_for_analysis=False,
+                                                )
+                                            except Exception as close_err:
+                                                logger.error(f"[MeetingBot] Failed to finalize on disconnection: {close_err}")
+                                        dur = audio_capture.stop_master_recording()
+                                        break
+                            else:
+                                if disconnect_start_time is not None:
+                                    logger.info("[MEET][PRESENCE] Candidate presence restored. Grace timer cleared.")
+                                    disconnect_start_time = None
+                        except Exception as pres_err:
+                            logger.debug(f"[MEET][PRESENCE] Presence check error: {pres_err}")
+
+                    # Check candidate microphone state
+                    candidate_mic_muted = None
+                    if media_monitor:
+                        try:
+                            candidate_mic_muted = await media_monitor.is_candidate_mic_muted()
+                        except Exception as mic_err:
+                            logger.debug(f"[MEET][MIC] Mic check error: {mic_err}")
+
+                    # Periodic Camera Check (every ~25 seconds)
+                    if media_monitor and (time.monotonic() - last_camera_check_time >= 25.0):
+                        last_camera_check_time = time.monotonic()
+                        try:
+                            cam_status = await media_monitor.is_candidate_camera_on()
+                            if cam_status is False and media_monitor.can_remind_camera():
+                                media_monitor.record_camera_reminder()
+                                logger.info("[MEET][CAMERA] Candidate camera is OFF. Delivering gentle reminder.")
+                                conv_mgr.set_state(ConversationState.HANDLING_SILENCE, decision="camera_off_reminder")
+                                await bot_instance.speak_text("Please make sure your camera is turned on for the interview.")
+                                conv_mgr.last_speech_time = time.monotonic()
+                                conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="waiting_after_camera_reminder")
+                        except Exception as cam_err:
+                            logger.debug(f"[MEET][CAMERA] Camera check error: {cam_err}")
+
+                    # Check Scheduled Hard Deadline
+                    if conv_mgr.is_hard_deadline_reached() and not bot_instance.is_ai_speaking():
+                        logger.info("[TIMER] Scheduled hard deadline reached. Concluding interview safely.")
+                        conv_mgr.set_state(ConversationState.CLOSING_INTERVIEW, decision="hard_deadline_reached")
+                        try:
+                            await bot_instance.speak_text("We have reached the end of our scheduled time. Thank you so much for your time today. Goodbye!")
+                        except Exception:
+                            pass
+                        conv_mgr.set_state(ConversationState.COMPLETED, decision="hard_deadline_completed")
+                        dur = audio_capture.stop_master_recording()
+                        if args.interview_id:
+                            try:
+                                master_wav_path = str(diag_dir / f"master_interview_{args.interview_id}.wav")
+                                saved = audio_capture.export_master_recording_wav(master_wav_path)
+                                if saved:
+                                    recruitai_client.upload_recording(
+                                        interview_id=args.interview_id,
+                                        recording_file_path=master_wav_path,
+                                        duration_seconds=dur,
+                                        candidate_id=args.candidate_id,
+                                    )
+                            except Exception as up_err:
+                                logger.error(f"[MeetingBot] Failed to upload recording: {up_err}")
+                            try:
+                                recruitai_client.complete_interview(
+                                    interview_id=args.interview_id,
+                                    candidate_id=args.candidate_id,
+                                    reason="SCHEDULED_DURATION_REACHED",
+                                    wait_for_analysis=False,
+                                )
+                            except Exception as comp_err:
+                                logger.error(f"[MeetingBot] Failed to finalize on deadline: {comp_err}")
+                        await asyncio.sleep(1.5)
+                        break
+
+                    # Check Transition into Closing Window
+                    if conv_mgr.is_in_closing_window() and conv_mgr.current_phase != "CLOSING" and not bot_instance.is_ai_speaking():
+                        logger.info("[TIMER] Approaching end of scheduled duration. Transitioning to CLOSING phase and inviting student questions.")
+                        conv_mgr.current_phase = "CLOSING"
+                        conv_mgr.no_response_step = 0
+                        conv_mgr.set_state(ConversationState.INVITING_STUDENT_QUESTIONS, decision="closing_window_reached")
+                        closing_invitation = (
+                            "Thank you for sharing your experience and answers today. "
+                            "We are approaching the end of our scheduled interview time. "
+                            "Before we conclude, do you have any questions for me?"
+                        )
+                        conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="speaking_closing_invitation")
+                        await bot_instance.speak_text(closing_invitation)
+                        audio_capture.reset_buffer()
+                        conv_mgr.last_speech_time = time.monotonic()
+                        conv_mgr.set_state(ConversationState.LISTENING_TO_STUDENT, decision="waiting_for_student_questions")
+                        continue
+
+                    # Silence / No-Response Monitoring (when no utterance completed)
                     if not utterance:
                         silence_duration = time.monotonic() - conv_mgr.last_speech_time
                         if not bot_instance.is_ai_speaking() and not conv_mgr.candidate_is_speaking:
-                            # Dedicated silence handling for CLOSING phase ("Do you have any questions?")
-                            if conv_mgr.current_phase == "CLOSING":
+                            # If candidate mic is muted, prompt to unmute instead of advancing silence penalties
+                            if candidate_mic_muted is True:
+                                if silence_duration >= 18.0 and media_monitor and media_monitor.can_remind_mic():
+                                    conv_mgr.set_state(ConversationState.HANDLING_SILENCE, decision="candidate_mic_muted_reminder")
+                                    media_monitor.record_mic_reminder()
+                                    logger.info("[MEET][MIC] Candidate is muted. Prompting to unmute.")
+                                    await bot_instance.speak_text("I noticed your microphone is currently muted. Please unmute yourself whenever you are ready.")
+                                    conv_mgr.last_speech_time = time.monotonic()
+                                    conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="waiting_after_unmute_prompt")
+                                else:
+                                    conv_mgr.last_speech_time = max(conv_mgr.last_speech_time, time.monotonic() - 10.0)
+
+                            elif conv_mgr.current_phase == "CLOSING":
+                                # Dedicated silence handling for CLOSING phase
                                 if silence_duration >= 12.0 and conv_mgr.no_response_step == 0:
-                                    conv_mgr.set_state(ConversationState.NO_RESPONSE, decision="closing_silence_prompt")
+                                    conv_mgr.set_state(ConversationState.HANDLING_SILENCE, decision="closing_silence_prompt")
                                     conv_mgr.no_response_step = 1
                                     logger.info("[RECOVERY] reason=closing_silence action=prompt_questions")
                                     await bot_instance.speak_text("Take your time. Is there anything you'd like to ask?")
                                     conv_mgr.last_speech_time = time.monotonic()
-                                    conv_mgr.set_state(ConversationState.WAITING_FOR_FINAL_RESPONSE, decision="waiting_after_closing_prompt")
+                                    conv_mgr.set_state(ConversationState.LISTENING_TO_STUDENT, decision="waiting_after_closing_prompt")
                                 elif silence_duration >= 12.0 and conv_mgr.no_response_step == 1:
-                                    conv_mgr.set_state(ConversationState.COMPLETING, decision="closing_silence_conclude")
+                                    conv_mgr.set_state(ConversationState.CLOSING_INTERVIEW, decision="closing_silence_conclude")
                                     logger.info("[RECOVERY] reason=closing_silence action=conclude_interview")
                                     conv_mgr.no_response_step = 0
-                                    # Candidate remained silent during closing turn -> advance with "No questions"
+                                    farewell_msg = "Thank you for your time today. That concludes our interview."
                                     if args.interview_id:
                                         try:
                                             farewell_res = recruitai_client.submit_transcript(
                                                 interview_id=args.interview_id,
                                                 transcript="No questions.",
                                                 candidate_id=args.candidate_id,
+                                                closing=True,
                                             )
-                                            closing_msg = farewell_res.get("nextQuestion") or "Thank you for your time today. That concludes the interview."
-                                            await bot_instance.speak_text(closing_msg)
+                                            farewell_msg = farewell_res.get("nextQuestion") or farewell_msg
                                         except Exception as close_err:
                                             logger.error(f"[MeetingBot] Failed to finalize on closing silence: {close_err}")
-                                            await bot_instance.speak_text("Thank you for your time today. That concludes the interview.")
-
-                                    # Trigger recording & complete
-                                    conv_mgr.set_state(ConversationState.ENDED, decision="closing_silence_ended")
+                                    await bot_instance.speak_text(farewell_msg)
+                                    conv_mgr.set_state(ConversationState.COMPLETED, decision="closing_silence_ended")
                                     dur = audio_capture.stop_master_recording()
                                     if args.interview_id:
                                         try:
@@ -583,44 +777,42 @@ async def run_cli():
                                                 )
                                         except Exception as up_err:
                                             logger.error(f"[MeetingBot] Failed to upload recording: {up_err}")
-
                                         try:
                                             recruitai_client.complete_interview(
                                                 interview_id=args.interview_id,
                                                 candidate_id=args.candidate_id,
+                                                reason="COMPLETED_NORMAL",
                                                 wait_for_analysis=False,
                                             )
                                         except Exception as comp_err:
                                             logger.error(f"[MeetingBot] Failed to complete interview: {comp_err}")
-
-                                    await asyncio.sleep(2.0)
+                                    await asyncio.sleep(1.5)
                                     break
                             else:
                                 # Normal Questioning Silence Recovery
-                                # Step 1: Candidate is silent for >= 18s -> Reassure "Take your time."
+                                # Step 1: Silent for >= 18s -> Reassure "Take your time."
                                 if silence_duration >= 18.0 and conv_mgr.no_response_step == 0:
-                                    conv_mgr.set_state(ConversationState.NO_RESPONSE, decision="reassure_candidate")
+                                    conv_mgr.set_state(ConversationState.HANDLING_SILENCE, decision="reassure_candidate")
                                     conv_mgr.no_response_step = 1
                                     logger.info("[RECOVERY] reason=no_response action=reassure")
                                     await bot_instance.speak_text("Take your time.")
                                     conv_mgr.last_speech_time = time.monotonic()
-                                    conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="waiting_after_reassurance")
+                                    conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="waiting_after_reassurance")
 
                                 # Step 2: Still silent after another 18s -> Offer repeat
                                 elif silence_duration >= 18.0 and conv_mgr.no_response_step == 1:
-                                    conv_mgr.set_state(ConversationState.NO_RESPONSE, decision="offer_repeat")
+                                    conv_mgr.set_state(ConversationState.HANDLING_SILENCE, decision="offer_repeat")
                                     conv_mgr.no_response_step = 2
                                     logger.info("[RECOVERY] reason=no_response action=repeat_question")
                                     await bot_instance.speak_text("Would you like me to repeat the question?")
                                     conv_mgr.last_speech_time = time.monotonic()
-                                    conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="waiting_after_repeat_offer")
+                                    conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="waiting_after_repeat_offer")
 
                                 # Step 3: Still silent after another 20s -> Skip question gracefully
                                 elif silence_duration >= 20.0 and conv_mgr.no_response_step == 2:
-                                    conv_mgr.set_state(ConversationState.SKIPPING_QUESTION, decision="prolonged_silence_skip")
+                                    conv_mgr.set_state(ConversationState.RECOVERING, decision="prolonged_silence_skip")
                                     logger.info("[RECOVERY] reason=no_response action=skip")
                                     conv_mgr.no_response_step = 0
-                                    # Advance backend question gracefully
                                     if args.interview_id:
                                         try:
                                             skip_res = recruitai_client.submit_transcript(
@@ -630,42 +822,40 @@ async def run_cli():
                                             )
                                             next_q = skip_res.get("nextQuestion")
                                             if next_q:
-                                                conv_mgr.set_state(ConversationState.ASKING_NEXT_QUESTION, decision="skip_to_next")
+                                                conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="skip_to_next")
                                                 await bot_instance.speak_text(f"Let's move on to the next question. {next_q}")
                                         except Exception as skip_err:
                                             logger.error(f"[MeetingBot] Failed to advance skipped question: {skip_err}")
                                     conv_mgr.last_speech_time = time.monotonic()
-                                    conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="listening_after_skip")
+                                    conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="listening_after_skip")
 
                         await asyncio.sleep(0.1)
                         continue
 
-                    # Candidate speech completed and confirmed
+                    # Utterance detected and completed!
                     conv_mgr.candidate_is_speaking = False
                     conv_mgr.candidate_paused = False
                     conv_mgr.answer_finalized = True
                     bot_instance.set_candidate_speaking(False)
                     conv_mgr.no_response_step = 0
                     conv_mgr.last_speech_time = time.monotonic()
-                    conv_mgr.set_state(ConversationState.PROCESSING_ANSWER, decision="utterance_finalized")
+                    conv_mgr.set_state(ConversationState.ANSWER_DETECTED, decision="utterance_finalized")
 
-                    # Double check AI_SPEAKING
+                    # Double check AI_SPEAKING guard
                     if bot_instance.is_ai_speaking():
                         logger.info("[STT] Ignored captured utterance because AI_SPEAKING=true")
-                        conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="ignored_due_to_ai_speaking")
+                        conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="ignored_due_to_ai_speaking")
                         continue
 
                     wav_bytes = utterance.get("wav_bytes")
                     total_dur = utterance.get("duration", 0.0)
                     speech_dur = utterance.get("speech_duration", 0.0)
-
-                    # Performance timestamp recording
                     speech_ended_timestamp = time.monotonic()
                     logger.info(f"[PERF] utterance_duration={total_dur}s (actual speech: {speech_dur}s)")
 
                     if not wav_bytes or len(wav_bytes) < 44:
                         logger.warning("[AUDIO] Empty audio payload; continuing listening.")
-                        conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="empty_audio")
+                        conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="empty_audio")
                         continue
 
                     # Save recording artifact for diagnostics
@@ -679,13 +869,13 @@ async def run_cli():
 
                     if not deepgram_client.is_configured():
                         logger.warning("[MeetingBot] Audio saved, but DEEPGRAM_API_KEY is not configured.")
-                        conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="deepgram_not_configured")
+                        conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="deepgram_not_configured")
                         continue
 
                     # 1. Deepgram STT
+                    conv_mgr.set_state(ConversationState.PROCESSING_ANSWER, decision="transcribing_utterance")
                     logger.info("[STT] Sending utterance to Deepgram")
                     deepgram_start = time.monotonic()
-                    logger.info(f"[PERF] deepgram_start")
                     try:
                         res = deepgram_client.transcribe_file(seg_file)
                         deepgram_end = time.monotonic()
@@ -693,37 +883,42 @@ async def run_cli():
                         logger.info(f"[PERF] deepgram_end duration={deepgram_duration}s")
                     except Exception as stt_err:
                         logger.error(f"[MeetingBot] STT error: {stt_err}")
-                        conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="stt_error")
+                        conv_mgr.set_state(ConversationState.RECOVERING, decision="stt_error_recovery")
+                        try:
+                            await bot_instance.speak_text("I had a momentary audio glitch. Could you please repeat that?")
+                        except Exception:
+                            pass
+                        conv_mgr.last_speech_time = time.monotonic()
+                        conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="listening_after_stt_glitch")
                         continue
 
                     transcript = (res.get("transcript") or "").strip()
                     confidence = res.get("confidence", 0.0)
                     logger.info(f"[STT] Deepgram response: success={res.get('success')}, confidence={round(confidence, 3)}, model={res.get('model')}")
 
-                    # Reject empty or extremely low confidence noise (allow 0.20+ for Indian accented / Hindi / Marathi code-switching)
+                    # Filter empty or low-confidence noise
                     if not transcript or confidence < 0.20:
                         logger.info(f"[STT] Filtered empty/low-confidence transcript (conf={round(confidence, 2)})")
                         conv_mgr.empty_transcript_count = getattr(conv_mgr, "empty_transcript_count", 0) + 1
-                        # If candidate spoke for >= 1.0s but transcript came back blank twice in a row, politely ask to repeat
                         if speech_dur >= 1.0 and conv_mgr.empty_transcript_count >= 2:
                             conv_mgr.empty_transcript_count = 0
-                            conv_mgr.set_state(ConversationState.CLARIFICATION, decision="ask_to_repeat_unheard_speech")
+                            conv_mgr.set_state(ConversationState.HANDLING_SILENCE, decision="ask_to_repeat_unheard_speech")
                             try:
                                 await bot_instance.speak_text("Sorry, I couldn't catch that clearly. Could you say that again?")
                             except Exception:
                                 pass
                             audio_capture.reset_buffer()
                             conv_mgr.last_speech_time = time.monotonic()
-                            conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="listening_after_unheard_prompt")
+                            conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="listening_after_unheard_prompt")
                         else:
-                            conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="low_confidence_filtered")
+                            conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="low_confidence_filtered")
                         continue
 
                     conv_mgr.empty_transcript_count = 0
 
                     if bot_instance.is_ai_speaking():
                         logger.info("[STT] Ignored candidate transcript because AI_SPEAKING=true")
-                        conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="ai_speaking_race")
+                        conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="ai_speaking_race")
                         continue
 
                     print("\n" + "=" * 50)
@@ -732,7 +927,7 @@ async def run_cli():
                     logger.info(f"[STT] Transcript: {transcript}")
 
                     if not args.interview_id:
-                        conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="no_interview_id_mode")
+                        conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="no_interview_id_mode")
                         continue
 
                     # Check camera status for PRECHECK or ongoing verification
@@ -743,113 +938,39 @@ async def run_cli():
                     except Exception as cam_err:
                         logger.debug(f"[MEET][CAMERA] Could not determine candidate camera status: {cam_err}")
 
-                    # 2. Backend Submission
-                    backend_start = time.monotonic()
-                    logger.info(f"[PERF] backend_start")
-                    try:
-                        backend_res = recruitai_client.submit_transcript(
-                            interview_id=args.interview_id,
-                            transcript=transcript,
-                            candidate_id=args.candidate_id,
-                            camera_on=candidate_cam_on,
-                        )
-                        backend_end = time.monotonic()
-                        backend_duration = round(backend_end - backend_start, 2)
-                        logger.info(f"[PERF] backend_end duration={backend_duration}s")
+                    # Synchronized turn processing to prevent concurrent submissions
+                    async with conv_mgr.lock:
+                        if conv_mgr.current_phase == "CLOSING":
+                            # Candidate response in CLOSING phase
+                            lower_trans = transcript.lower().strip()
+                            is_no_question = (
+                                lower_trans in ("no", "nope", "nothing", "no questions", "all good", "i'm good", "no thank you", "nah", "none", "no i don't", "no questions from my side", "no sir", "no ma'am", "nothing else")
+                                or "no questions" in lower_trans
+                                or "nothing from my side" in lower_trans
+                                or "all good" in lower_trans
+                                or "all clear" in lower_trans
+                                or "nothing else" in lower_trans
+                            )
+                            if is_no_question:
+                                conv_mgr.set_state(ConversationState.CLOSING_INTERVIEW, decision="candidate_declined_questions")
+                                farewell_text = "That's perfectly fine. Thank you for your time today. That concludes our interview."
+                                try:
+                                    farewell_res = recruitai_client.submit_transcript(
+                                        interview_id=args.interview_id,
+                                        transcript="No questions.",
+                                        candidate_id=args.candidate_id,
+                                        camera_on=candidate_cam_on,
+                                        closing=True,
+                                    )
+                                    farewell_text = farewell_res.get("nextQuestion") or farewell_text
+                                except Exception as f_err:
+                                    logger.warning(f"[MeetingBot] Failed to submit closing 'No questions': {f_err}")
 
-                        logger.info(
-                            f"[BACKEND] Answer submitted: accepted={backend_res.get('accepted')}, "
-                            f"status={backend_res.get('interviewStatus')}, phase={backend_res.get('phase')}, "
-                            f"qIndex={backend_res.get('currentQuestionIndex')}"
-                        )
+                                conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="speaking_farewell")
+                                await bot_instance.speak_text(farewell_text)
+                                conv_mgr.set_state(ConversationState.COMPLETED, decision="closing_completed_normal")
 
-                        # Filter filler answers if backend rejected
-                        if not backend_res.get("accepted"):
-                            logger.info(f"[BACKEND] Answer not accepted: {backend_res.get('reason')}")
-                            conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="backend_rejected")
-                            continue
-
-                        next_q = backend_res.get("nextQuestion")
-                        ack = backend_res.get("acknowledgment")
-                        action = backend_res.get("action", "NEXT_TOPIC")
-                        is_closing = backend_res.get("closing", False)
-                        res_phase = backend_res.get("phase")
-                        if res_phase:
-                            conv_mgr.current_phase = res_phase
-
-                        logger.info(
-                            f"[ANSWER] transcript='{transcript}' answer_type={action} decision={action} phase={conv_mgr.current_phase} is_closing={is_closing}"
-                        )
-
-                        # Map backend action to conversational state
-                        if action == "WAIT":
-                            conv_mgr.set_state(ConversationState.THINKING, decision="candidate_thinking")
-                        elif action in ("REPEAT", "EXPLAIN"):
-                            conv_mgr.set_state(ConversationState.CLARIFICATION, decision="clarification_or_concept_explanation")
-                        elif action == "FOLLOW_UP":
-                            conv_mgr.set_state(ConversationState.ASKING_FOLLOWUP, decision="contextual_follow_up")
-                        elif action == "MOVE_ON":
-                            conv_mgr.set_state(ConversationState.ASKING_NEXT_QUESTION, decision="dont_know_move_on")
-                        elif conv_mgr.current_phase == "CLOSING" and not is_closing:
-                            conv_mgr.set_state(ConversationState.ASKING_FINAL_QUESTION, decision="asking_candidate_closing_questions")
-                        elif is_closing:
-                            conv_mgr.set_state(ConversationState.COMPLETING, decision="interview_closing")
-                        else:
-                            conv_mgr.set_state(ConversationState.ASKING_NEXT_QUESTION, decision="next_topic_question")
-
-                        # Compose natural conversational response (acknowledgment + question)
-                        spoken_payload = ""
-                        if ack and ack.strip():
-                            conv_mgr.set_state(ConversationState.ACKNOWLEDGING, decision=f"ack='{ack}'")
-                            if next_q and next_q.strip() and not next_q.startswith(ack):
-                                spoken_payload = f"{ack} {next_q}"
-                            else:
-                                spoken_payload = next_q or ack
-                        else:
-                            spoken_payload = next_q
-
-                        if spoken_payload:
-                            conv_mgr.current_question = spoken_payload
-                            logger.info(f"[AI] Next spoken utterance: '{spoken_payload[:60]}...'")
-                            print("\n" + "*" * 50)
-                            print(f"AI RESPONSE: {spoken_payload}")
-                            print("*" * 50 + "\n")
-
-                            # 3. TTS Playback with hard candidate guard
-                            tts_start = time.monotonic()
-                            logger.info(f"[PERF] tts_start")
-                            logger.info("[AI] SPEAKING")
-                            # Hard guard check
-                            if bot_instance.is_candidate_speaking():
-                                logger.info("[SAFETY] AI_TTS_BLOCKED_CANDIDATE_SPEAKING - candidate started speaking before playback")
-                            else:
-                                await bot_instance.speak_text(spoken_payload)
-
-                            tts_end = time.monotonic()
-                            tts_duration = round(tts_end - tts_start, 2)
-                            logger.info(f"[PERF] tts_end duration={tts_duration}s")
-                            logger.info("[PERF] ai_speaking_finished")
-                            audio_capture.reset_buffer()
-                            logger.info("[PERF] audio_buffer_flushed")
-                            await asyncio.sleep(0.4)
-                            logger.info("[PERF] candidate_listening_started")
-                            conv_mgr.last_speech_time = time.monotonic()
-
-                            if conv_mgr.current_phase == "CLOSING" and not is_closing:
-                                conv_mgr.set_state(ConversationState.WAITING_FOR_FINAL_RESPONSE, decision="listening_for_final_response")
-                            else:
-                                conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="listening_for_next_answer")
-
-                            # Total response time from candidate speech end to AI question starting/completing
-                            total_response_time = round(tts_end - speech_ended_timestamp, 2)
-                            logger.info(f"[PERF] total_response_time={total_response_time}s")
-
-                        if is_closing:
-                            logger.info("[MeetingBot] Interview completed (closing=true). Finalizing master recording & evaluation.")
-                            conv_mgr.set_state(ConversationState.ENDED, decision="interview_ended")
-                            # Stop and upload master recording
-                            dur = audio_capture.stop_master_recording()
-                            if args.interview_id:
+                                dur = audio_capture.stop_master_recording()
                                 try:
                                     master_wav_path = str(diag_dir / f"master_interview_{args.interview_id}.wav")
                                     saved = audio_capture.export_master_recording_wav(master_wav_path)
@@ -861,32 +982,166 @@ async def run_cli():
                                             candidate_id=args.candidate_id,
                                         )
                                 except Exception as up_err:
-                                    logger.error(f"[MeetingBot] Failed to upload master recording to Cloudinary: {up_err}")
+                                    logger.error(f"[MeetingBot] Failed to upload recording: {up_err}")
 
-                                # Finalize interview in backend so evaluation & report are generated
                                 try:
-                                    logger.info(f"[MeetingBot] Triggering backend interview completion & evaluation for {args.interview_id}...")
                                     recruitai_client.complete_interview(
                                         interview_id=args.interview_id,
                                         candidate_id=args.candidate_id,
+                                        reason="COMPLETED_NORMAL",
                                         wait_for_analysis=False,
                                     )
                                 except Exception as comp_err:
-                                    logger.error(f"[MeetingBot] Failed to trigger backend interview completion: {comp_err}")
+                                    logger.error(f"[MeetingBot] Failed to complete interview: {comp_err}")
 
-                            await asyncio.sleep(2.0)
-                            break
+                                await asyncio.sleep(1.5)
+                                break
+                            else:
+                                # Candidate asked a question!
+                                conv_mgr.student_question_count += 1
+                                conv_mgr.set_state(ConversationState.ANSWERING_STUDENT_QUESTION, decision="answering_student_q")
+                                ans_text = "That is a great question. Our recruitment team will review the evaluation results and follow up with you on the next steps."
+                                try:
+                                    b_res = recruitai_client.submit_transcript(
+                                        interview_id=args.interview_id,
+                                        transcript=transcript,
+                                        candidate_id=args.candidate_id,
+                                        camera_on=candidate_cam_on,
+                                        closing=True,
+                                    )
+                                    ans_text = b_res.get("nextQuestion") or ans_text
+                                except Exception as q_err:
+                                    logger.error(f"[MeetingBot] Backend error answering student question: {q_err}")
 
-                    except Exception as b_err:
-                        logger.error(f"[MeetingBot] Backend submission error: {b_err}")
-                        conv_mgr.set_state(ConversationState.WAITING_FOR_CANDIDATE, decision="backend_submission_error")
-                        conv_mgr.last_speech_time = time.monotonic()
-                        audio_capture.reset_buffer()
-                        logger.info("[AUDIO] Audio buffer reset after backend submission recovery.")
+                                conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="speaking_answer_to_student")
+                                await bot_instance.speak_text(ans_text)
+                                audio_capture.reset_buffer()
+                                rem_time = conv_mgr.get_remaining_time_sec()
+                                if rem_time > 70.0 and conv_mgr.student_question_count < 3:
+                                    conv_mgr.set_state(ConversationState.CHECKING_FOR_MORE_QUESTIONS, decision="checking_additional_q")
+                                    await bot_instance.speak_text("Do you have any other questions for me?")
+                                    audio_capture.reset_buffer()
+                                    conv_mgr.last_speech_time = time.monotonic()
+                                    conv_mgr.set_state(ConversationState.LISTENING_TO_STUDENT, decision="listening_for_next_student_q")
+                                    continue
+                                else:
+                                    conv_mgr.set_state(ConversationState.CLOSING_INTERVIEW, decision="closing_after_student_q")
+                                    await bot_instance.speak_text("Thank you for those great questions. That brings us to the end of our scheduled time. Have a wonderful day!")
+                                    conv_mgr.set_state(ConversationState.COMPLETED, decision="completed_normal")
+                                    dur = audio_capture.stop_master_recording()
+                                    try:
+                                        master_wav_path = str(diag_dir / f"master_interview_{args.interview_id}.wav")
+                                        saved = audio_capture.export_master_recording_wav(master_wav_path)
+                                        if saved:
+                                            recruitai_client.upload_recording(
+                                                interview_id=args.interview_id,
+                                                recording_file_path=master_wav_path,
+                                                duration_seconds=dur,
+                                                candidate_id=args.candidate_id,
+                                            )
+                                    except Exception as up_err:
+                                        logger.error(f"[MeetingBot] Failed to upload recording: {up_err}")
+                                    try:
+                                        recruitai_client.complete_interview(
+                                            interview_id=args.interview_id,
+                                            candidate_id=args.candidate_id,
+                                            reason="COMPLETED_NORMAL",
+                                            wait_for_analysis=False,
+                                        )
+                                    except Exception as comp_err:
+                                        logger.error(f"[MeetingBot] Failed to complete interview: {comp_err}")
+                                    await asyncio.sleep(1.5)
+                                    break
+
+                        # 2. Normal Questioning Phase: Backend Submission
+                        conv_mgr.set_state(ConversationState.GENERATING_NEXT_QUESTION, decision="submitting_answer_to_backend")
+                        backend_start = time.monotonic()
                         try:
-                            await bot_instance.speak_text("I had a brief glitch processing that. Could you please say that one more time?")
-                        except Exception:
-                            pass
+                            backend_res = recruitai_client.submit_transcript(
+                                interview_id=args.interview_id,
+                                transcript=transcript,
+                                candidate_id=args.candidate_id,
+                                camera_on=candidate_cam_on,
+                            )
+                            backend_end = time.monotonic()
+                            backend_duration = round(backend_end - backend_start, 2)
+                            logger.info(f"[PERF] backend_end duration={backend_duration}s")
+
+                            logger.info(
+                                f"[BACKEND] Answer submitted: accepted={backend_res.get('accepted')}, "
+                                f"status={backend_res.get('interviewStatus')}, phase={backend_res.get('phase')}, "
+                                f"qIndex={backend_res.get('currentQuestionIndex')}"
+                            )
+
+                            if not backend_res.get("accepted"):
+                                logger.info(f"[BACKEND] Answer not accepted: {backend_res.get('reason')}")
+                                conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="backend_rejected")
+                                continue
+
+                            next_q = backend_res.get("nextQuestion")
+                            ack = backend_res.get("acknowledgment")
+                            action = backend_res.get("action", "NEXT_TOPIC")
+                            is_closing = backend_res.get("closing", False)
+                            res_phase = backend_res.get("phase")
+                            if res_phase:
+                                conv_mgr.current_phase = res_phase
+
+                            logger.info(
+                                f"[ANSWER] transcript='{transcript}' answer_type={action} decision={action} phase={conv_mgr.current_phase} is_closing={is_closing}"
+                            )
+
+                            if is_closing or conv_mgr.current_phase == "CLOSING":
+                                conv_mgr.current_phase = "CLOSING"
+                                conv_mgr.set_state(ConversationState.INVITING_STUDENT_QUESTIONS, decision="closing_phase_initiated")
+                                closing_prompt = next_q or "We are now approaching the end of our interview. Do you have any questions for me?"
+                                conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="speaking_closing_invitation")
+                                await bot_instance.speak_text(closing_prompt)
+                                audio_capture.reset_buffer()
+                                conv_mgr.last_speech_time = time.monotonic()
+                                conv_mgr.set_state(ConversationState.LISTENING_TO_STUDENT, decision="waiting_for_student_questions")
+                                continue
+
+                            # Compose spoken payload
+                            spoken_payload = ""
+                            if ack and ack.strip():
+                                if next_q and next_q.strip() and not next_q.startswith(ack):
+                                    spoken_payload = f"{ack} {next_q}"
+                                else:
+                                    spoken_payload = next_q or ack
+                            else:
+                                spoken_payload = next_q
+
+                            if spoken_payload:
+                                conv_mgr.current_question = spoken_payload
+                                logger.info(f"[AI] Next spoken utterance: '{spoken_payload[:60]}...'")
+                                print("\n" + "*" * 50)
+                                print(f"AI RESPONSE: {spoken_payload}")
+                                print("*" * 50 + "\n")
+
+                                conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="speaking_response")
+                                tts_start = time.monotonic()
+                                if bot_instance.is_candidate_speaking():
+                                    logger.info("[SAFETY] AI_TTS_BLOCKED_CANDIDATE_SPEAKING - candidate started speaking before playback")
+                                else:
+                                    await bot_instance.speak_text(spoken_payload)
+
+                                tts_end = time.monotonic()
+                                logger.info(f"[PERF] tts_end duration={round(tts_end - tts_start, 2)}s")
+                                audio_capture.reset_buffer()
+                                await asyncio.sleep(0.4)
+                                conv_mgr.last_speech_time = time.monotonic()
+                                conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="listening_for_next_answer")
+
+                        except Exception as b_err:
+                            logger.error(f"[MeetingBot] Backend submission error: {b_err}")
+                            conv_mgr.set_state(ConversationState.RECOVERING, decision="backend_submission_error")
+                            conv_mgr.last_speech_time = time.monotonic()
+                            audio_capture.reset_buffer()
+                            try:
+                                await bot_instance.speak_text("I had a brief glitch processing that. Could you please say that one more time?")
+                            except Exception:
+                                pass
+                            conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="listening_after_backend_error")
 
             except (KeyboardInterrupt, asyncio.CancelledError):
                 pass

@@ -562,6 +562,10 @@ class BotWorkerAgent:
             candidate_id,
         ]
 
+        duration_mins = job.get("durationMinutes") or (preflight and preflight.get("durationMinutes"))
+        if duration_mins:
+            cmd.extend(["--duration-minutes", str(duration_mins)])
+
         logger.info(f"Launching interview bot process: python -m app.main --interview-id {interview_id}...")
 
         env = os.environ.copy()

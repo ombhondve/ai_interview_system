@@ -65,6 +65,7 @@ class RecruitAIClient:
         candidate_id: Optional[str] = None,
         request_id: Optional[str] = None,
         camera_on: Optional[bool] = None,
+        closing: Optional[bool] = None,
     ) -> Dict[str, Any]:
         """
         Submit a candidate's transcribed answer to the RecruitAI backend.
@@ -101,6 +102,8 @@ class RecruitAIClient:
             payload["candidateId"] = str(candidate_id).strip()
         if camera_on is not None:
             payload["cameraOn"] = camera_on
+        if closing is not None:
+            payload["closing"] = closing
 
         # Never log internal secrets or full sensitive candidate tokens
         logger.info(
@@ -366,6 +369,7 @@ class RecruitAIClient:
         interview_id: str,
         candidate_id: Optional[str] = None,
         wait_for_analysis: bool = False,
+        reason: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Notify backend that interview is finished, triggering evaluation and report generation.
@@ -380,6 +384,8 @@ class RecruitAIClient:
         payload = {"waitForAnalysis": wait_for_analysis}
         if candidate_id:
             payload["candidateId"] = candidate_id
+        if reason:
+            payload["reason"] = str(reason).strip()
 
         try:
             logger.info(f"[RecruitAIClient] Finalizing interview {interview_id} on backend...")
