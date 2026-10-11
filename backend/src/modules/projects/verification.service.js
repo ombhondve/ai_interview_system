@@ -1,6 +1,7 @@
 import { projectVerificationPrompt } from "../ai/ai.prompt.js";
 import { generateStructuredAI } from "../ai/ai.service.js";
 import { validateRepositoryUrl, fetchRepositoryContent } from "./repository.service.js";
+import { checkRepositorySyntax } from "./syntaxChecker.js";
 import {
   buildCompactRepository,
   enforcePayloadBudget,
@@ -25,6 +26,7 @@ import {
 
 const VERIFICATION_STATUS = {
   VERIFIED: "VERIFIED",
+  NEEDS_ADMIN_REVIEW: "NEEDS_ADMIN_REVIEW",
   REJECTED: "REJECTED",
   PENDING: "PENDING",
   ERROR: "ERROR"
@@ -385,6 +387,9 @@ function prepareVerificationMessages(projectRequirements, repositoryContent) {
     repoBudget
   );
 
+  // Run deterministic static syntax parsing on retrieved files before AI analysis
+  const syntaxCheck = checkRepositorySyntax(compact.content.keyFiles);
+
   const userPrompt = {
     PROJECT_REQUIREMENTS: projectRequirements,
     REPOSITORY_CONTENT: compact.content,
@@ -397,6 +402,18 @@ function prepareVerificationMessages(projectRequirements, repositoryContent) {
         filesExcluded: compact.stats.filesExcludedByRules,
         filesDroppedForBudget: compact.stats.filesDroppedByBudget,
         truncatedFiles: compact.stats.truncatedFiles
+      },
+      DETERMINISTIC_CHECKS: {
+        syntaxAnalysis: {
+          performed: true,
+          summary: syntaxCheck.summary,
+          filesChecked: syntaxCheck.filesChecked,
+          filesValid: syntaxCheck.filesValid,
+          filesWithSyntaxErrors: syntaxCheck.filesWithSyntaxErrors,
+          filesSkippedTruncated: syntaxCheck.filesSkippedTruncated,
+          hasFatalSyntaxErrors: syntaxCheck.hasFatalSyntaxErrors,
+          results: syntaxCheck.results
+        }
       }
     }
   };
@@ -412,12 +429,13 @@ function prepareVerificationMessages(projectRequirements, repositoryContent) {
       `files ${compact.stats.filesIncluded}/${compact.stats.filesConsidered} included)`
   );
 
-  // SAFE DIAGNOSTICS: counts and sizes only, never file contents.
+  // SAFE DIAGNOSTICS: counts, syntax results and sizes only, never file contents.
   logger.info(
     `AI input evidence: filesIncluded=${compact.stats.filesIncluded} ` +
       `filesExcluded=${compact.stats.filesExcludedByRules} ` +
       `filesDroppedForBudget=${compact.stats.filesDroppedByBudget} ` +
       `truncatedFiles=${compact.stats.truncatedFiles} ` +
+      `syntaxErrors=${syntaxCheck.filesWithSyntaxErrors} ` +
       `payloadChars=${enforced.stats.finalChars}`
   );
 
@@ -441,7 +459,7 @@ function validateVerificationResult(result) {
     throw new Error("Empty verification result");
   }
   
-  const validStatuses = ["VERIFIED", "REJECTED"];
+  const validStatuses = ["VERIFIED", "NEEDS_ADMIN_REVIEW", "REJECTED"];
   
   if (!validStatuses.includes(result.verificationStatus)) {
     throw new Error(`Invalid verification status: ${result.verificationStatus}`);
@@ -666,7 +684,9 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
     if (submissionId) {
       await markStageActive(candidateId, submissionId, "repository");
     }
-    const repoContent = await fetchRepositoryContent(repositoryUrl);
+    const repoContent = await fetchRepositoryContent(repositoryUrl, {
+      expectedFiles: projectRequirements?.expectedFiles
+    });
     
     if (!repoContent.success) {
       // -----------------------------------------------------------------

@@ -690,12 +690,14 @@ async function getGitHubRepositoryStructure(url) {
     // Using recursive=true to get complete file structure
     const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/${repoData.default_branch || 'main'}?recursive=true`;
     let tree = { files: [], directories: [] };
+    let isTreeTruncated = false;
     
     try {
       const treeResponse = await githubGet(treeUrl);
       
       if (treeResponse.status === 200) {
         const treeData = treeResponse.data;
+        isTreeTruncated = Boolean(treeData.truncated);
         
         // Safety check: limit total files to prevent overwhelming data
         const MAX_TREE_ITEMS = 1000;
@@ -720,8 +722,8 @@ async function getGitHubRepositoryStructure(url) {
           });
           
           // Warn if we hit the limit
-          if (treeData.tree.length > MAX_TREE_ITEMS) {
-            console.warn(`Repository has ${treeData.tree.length} items, limiting to ${MAX_TREE_ITEMS} for analysis`);
+          if (treeData.tree.length > MAX_TREE_ITEMS || isTreeTruncated) {
+            console.warn(`Repository tree discovery: ${treeData.tree.length} items (truncated=${isTreeTruncated}), limiting to ${MAX_TREE_ITEMS} for analysis`);
           }
         }
       }
@@ -779,11 +781,15 @@ async function getGitHubRepositoryStructure(url) {
         createdAt: repoData.created_at,
         updatedAt: repoData.updated_at
       },
+      allFiles: tree.files, // Full list of discovered files (up to MAX_TREE_ITEMS)
+      isTreeTruncated,
       structure: {
-        files: tree.files.slice(0, 50), // Limit to 50 files
-        directories: tree.directories.slice(0, 20), // Limit to 20 directories
+        files: tree.files.slice(0, 100), // Overview of files for quick display
+        allFiles: tree.files, // Full list of discovered files
+        directories: tree.directories.slice(0, 30), // Limit to 30 directories
         totalFiles: tree.files.length,
         totalDirectories: tree.directories.length,
+        isTruncated: isTreeTruncated,
         languages: Object.keys(languages),
         readme: readmeInfo.available ? {
           available: true,
@@ -833,26 +839,23 @@ function validateFileSecurity(path, content = null) {
     securityIssues.push(`Dangerous file extension: .${ext}`);
   }
   
-  // 2. Check for sensitive file patterns
+  // 2. Check for sensitive file patterns (targeted to avoid false positives on words like keyboard/tokenizer)
   const sensitivePatterns = [
     /\.env\b/i,
-    /\.secret/i,
-    /\.private/i,
-    /secret/i,
-    /password/i,
-    /token/i,
-    /key/i,
-    /credential/i,
+    /\.secret\b/i,
+    /\.private\b/i,
+    /(?:^|[._/-])(?:id_rsa|id_dsa|private[._-]key|serviceaccountkey|credentials\.json)(?:$|[._/-])/i,
+    /(?:^|[._/-])(?:secret|password|credential|api_key|auth_token)[._-]?\.(?:json|env|txt|key|pem)$/i,
     /\.pem$/i,
     /\.key$/i,
     /\.cert$/i,
     /\.pfx$/i,
     /\.jks$/i,
     /\.keystore$/i,
-    /aws[_-]?access/i,
-    /aws[_-]?secret/i,
-    /azure[_-]?key/i,
-    /gcp[_-]?key/i,
+    /aws[_-]?access[_-]?key/i,
+    /aws[_-]?secret[_-]?key/i,
+    /azure[_-]?(?:storage|client)[_-]?key/i,
+    /gcp[_-]?private[_-]?key/i,
     /database[_-]?url/i,
     /connection[_-]?string/i
   ];
@@ -980,8 +983,9 @@ async function fetchFileContentSafely(owner, repo, path, branch = 'main') {
       };
     }
     
-    // Fetch file content from GitHub API
-    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${branch}`;
+    // Fetch file content from GitHub API - encode each path segment individually to preserve directory separators
+    const encodedPath = path.split('/').map(segment => encodeURIComponent(segment)).join('/');
+    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${branch}`;
     
     const response = await githubGet(apiUrl);
     
@@ -1106,7 +1110,7 @@ async function fetchFileContentSafely(owner, repo, path, branch = 'main') {
  * 
  * IMPORTANT SECURITY: Never execute untrusted code
  */
-export async function getKeyRepositoryFiles(url, preloadedStructure = null) {
+export async function getKeyRepositoryFiles(url, preloadedStructure = null, expectedFiles = []) {
   try {
     // Reuse the already-fetched repository structure when the caller has it.
     // The previous implementation fetched the entire repository metadata/tree
@@ -1188,7 +1192,7 @@ export async function getKeyRepositoryFiles(url, preloadedStructure = null) {
     ];
     
     const keyFiles = [];
-    const MAX_FILES_TO_FETCH = 20;
+    const MAX_FILES_TO_FETCH = 30;
     const MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10MB total
     let totalSize = 0;
     
@@ -1219,9 +1223,15 @@ export async function getKeyRepositoryFiles(url, preloadedStructure = null) {
       structure.repository?.defaultBranch ||
       'main';
     
-    // First pass: identify key files
-    if (structure.structure.files && Array.isArray(structure.structure.files)) {
-      structure.structure.files.forEach(file => {
+    // First pass: identify key files across the entire discovered tree
+    const candidateFiles = Array.isArray(structure.allFiles) && structure.allFiles.length > 0
+      ? structure.allFiles
+      : (Array.isArray(structure.structure?.allFiles) && structure.structure.allFiles.length > 0
+        ? structure.structure.allFiles
+        : (Array.isArray(structure.structure?.files) ? structure.structure.files : []));
+
+    if (candidateFiles && Array.isArray(candidateFiles)) {
+      candidateFiles.forEach(file => {
         for (const pattern of keyFilePatterns) {
           if (pattern.test(file.path)) {
             keyFiles.push({
@@ -1229,7 +1239,7 @@ export async function getKeyRepositoryFiles(url, preloadedStructure = null) {
               extension: file.extension,
               size: file.size || 0,
               type: categorizeFile(file.path),
-              priority: getFilePriority(file.path),
+              priority: getFilePriority(file.path, expectedFiles),
               content: null // Will be fetched later
             });
             break; // Found a match, move to next file
@@ -1238,7 +1248,7 @@ export async function getKeyRepositoryFiles(url, preloadedStructure = null) {
       });
     }
     
-    // Sort by priority (package files first, then source, then docs)
+    // Sort by priority (expected files first, package files, source, etc.)
     keyFiles.sort((a, b) => a.priority - b.priority);
     
     // Fetch content for top files only.
@@ -1260,12 +1270,14 @@ export async function getKeyRepositoryFiles(url, preloadedStructure = null) {
         return { ...file, content: null, fetchStatus: 'skipped', reason: 'Dangerous file type' };
       }
 
-      if (
-        file.path.toLowerCase().includes('.env') ||
-        file.path.toLowerCase().includes('secret') ||
-        file.path.toLowerCase().includes('key') ||
-        file.path.toLowerCase().includes('credential')
-      ) {
+      const lowerPath = file.path.toLowerCase();
+      const isSensitive =
+        lowerPath.includes('.env') ||
+        /(?:^|[._/-])(?:id_rsa|id_dsa|private[._-]key|serviceaccountkey|credentials\.json)(?:$|[._/-])/i.test(lowerPath) ||
+        /(?:^|[._/-])(?:secret|credentials|password|api_key|auth_token)[._-]?\.(?:json|env|txt|key|pem)$/i.test(lowerPath) ||
+        /\.(?:pem|key|pfx|pkcs12)$/i.test(lowerPath);
+
+      if (isSensitive) {
         return { ...file, content: null, fetchStatus: 'skipped', reason: 'Sensitive file type' };
       }
 
@@ -1393,17 +1405,26 @@ export async function getKeyRepositoryFiles(url, preloadedStructure = null) {
 /**
  * Get file priority for sorting (lower = higher priority)
  */
-function getFilePriority(filepath) {
+function getFilePriority(filepath, expectedFiles = []) {
   const filename = filepath.toLowerCase();
   
-  // Package files are highest priority
+  // Explicitly expected files get top priority
+  if (Array.isArray(expectedFiles) && expectedFiles.length > 0) {
+    const isExpected = expectedFiles.some((expected) => {
+      const exp = String(expected).toLowerCase();
+      return filename === exp || filename.endsWith('/' + exp);
+    });
+    if (isExpected) return 1;
+  }
+  
+  // Package files are priority 2
   if (filename.includes('package.json') || 
       filename.includes('requirements.txt') ||
       filename.includes('pom.xml') ||
       filename.includes('build.gradle') ||
       filename.includes('cargo.toml') ||
       filename.includes('go.mod')) {
-    return 1;
+    return 2;
   }
   
   // Configuration files
@@ -1411,7 +1432,7 @@ function getFilePriority(filepath) {
       filename.includes('webpack.config') ||
       filename.includes('tsconfig.json') ||
       filename.includes('.config.')) {
-    return 2;
+    return 3;
   }
   
   // Main source files (likely entry points)
@@ -1420,7 +1441,7 @@ function getFilePriority(filepath) {
       filename.includes('main.') ||
       filename.includes('server.') ||
       filename.includes('src/index.')) {
-    return 3;
+    return 4;
   }
   
   // Other source files
@@ -1432,22 +1453,22 @@ function getFilePriority(filepath) {
   
   for (const ext of sourceExtensions) {
     if (filename.endsWith(ext)) {
-      return 4;
+      return 5;
     }
   }
   
   // Documentation
   if (filename.includes('readme')) {
-    return 5;
+    return 6;
   }
   
   // Test files
   if (filename.includes('test') || filename.includes('spec')) {
-    return 6;
+    return 7;
   }
   
   // Other files
-  return 7;
+  return 8;
 }
 
 /**
@@ -1713,7 +1734,7 @@ export async function validateRepositoryForProject(repositorySummary, project) {
  * - Private repositories
  * - Invalid URLs
  */
-export async function fetchRepositoryContent(url) {
+export async function fetchRepositoryContent(url, options = {}) {
   const startTime = Date.now();
   
   try {
@@ -1771,8 +1792,10 @@ export async function fetchRepositoryContent(url) {
         };
       }
 
+      const expectedFiles = options?.expectedFiles || options?.projectRequirements?.expectedFiles || [];
+
       const [keyFilesResult, readmeInfo] = await Promise.all([
-        getKeyRepositoryFiles(url, repoStructure),
+        getKeyRepositoryFiles(url, repoStructure, expectedFiles),
         getReadmeContent(url)
       ]);
       

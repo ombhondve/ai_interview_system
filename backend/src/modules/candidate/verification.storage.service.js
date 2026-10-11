@@ -53,6 +53,9 @@ export async function storeVerificationResult(candidateId, verificationResult, s
     } else if (isVerificationApproved(verificationResult)) {
       nextSubmissionStatus = "verified";
       nextAiVerificationStatus = "verified";
+    } else if (verificationResult.status === "NEEDS_ADMIN_REVIEW") {
+      nextSubmissionStatus = "needs_admin_review";
+      nextAiVerificationStatus = "needs_admin_review";
     } else if (verificationResult.status === "REJECTED") {
       nextSubmissionStatus = "rejected";
       nextAiVerificationStatus = "rejected";
@@ -94,8 +97,8 @@ export async function storeVerificationResult(candidateId, verificationResult, s
       }
     };
     
-    // Admin review is intentionally not part of the student verification flow.
-    if (false) {
+    // Admin review for NEEDS_ADMIN_REVIEW cases
+    if (verificationResult.status === "NEEDS_ADMIN_REVIEW") {
       updateData["projectSubmission.adminReview"] = {
         status: "pending",
         reviewedBy: null,
@@ -140,7 +143,7 @@ export async function storeVerificationResult(candidateId, verificationResult, s
         success: true,
         candidate: null,
         verificationStatus: verificationResult.status,
-        requiresAdminReview: false,
+        requiresAdminReview: verificationResult.status === "NEEDS_ADMIN_REVIEW",
         stats: processedData,
         stale: true
       };
@@ -152,7 +155,7 @@ export async function storeVerificationResult(candidateId, verificationResult, s
       success: true,
       candidate: updatedCandidate,
       verificationStatus: verificationResult.status,
-      requiresAdminReview: false,
+      requiresAdminReview: verificationResult.status === "NEEDS_ADMIN_REVIEW",
       stats: processedData
     };
     

@@ -276,7 +276,9 @@ class VerificationTracker {
           failed: false,
           message: result.status === "VERIFIED"
             ? "All verification checks passed."
-            : "Verification completed with a rejected result.",
+            : result.status === "NEEDS_ADMIN_REVIEW"
+              ? "Verification completed and referred for admin review."
+              : "Verification completed with a rejected result.",
           updatedAt: new Date().toISOString()
         };
         verificationData.completedAt = new Date().toISOString();

@@ -228,12 +228,19 @@ describe("verification classification — successful fetch keeps AI decisions", 
     expect(result.verificationStatus).toBe("VERIFIED");
   });
 
-  test("fetched successfully + AI returns unsupported status -> REJECTED (no admin-review state)", async () => {
-    // NEEDS_ADMIN_REVIEW is no longer a valid verification status; the
-    // validator rejects it and the failure path classifies it as REJECTED.
-    aiService.generateStructuredAI.mockResolvedValue(aiResult("NEEDS_ADMIN_REVIEW", 0.6));
+  test("fetched successfully + AI returns NEEDS_ADMIN_REVIEW -> NEEDS_ADMIN_REVIEW", async () => {
+    aiService.generateStructuredAI.mockResolvedValue(aiResult("NEEDS_ADMIN_REVIEW", 0.65));
 
     const result = await verifyProjectSubmission("cand-7", "proj-7", "https://github.com/owner/repo");
+
+    expect(result.status).toBe("NEEDS_ADMIN_REVIEW");
+    expect(result.verificationStatus).toBe("NEEDS_ADMIN_REVIEW");
+  });
+
+  test("fetched successfully + AI returns genuinely unsupported status -> REJECTED", async () => {
+    aiService.generateStructuredAI.mockResolvedValue(aiResult("UNKNOWN_STATUS", 0.6));
+
+    const result = await verifyProjectSubmission("cand-7b", "proj-7b", "https://github.com/owner/repo");
 
     expect(result.status).toBe("REJECTED");
     expect(result.verificationStatus).toBe("REJECTED");
