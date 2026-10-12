@@ -82,30 +82,42 @@ export function fallbackAnalysis({ transcriptLength = 0 } = {}) {
 }
 
 export async function analyzeInterview({ context, questions, transcript }) {
-  logger.info("AI analysis started");
-  try {
-    const prompt = buildAnalysisPrompt({
-      candidate: context.candidate,
-      project: context.project,
-      verification: context.verification,
-      questions,
-      transcript,
-    });
-    const raw = await generateStructuredAI([
-      { role: "system", content: "You are a fair technical hiring evaluator. Return JSON only. Never output HIRE or REJECT." },
-      { role: "user", content: prompt },
-    ]);
-    const clean = sanitizeAnalysis(raw);
-    if (clean) {
-      logger.info("AI analysis completed");
-      return { ...clean, source: "ai" };
-    }
-    logger.warn("AI analysis output unusable, using fallback.");
-  } catch (error) {
-    logger.warn(`AI analysis failed, using fallback: ${error.message}`);
+  const candidateTurns = (transcript || []).filter(
+    (t) => t.speaker === "CANDIDATE" && typeof t.text === "string" && t.text.trim().length > 0
+  );
+
+  if (candidateTurns.length === 0) {
+    logger.warn(`[ANALYSIS] Insufficient candidate transcript turns (${(transcript || []).length} total turns, 0 candidate turns)`);
+    const error = new Error("Interview transcript contains insufficient candidate responses to generate an evaluation.");
+    error.status = 400;
+    throw error;
   }
-  logger.info("AI analysis completed (fallback)");
-  return { ...fallbackAnalysis({ transcriptLength: transcript?.length || 0 }), source: "fallback" };
+
+  logger.info(`[ANALYSIS] AI interview evaluation requested for candidate ${context?.candidate?.id || "unknown"} with ${candidateTurns.length} candidate turns`);
+
+  const prompt = buildAnalysisPrompt({
+    candidate: context?.candidate,
+    project: context?.project,
+    verification: context?.verification,
+    questions,
+    transcript,
+  });
+
+  const raw = await generateStructuredAI([
+    { role: "system", content: "You are a fair technical hiring evaluator. Return JSON only. Never output HIRE or REJECT." },
+    { role: "user", content: prompt },
+  ]);
+
+  const clean = sanitizeAnalysis(raw);
+  if (!clean) {
+    logger.error("[ANALYSIS] AI analysis output malformed or failed validation");
+    const error = new Error("AI provider returned invalid or malformed evaluation output.");
+    error.status = 502;
+    throw error;
+  }
+
+  logger.info(`[ANALYSIS] AI interview evaluation completed successfully with score ${clean.overallScore} and recommendation ${clean.recommendation}`);
+  return { ...clean, source: "ai" };
 }
 
 export default { analyzeInterview, sanitizeAnalysis, fallbackAnalysis };

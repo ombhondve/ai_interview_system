@@ -96,14 +96,44 @@ router.get("/mine", requireVerifiedSession, async (req, res) => {
 
 router.post("/:interviewId/retry-analysis", requireAuth, requireRole("superadmin", "recruiter", "admin"), validInterviewId, async (req, res) => {
   try {
-    const interview = await AiInterview.findById(req.params.interviewId);
-    if (!interview) return res.status(404).json({ success: false, message: "Interview not found." });
-    if (!interview.endedAt || !["FAILED", "ANALYSIS_PENDING", "COMPLETED", "COMPLETING"].includes(interview.status)) {
-      return res.status(409).json({ success: false, message: "Only ended interviews can be re-analyzed." });
+    const interviewId = req.params.interviewId;
+    logger.info(`[INTERVIEW] Admin requested AI report generation/retry for interview ${interviewId}`, {
+      userId: req.user?.id || req.user?._id,
+      role: req.user?.role,
+    });
+
+    const interview = await AiInterview.findById(interviewId);
+    if (!interview) {
+      return res.status(404).json({ success: false, message: "Interview not found." });
     }
+
+    if (interview.status === "SCHEDULED" && (!interview.transcript || interview.transcript.length === 0)) {
+      return res.status(409).json({ success: false, message: "Interview has not started or recorded any transcript." });
+    }
+
+    if (!interview.endedAt) {
+      interview.endedAt = new Date();
+      await interview.save();
+    }
+
     const updated = await analyzeAndPersist(interview._id);
+    await updated.populate("candidateId", "name email role resumeData skills projectSubmission");
+    await updated.populate("projectId", "title role technologies requirements");
+
+    logger.info(`[INTERVIEW] AI report generation successfully completed for interview ${interviewId}`, {
+      status: updated.status,
+      score: updated.analysis?.overallScore,
+    });
+
     return res.json({ success: true, interview: updated });
-  } catch (error) { return handleError(res, error); }
+  } catch (error) {
+    const status = error.status || 500;
+    logger.error(`[INTERVIEW] AI report generation failed for interview ${req.params.interviewId}: ${error.message}`);
+    return res.status(status).json({
+      success: false,
+      message: error.message || "Failed to generate AI evaluation report.",
+    });
+  }
 });
 
 router.get("/:interviewId/report", requireAuth, requireRole("superadmin", "recruiter", "admin"), validInterviewId, async (req, res) => {

@@ -193,13 +193,17 @@ export default function AdminReportDetailPage() {
       const data = await request<{ interview: InterviewReport }>(`/${interviewId}/retry-analysis`, {
         method: "POST",
       });
-      setInterview(data.interview);
+      if (data.interview) {
+        setInterview(data.interview);
+      }
       setNotice({ text: "AI report generated successfully.", type: "success" });
+      await loadReport();
     } catch (err: unknown) {
       setNotice({
         text: err instanceof Error ? err.message : "Analysis generation failed.",
         type: "error",
       });
+      await loadReport();
     } finally {
       setBusy(false);
     }
@@ -276,10 +280,20 @@ export default function AdminReportDetailPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={() => void loadReport()}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-medium text-[#64748B] hover:bg-[#F5F7FA] transition-colors"
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-medium text-[#64748B] hover:bg-[#F5F7FA] transition-colors disabled:opacity-50"
             >
               <RefreshCw size={13} className={busy ? "animate-spin" : ""} /> Refresh
             </button>
+            {analysis && (
+              <button
+                onClick={() => void handleRetryAnalysis()}
+                disabled={busy}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#1976D2] bg-white px-3 py-1.5 text-xs font-medium text-[#1976D2] hover:bg-[#1976D2]/5 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw size={13} className={busy ? "animate-spin" : ""} /> Re-run AI Evaluation
+              </button>
+            )}
             <span
               className={`rounded-full px-3 py-1 text-xs font-semibold ${
                 analysis
@@ -502,22 +516,28 @@ export default function AdminReportDetailPage() {
           <section className="rounded-lg border border-[#E2E8F0] bg-white p-8 text-center shadow-xs">
             <HelpCircle className="mx-auto text-[#D97706]" size={36} />
             <h3 className="mt-3 text-base font-semibold text-[#111F33]">
-              {interview.status === "ANALYSIS_PENDING" || interview.status === "COMPLETING"
+              {busy
+                ? "Generating AI Evaluation..."
+                : interview.status === "ANALYSIS_PENDING" || interview.status === "COMPLETING"
                 ? "AI Report Generation in Progress"
                 : "AI Evaluation Not Yet Generated"}
             </h3>
-            <p className="mt-1 text-xs text-[#64748B] max-w-md mx-auto">
-              {interview.analysisError
-                ? `Error: ${interview.analysisError}`
-                : "The interview transcript is ready. Click below to generate the structured AI evaluation and report."}
-            </p>
+            {interview.analysisError ? (
+              <div className="mt-2 mx-auto max-w-lg rounded-md bg-[#DC2626]/10 border border-[#DC2626]/20 p-2.5 text-xs text-[#DC2626]">
+                <b>Diagnostic Notice:</b> {interview.analysisError}
+              </div>
+            ) : (
+              <p className="mt-1 text-xs text-[#64748B] max-w-md mx-auto">
+                The interview transcript is ready. Click below to generate the structured AI evaluation and report.
+              </p>
+            )}
             <button
               onClick={() => void handleRetryAnalysis()}
               disabled={busy}
               className="mt-4 inline-flex items-center gap-2 rounded-lg bg-[#1976D2] px-4 py-2 text-xs font-medium text-white shadow-xs transition hover:bg-[#1565C0] disabled:opacity-50"
             >
               <RefreshCw size={14} className={busy ? "animate-spin" : ""} />
-              Generate / Retry AI Report
+              {busy ? "Generating AI Report..." : "Generate / Retry AI Report"}
             </button>
           </section>
         )}

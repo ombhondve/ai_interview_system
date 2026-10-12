@@ -150,7 +150,22 @@ Respond with structured JSON ONLY:
 }
 
 export function buildAnalysisPrompt({ candidate, project, verification, questions, transcript }) {
-  const turns = (transcript || []).map((t) => `${t.speaker}: ${t.text}`).join("\n").slice(0, 12000);
+  const turns = (transcript || [])
+    .filter((t) => t && t.text)
+    .map((t) => `${t.speaker || "SPEAKER"}: ${t.text}`)
+    .join("\n")
+    .slice(0, 12000);
+
+  const candName = candidate?.name || "Candidate";
+  const candRole = candidate?.role || "Software Developer";
+  const candSkills = Array.isArray(candidate?.skills) && candidate.skills.length > 0 ? candidate.skills.join(", ") : "Not specified";
+  const projTitle = project?.title || "Assigned Project";
+  const verStatus = verification?.verificationStatus || verification?.status || "unverified";
+  const verSummary = (verification?.summary || "").slice(0, 500) || "No verification summary provided";
+  const questionsAsked = Array.isArray(questions) && questions.length > 0
+    ? questions.map((q) => q.question || q).join(" | ").slice(0, 2000)
+    : "Standard technical interview questioning";
+
   return `You are a fair technical hiring evaluator. Analyse the interview transcript on JOB-RELEVANT evidence only:
 technical knowledge, project understanding, problem solving, role-relevant communication, ability to explain implementation, demonstrated skills.
 
@@ -160,12 +175,12 @@ IMPORTANT EVALUATION RULES (MUST FOLLOW):
 - Communication score evaluates ability to convey technical intent and clarity, NOT textbook English grammar or native pronunciation.
 - NEVER evaluate protected characteristics. NEVER output HIRE/REJECT. Recommendation must be one of STRONG | ADMIN_REVIEW | WEAK.
 
-CANDIDATE: ${candidate?.name} (${candidate?.role}). Skills: ${(candidate?.skills || []).join(", ")}
-PROJECT: ${project?.title}. Verification: ${verification?.verificationStatus || verification?.status} - ${(verification?.summary || "").slice(0, 500)}
-QUESTIONS ASKED: ${(questions || []).map((q) => q.question).join(" | ").slice(0, 2000)}
+CANDIDATE: ${candName} (${candRole}). Skills: ${candSkills}
+PROJECT: ${projTitle}. Verification: ${verStatus} - ${verSummary}
+QUESTIONS ASKED: ${questionsAsked}
 
 TRANSCRIPT:
-${turns}
+${turns || "(No transcript turns provided)"}
 
 Return JSON ONLY:
 {
