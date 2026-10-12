@@ -88,7 +88,6 @@ export default function InterviewReportPage() {
   const { interviewId } = useParams<{ interviewId: string }>();
   const router = useRouter();
   const [interview, setInterview] = useState<InterviewReport | null>(null);
-  const [notes, setNotes] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -96,7 +95,6 @@ export default function InterviewReportPage() {
     try {
       const data = await request<{ interview: InterviewReport }>(`/${interviewId}/report`);
       setInterview(data.interview);
-      setNotes(data.interview.adminDecision?.notes || "");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Unable to load report.");
     }
@@ -117,23 +115,6 @@ export default function InterviewReportPage() {
       setNotice("Analysis retry completed.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Analysis retry failed.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const decide = async (status: "selected" | "rejected" | "another_interview") => {
-    setBusy(true);
-    setNotice("");
-    try {
-      const data = await request<{ interview: InterviewReport }>(`/${interviewId}/admin-decision`, {
-        method: "POST",
-        body: JSON.stringify({ status, notes }),
-      });
-      setInterview(data.interview);
-      setNotice("Admin decision saved successfully.");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Unable to save decision.");
     } finally {
       setBusy(false);
     }
@@ -448,65 +429,6 @@ export default function InterviewReportPage() {
                   ))
                 )}
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Admin Decision Action Card */}
-          <Card>
-            <CardHeader
-              title="Final Human Admin Decision"
-              subtitle="Submit the recruitment decision for this candidate."
-            />
-            <CardContent className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-[#64748B] mb-1">
-                  Decision Notes & Feedback
-                </label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  maxLength={2000}
-                  rows={3}
-                  placeholder="Add evaluation comments, feedback, or justification for this decision..."
-                  className="w-full rounded-md border border-[#E2E8F0] p-3 text-xs text-[#111F33] placeholder:text-slate-400 focus:border-[#1976D2] focus:outline-none focus:ring-1 focus:ring-[#1976D2]"
-                />
-              </div>
-
-              <div className="flex flex-wrap items-center gap-3 pt-2">
-                <Button
-                  loading={busy}
-                  onClick={() => void decide("selected")}
-                  className="bg-[#16A34A] hover:bg-emerald-700 text-xs"
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" />
-                  Approve / Hire Candidate
-                </Button>
-                <Button
-                  variant="outline"
-                  loading={busy}
-                  onClick={() => void decide("another_interview")}
-                  className="text-xs"
-                >
-                  <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-                  Request Follow-up Round
-                </Button>
-                <Button
-                  variant="destructive"
-                  loading={busy}
-                  onClick={() => void decide("rejected")}
-                  className="text-xs"
-                >
-                  <XCircle className="h-3.5 w-3.5 mr-1.5" />
-                  Reject Candidate
-                </Button>
-              </div>
-
-              <p className="text-[11px] text-[#64748B]">
-                Current status:{" "}
-                <strong className="text-[#111F33]">
-                  {interview.adminDecision?.status?.toUpperCase() || "PENDING"}
-                </strong>
-              </p>
             </CardContent>
           </Card>
         </div>

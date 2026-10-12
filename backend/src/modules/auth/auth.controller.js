@@ -32,9 +32,11 @@ function getAdmin() {
   const credentials = getCredentials();
   return {
     id: process.env.DEMO_ADMIN_ID || "env-admin",
-    name: process.env.DEMO_ADMIN_NAME || "Admin User",
+    name: process.env.DEMO_ADMIN_NAME || "System Administrator",
     email: credentials?.email || "admin@recruitai.com",
     role: process.env.DEMO_ADMIN_ROLE || "superadmin",
+    avatar: process.env.DEMO_ADMIN_AVATAR || null,
+    phone: process.env.DEMO_ADMIN_PHONE || "",
     status: "active",
     active: true,
   };
@@ -139,6 +141,8 @@ export async function me(req, res) {
             name: dbAdmin.name,
             email: dbAdmin.email,
             role: dbAdmin.role,
+            avatar: dbAdmin.avatar || null,
+            phone: dbAdmin.phone || "",
             status: dbAdmin.status,
             lastLogin: dbAdmin.lastLogin,
             active: dbAdmin.status === "active",
@@ -150,6 +154,128 @@ export async function me(req, res) {
     return res.status(200).json({ user: getAdmin() });
   } catch {
     return res.status(401).json({ message: "Unauthorized" });
+  }
+}
+
+export async function getProfile(req, res) {
+  try {
+    const adminId = req.user?.id;
+    if (!adminId) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    if (mongoose.Types.ObjectId.isValid(adminId)) {
+      const dbAdmin = await Admin.findById(adminId).select("-passwordHash").lean();
+      if (dbAdmin) {
+        return res.status(200).json({
+          success: true,
+          user: {
+            id: String(dbAdmin._id),
+            name: dbAdmin.name,
+            email: dbAdmin.email,
+            role: dbAdmin.role,
+            avatar: dbAdmin.avatar || null,
+            phone: dbAdmin.phone || "",
+            status: dbAdmin.status,
+            lastLogin: dbAdmin.lastLogin,
+            active: dbAdmin.status === "active",
+          },
+        });
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      user: getAdmin(),
+    });
+  } catch (error) {
+    console.error("Get profile error:", error);
+    return res.status(500).json({ success: false, message: "Failed to load profile." });
+  }
+}
+
+export async function updateProfile(req, res) {
+  try {
+    const adminId = req.user?.id;
+    if (!adminId) return res.status(401).json({ success: false, message: "Unauthorized" });
+
+    const name = String(req.body?.name || "").trim();
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    const avatar = req.body?.avatar !== undefined ? (req.body.avatar ? String(req.body.avatar).trim() : null) : undefined;
+    const phone = req.body?.phone !== undefined ? String(req.body.phone).trim() : undefined;
+
+    if (!name) {
+      return res.status(400).json({ success: false, message: "Name is required." });
+    }
+
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ success: false, message: "A valid email address is required." });
+    }
+
+    if (avatar && avatar.length > 5 * 1024 * 1024) {
+      return res.status(400).json({ success: false, message: "Avatar image is too large (max 5MB)." });
+    }
+
+    if (mongoose.Types.ObjectId.isValid(adminId)) {
+      const existing = await Admin.findOne({
+        email,
+        _id: { $ne: adminId },
+      });
+      if (existing) {
+        return res.status(409).json({
+          success: false,
+          message: "This email address is already in use by another administrator.",
+        });
+      }
+
+      const updateData = { name, email };
+      if (avatar !== undefined) updateData.avatar = avatar;
+      if (phone !== undefined) updateData.phone = phone;
+
+      const updated = await Admin.findByIdAndUpdate(
+        adminId,
+        { $set: updateData },
+        { new: true, runValidators: true }
+      ).select("-passwordHash").lean();
+
+      if (!updated) {
+        return res.status(404).json({ success: false, message: "Administrator record not found." });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Profile updated successfully.",
+        user: {
+          id: String(updated._id),
+          name: updated.name,
+          email: updated.email,
+          role: updated.role,
+          avatar: updated.avatar || null,
+          phone: updated.phone || "",
+          status: updated.status,
+          lastLogin: updated.lastLogin,
+          active: updated.status === "active",
+        },
+      });
+    }
+
+    // Demo admin update
+    const currentAdmin = getAdmin();
+    currentAdmin.name = name;
+    currentAdmin.email = email;
+    if (avatar !== undefined) currentAdmin.avatar = avatar;
+    if (phone !== undefined) currentAdmin.phone = phone;
+    process.env.DEMO_ADMIN_NAME = name;
+    process.env.DEMO_ADMIN_EMAIL = email;
+    if (avatar !== undefined) process.env.DEMO_ADMIN_AVATAR = avatar || "";
+    if (phone !== undefined) process.env.DEMO_ADMIN_PHONE = phone || "";
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully.",
+      user: currentAdmin,
+    });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    return res.status(500).json({ success: false, message: "Failed to update profile." });
   }
 }
 

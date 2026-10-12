@@ -38,6 +38,18 @@ const adminSchema = new mongoose.Schema(
         lastLogin: {
             type: Date,
             default: null
+        },
+
+        avatar: {
+            type: String,
+            default: null,
+            trim: true
+        },
+
+        phone: {
+            type: String,
+            default: "",
+            trim: true
         }
     },
     {

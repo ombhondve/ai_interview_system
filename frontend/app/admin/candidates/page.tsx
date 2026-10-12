@@ -15,6 +15,7 @@ import { CandidateTable } from "@/components/candidates/CandidateTable";
 import { RejectCandidateModal } from "@/components/candidates/RejectCandidateModal";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/components/ui/Toast";
+import { subscribeAdminSync } from "@/lib/adminDataSync";
 
 const DEFAULT_FILTERS: Filters = { page: 1, pageSize: 6, sortBy: "receivedDate", sortDir: "desc" };
 
@@ -48,6 +49,12 @@ export default function CandidatesPage() {
 
   useEffect(() => {
     load(filters);
+  }, [filters, load]);
+
+  useEffect(() => {
+    return subscribeAdminSync("admin:candidate:updated", () => {
+      load(filters);
+    });
   }, [filters, load]);
 
   const handleSort = (field: Filters["sortBy"]) => {

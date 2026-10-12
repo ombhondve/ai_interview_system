@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   User,
-  Palette,
   Bell,
   Settings as SettingsIcon,
   Users,
@@ -23,9 +22,13 @@ import {
   Eye,
   EyeOff,
   CalendarDays,
+  Loader2,
+  Upload,
+  Trash,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { apiUrl } from "@/lib/client";
+import { publishAdminSync } from "@/lib/adminDataSync";
 import { TeamManagementSection } from "@/components/settings/TeamManagementSection";
 
 type AdminRole = "Super Admin" | "Recruiter";
@@ -81,7 +84,6 @@ const initialAdmins: AdminUser[] = [
 
 type Section =
   | "profile"
-  | "appearance"
   | "notifications"
   | "preferences"
   | "team"
@@ -109,15 +111,6 @@ export default function SettingsPage() {
   });
 
   const [showPassword, setShowPassword] = useState(false);
-
-  const [profile, setProfile] = useState({
-    name: "Om Bhondve",
-    email: "admin@recruitai.com",
-    phone: "+91 98765 43210",
-    role: "Super Admin",
-  });
-
-  const [appearance, setAppearance] = useState("System");
 
   const [notifications, setNotifications] = useState({
     newCandidate: true,
@@ -342,13 +335,6 @@ export default function SettingsPage() {
             />
 
             <SettingsNav
-              icon={<Palette size={17} />}
-              label="Appearance"
-              active={activeSection === "appearance"}
-              onClick={() => setActiveSection("appearance")}
-            />
-
-            <SettingsNav
               icon={<Bell size={17} />}
               label="Notifications"
               active={activeSection === "notifications"}
@@ -380,21 +366,11 @@ export default function SettingsPage() {
             )}
 
             {activeSection === "profile" && (
-              <ProfileSection
-                profile={profile}
-                setProfile={setProfile}
-              />
+              <ProfileSection />
             )}
 
             {activeSection === "team" && (
               <TeamManagementSection />
-            )}
-
-            {activeSection === "appearance" && (
-              <AppearanceSection
-                appearance={appearance}
-                setAppearance={setAppearance}
-              />
             )}
 
             {activeSection === "notifications" && (
@@ -490,95 +466,330 @@ function SettingsNav({
    PROFILE
 ========================================================= */
 
-function ProfileSection({
-  profile,
-  setProfile,
-}: {
-  profile: {
+function ProfileSection() {
+  const [profile, setProfile] = useState<{
     name: string;
     email: string;
     phone: string;
     role: string;
+    avatar: string | null;
+  }>({
+    name: "",
+    email: "",
+    phone: "",
+    role: "Super Admin",
+    avatar: null,
+  });
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [errorNotice, setErrorNotice] = useState<string | null>(null);
+  const [successNotice, setSuccessNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProfile() {
+      try {
+        setLoading(true);
+        setErrorNotice(null);
+        const res = await fetch(apiUrl("/api/admin/profile"), {
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const user = data.admin || data.user || {};
+          if (!cancelled) {
+            setProfile({
+              name: user.name || "Administrator",
+              email: user.email || "",
+              phone: user.phone || "",
+              role: user.role === "admin" ? "Super Admin" : (user.role || "Super Admin"),
+              avatar: user.avatar || null,
+            });
+          }
+        } else {
+          // Fallback to /api/auth/me
+          const meRes = await fetch(apiUrl("/api/auth/me"), {
+            credentials: "include",
+            cache: "no-store",
+          });
+          if (meRes.ok) {
+            const meData = await meRes.json();
+            const u = meData.user || {};
+            if (!cancelled) {
+              setProfile({
+                name: u.name || "Administrator",
+                email: u.email || "",
+                phone: u.phone || "",
+                role: u.role === "admin" ? "Super Admin" : (u.role || "Super Admin"),
+                avatar: u.avatar || null,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setErrorNotice("Failed to load administrator profile from server.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadProfile();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const initials = useMemo(() => {
+    if (!profile.name.trim()) return "AD";
+    const parts = profile.name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }, [profile.name]);
+
+  const handleAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setErrorNotice("Please select a valid image file (JPEG, PNG, WebP).");
+      return;
+    }
+
+    if (file.size > 4 * 1024 * 1024) {
+      setErrorNotice("Profile image must be smaller than 4MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setProfile((prev) => ({ ...prev, avatar: reader.result as string }));
+        setErrorNotice(null);
+      }
+    };
+    reader.readAsDataURL(file);
   };
-  setProfile: React.Dispatch<
-    React.SetStateAction<{
-      name: string;
-      email: string;
-      phone: string;
-      role: string;
-    }>
-  >;
-}) {
+
+  const handleRemoveAvatar = () => {
+    setProfile((prev) => ({ ...prev, avatar: null }));
+  };
+
+  const handleSaveProfile = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setErrorNotice(null);
+    setSuccessNotice(null);
+
+    const trimmedName = profile.name.trim();
+    const trimmedEmail = profile.email.trim();
+
+    if (!trimmedName) {
+      setErrorNotice("Administrator full name is required.");
+      return;
+    }
+
+    if (!trimmedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setErrorNotice("A valid email address is required.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const res = await fetch(apiUrl("/api/admin/profile"), {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: trimmedName,
+          email: trimmedEmail,
+          phone: profile.phone.trim(),
+          avatar: profile.avatar,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(data.message || `Failed to update profile (${res.status})`);
+      }
+
+      const updatedUser = data.user || {
+        name: trimmedName,
+        email: trimmedEmail,
+        phone: profile.phone.trim(),
+        role: profile.role,
+        avatar: profile.avatar,
+      };
+
+      setProfile((prev) => ({
+        ...prev,
+        name: updatedUser.name || trimmedName,
+        email: updatedUser.email || trimmedEmail,
+        phone: updatedUser.phone || "",
+        avatar: updatedUser.avatar || null,
+        role: updatedUser.role || prev.role,
+      }));
+
+      // Broadcast profile update to Header and all subscribers
+      publishAdminSync("admin:profile:updated", updatedUser);
+
+      setSuccessNotice("Profile updated successfully.");
+      window.setTimeout(() => setSuccessNotice(null), 3000);
+    } catch (err) {
+      setErrorNotice(err instanceof Error ? err.message : "Failed to save profile changes.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <SettingsCard title="Profile" description="Manage your administrator profile information.">
+        <div className="flex items-center justify-center py-12 text-[#64748B]">
+          <Loader2 className="mr-2 h-5 w-5 animate-spin text-[#1976D2]" />
+          <span className="text-sm">Loading administrator profile…</span>
+        </div>
+      </SettingsCard>
+    );
+  }
+
   return (
     <SettingsCard
       title="Profile"
       description="Manage your administrator profile information."
     >
-      <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
-        <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-indigo-100 text-xl font-bold text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400">
-          OB
-        </div>
+      <form onSubmit={handleSaveProfile} className="space-y-6">
+        {errorNotice && (
+          <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" />
+            <span>{errorNotice}</span>
+          </div>
+        )}
 
-        <div>
-          <p className="font-semibold text-slate-900 dark:text-white">
-            {profile.name}
-          </p>
+        {successNotice && (
+          <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+            <span>{successNotice}</span>
+          </div>
+        )}
 
-          <p className="mt-1 text-sm text-slate-500">
-            {profile.role}
-          </p>
+        <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+          <div className="relative">
+            {profile.avatar ? (
+              <img
+                src={profile.avatar}
+                alt={profile.name}
+                className="h-20 w-20 shrink-0 rounded-2xl border border-[#E2E8F0] object-cover shadow-sm"
+              />
+            ) : (
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-xl font-bold text-[#1976D2] border border-blue-200">
+                {initials}
+              </div>
+            )}
+          </div>
 
-          <button className="mt-3 text-sm font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400">
-            Change profile photo
-          </button>
-        </div>
-      </div>
+          <div>
+            <p className="font-semibold text-[#111F33]">
+              {profile.name || "Administrator"}
+            </p>
 
-      <div className="mt-7 grid grid-cols-1 gap-5 md:grid-cols-2">
-        <FormInput
-          label="Full Name"
-          value={profile.name}
-          onChange={(value) =>
-            setProfile((current) => ({
-              ...current,
-              name: value,
-            }))
-          }
-        />
+            <p className="mt-0.5 text-xs text-[#64748B]">
+              {profile.role}
+            </p>
 
-        <FormInput
-          label="Email"
-          value={profile.email}
-          onChange={(value) =>
-            setProfile((current) => ({
-              ...current,
-              email: value,
-            }))
-          }
-        />
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <label className="cursor-pointer inline-flex items-center gap-1.5 rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-[#F5F7FA]">
+                <Upload size={14} className="text-[#64748B]" />
+                Change profile photo
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={handleAvatarFile}
+                />
+              </label>
 
-        <FormInput
-          label="Phone"
-          value={profile.phone}
-          onChange={(value) =>
-            setProfile((current) => ({
-              ...current,
-              phone: value,
-            }))
-          }
-        />
-
-        <div>
-          <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">
-            Role
-          </label>
-
-          <div className="flex h-[42px] items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600 dark:border-white/10 dark:bg-white/[0.02] dark:text-slate-300">
-            <ShieldCheck size={16} />
-            {profile.role}
+              {profile.avatar && (
+                <button
+                  type="button"
+                  onClick={handleRemoveAvatar}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+                >
+                  <Trash size={14} />
+                  Remove photo
+                </button>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+          <FormInput
+            label="Full Name"
+            value={profile.name}
+            onChange={(value) => setProfile((prev) => ({ ...prev, name: value }))}
+            placeholder="Administrator Name"
+          />
+
+          <FormInput
+            label="Email Address"
+            type="email"
+            value={profile.email}
+            onChange={(value) => setProfile((prev) => ({ ...prev, email: value }))}
+            placeholder="admin@recruitai.com"
+          />
+
+          <FormInput
+            label="Phone"
+            value={profile.phone}
+            onChange={(value) => setProfile((prev) => ({ ...prev, phone: value }))}
+            placeholder="+91 98765 43210"
+          />
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              Role
+            </label>
+
+            <div className="flex h-[42px] items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-600">
+              <ShieldCheck size={16} className="text-[#1976D2]" />
+              {profile.role}
+            </div>
+            <p className="mt-1 text-xs text-[#64748B]">
+              Role permissions are managed in the Team & Admins section.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex justify-end pt-2">
+          <button
+            type="submit"
+            disabled={saving}
+            className="inline-flex items-center gap-2 rounded-md bg-[#1976D2] px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#1565C0] disabled:opacity-50"
+          >
+            {saving ? (
+              <>
+                <Loader2 size={15} className="animate-spin" />
+                Saving Profile…
+              </>
+            ) : (
+              <>
+                <Save size={15} />
+                Save Profile Changes
+              </>
+            )}
+          </button>
+        </div>
+      </form>
     </SettingsCard>
   );
 }
@@ -940,51 +1151,6 @@ function AdminMobileCard({
         )}
       </div>
     </div>
-  );
-}
-
-/* =========================================================
-   APPEARANCE
-========================================================= */
-
-function AppearanceSection({
-  appearance,
-  setAppearance,
-}: {
-  appearance: string;
-  setAppearance: (value: string) => void;
-}) {
-  return (
-    <SettingsCard
-      title="Appearance"
-      description="Customize how the recruitment dashboard looks."
-    >
-      <div>
-        <label className="mb-3 block text-sm font-medium text-slate-700 dark:text-slate-300">
-          Theme
-        </label>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {["Light", "Dark", "System"].map((theme) => (
-            <button
-              key={theme}
-              onClick={() => setAppearance(theme)}
-              className={`rounded-xl border p-4 text-left transition ${
-                appearance === theme
-                  ? "border-indigo-500 bg-indigo-50 dark:border-indigo-500 dark:bg-indigo-500/10"
-                  : "border-slate-200 hover:bg-slate-50 dark:border-white/10 dark:hover:bg-white/5"
-              }`}
-            >
-              <div className="mb-4 h-20 rounded-lg border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-[#10141d]" />
-
-              <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                {theme}
-              </p>
-            </button>
-          ))}
-        </div>
-      </div>
-    </SettingsCard>
   );
 }
 

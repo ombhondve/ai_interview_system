@@ -20,6 +20,8 @@ import interviewVoiceRoutes from "./modules/interview/interview.voice.routes.js"
 import botControlRoutes from "./modules/botControl/botControl.routes.js";
 import notificationRoutes from "./modules/notifications/notification.routes.js";
 import teamManagementRoutes from "./modules/admin/teamManagement.routes.js";
+import { getProfile, updateProfile } from "./modules/auth/auth.controller.js";
+import { requireAuth } from "./modules/auth/auth.middleware.js";
 import cookieParser from "./middleware/cookieParser.middleware.js";
 import { initializeGoogleOAuth } from "./config/googleOAuth.js";
 import connectDatabase from "./config/database.js";
@@ -390,6 +392,18 @@ app.use(
   "/api/admin/team",
   teamManagementRoutes
 );
+
+// =====================================================
+// ADMIN PROFILE MANAGEMENT
+// =====================================================
+
+const adminProfileRouter = express.Router();
+adminProfileRouter.use(requireAuth);
+adminProfileRouter.get("/", getProfile);
+adminProfileRouter.patch("/", updateProfile);
+adminProfileRouter.put("/", updateProfile);
+
+app.use("/api/admin/profile", adminProfileRouter);
 
 // =====================================================
 // 404 HANDLER

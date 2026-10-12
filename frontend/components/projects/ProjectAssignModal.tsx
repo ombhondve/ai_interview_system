@@ -20,7 +20,8 @@ import {
 } from "react";
 
 import { candidateService } from "@/services/candidate.api";
-import {projectService} from "@/services/project.api";
+import { projectService } from "@/services/project.api";
+import { publishAdminSync } from "@/lib/adminDataSync";
 
 /* =========================================================
    TYPES
@@ -593,13 +594,14 @@ export default function ProjectAssignModal({
                 return true;
               }
 
+              const s = (candidate.status || "").toLowerCase();
               return (
-                candidate.status.toLowerCase() ===
-                  "approved" ||
-                candidate.status.toLowerCase() ===
-                  "scheduled" ||
-                candidate.status.toLowerCase() ===
-                  "under_review"
+                s === "approved" ||
+                s === "project assigned" ||
+                s === "project completed" ||
+                s === "scheduled" ||
+                s === "completed" ||
+                s === "under_review"
               );
             }
           );
@@ -755,6 +757,9 @@ export default function ProjectAssignModal({
         projectId,
         selectedCandidateId
       );
+
+      publishAdminSync("admin:candidate:updated");
+      publishAdminSync("admin:project:updated");
 
       setSuccess(
         `Project assigned successfully to ${

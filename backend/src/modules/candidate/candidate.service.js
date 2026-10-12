@@ -380,11 +380,28 @@ function formatCandidate(candidate) {
                 : null,
 
         submissionUrl:
-            candidate.submissionUrl,
+            candidate.submissionUrl || candidate.projectSubmission?.url || null,
 
         interviewUrl:
-            candidate.interviewUrl,
+            candidate.interviewUrl || null,
 
+        interviewDate:
+            candidate.interviewDate || null,
+
+        projectAssignedAt:
+            candidate.projectAssignedAt || null,
+
+        projectStartAt:
+            candidate.projectStartAt || null,
+
+        submissionDeadline:
+            candidate.submissionDeadline || null,
+
+        projectSubmissionStatus:
+            candidate.projectSubmissionStatus || "not_started",
+
+        projectSubmission:
+            candidate.projectSubmission || null,
 
         // =================================================
         // DATES
@@ -787,9 +804,29 @@ export async function getCandidates({
             status &&
             status !== "all"
         ) {
+            const normalizedStatus = String(status).trim().toLowerCase();
+            const statusCondition = normalizedStatus === "approved"
+                ? {
+                    $or: [
+                        { status: { $in: ["approved", "Approved", "Project Assigned", "Project Completed", "scheduled", "completed", "decided"] } },
+                        { "activity.label": { $regex: /approved/i } }
+                    ]
+                }
+                : { status: { $regex: new RegExp(`^${status}$`, "i") } };
 
-            filter.status =
-                status;
+            if (filter.$or) {
+                filter.$and = [
+                    { $or: filter.$or },
+                    statusCondition
+                ];
+                delete filter.$or;
+            } else if (filter.$and) {
+                filter.$and.push(statusCondition);
+            } else if (statusCondition.$or) {
+                filter.$or = statusCondition.$or;
+            } else {
+                filter.status = statusCondition.status;
+            }
         }
 
 

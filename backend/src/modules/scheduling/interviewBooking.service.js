@@ -2,6 +2,8 @@ import InterviewBooking, {
   ACTIVE_BOOKING_STATUSES,
 } from "./interviewBooking.model.js";
 import Candidate from "../candidate/candidate.model.js";
+import AiInterview from "../interview/interview.model.js";
+import Project from "../projects/project.model.js";
 import { canBookInterviewSlot } from "../projects/deadline.service.js";
 import {
   generateInterviewTimesForDate,
@@ -248,6 +250,90 @@ export async function bookInterview({ config, candidate, startAt }) {
  * This is the ONLY schedule read path. There is deliberately no create /
  * update / delete / assign counterpart for admins anywhere in the codebase.
  */
+function resolveCandidateInfo(candidate) {
+  if (!candidate || typeof candidate !== "object") {
+    return {
+      id: null,
+      name: "Candidate details unavailable",
+      email: null,
+      phone: null,
+      role: null,
+    };
+  }
+
+  const name =
+    candidate.name ||
+    candidate.resumeData?.candidate?.name ||
+    candidate.resumeData?.candidate?.fullName ||
+    candidate.resumeData?.raw?.name ||
+    "Candidate details unavailable";
+
+  const email =
+    candidate.email ||
+    candidate.resumeData?.candidate?.email ||
+    candidate.resumeData?.raw?.email ||
+    null;
+
+  const phone =
+    candidate.phone ||
+    candidate.resumeData?.candidate?.phone ||
+    candidate.resumeData?.raw?.phone ||
+    null;
+
+  const role =
+    candidate.role ||
+    candidate.resumeData?.candidate?.role ||
+    candidate.resumeData?.candidate?.appliedRole ||
+    candidate.resumeData?.raw?.role ||
+    null;
+
+  return {
+    id: candidate._id ? candidate._id.toString() : null,
+    name,
+    email,
+    phone,
+    role,
+  };
+}
+
+function resolveAttendanceAndInterviewStatus(booking, aiInterview) {
+  const bookingStatus = booking?.status || "scheduled";
+  const aiStatus = (aiInterview?.status || "").toUpperCase();
+
+  if (bookingStatus === "cancelled" || aiStatus === "CANCELLED") {
+    return {
+      interviewStatus: "Cancelled",
+      attendanceStatus: "Not applicable",
+    };
+  }
+
+  if (bookingStatus === "no_show" || aiStatus === "NO_SHOW" || aiInterview?.noShowAt) {
+    return {
+      interviewStatus: "Scheduled",
+      attendanceStatus: "Missed / No Show",
+    };
+  }
+
+  if (aiStatus === "IN_PROGRESS") {
+    return {
+      interviewStatus: "In progress",
+      attendanceStatus: "Attending",
+    };
+  }
+
+  if (aiStatus === "COMPLETED" || bookingStatus === "completed") {
+    return {
+      interviewStatus: "Completed",
+      attendanceStatus: aiInterview?.candidateJoinedAt ? "Attended" : "Attendance unconfirmed",
+    };
+  }
+
+  return {
+    interviewStatus: "Scheduled",
+    attendanceStatus: aiInterview?.candidateJoinedAt ? "Attendance confirmed" : "Not yet attended",
+  };
+}
+
 export async function getAdminSchedule(config, dateStr) {
   const generated = generateInterviewTimesForDate(config, dateStr);
 
@@ -271,9 +357,27 @@ export async function getAdminSchedule(config, dateStr) {
     status: { $in: ACTIVE_BOOKING_STATUSES },
     startAt: { $gte: first, $lt: last },
   })
-    .populate("candidateId", "name email phone role")
+    .populate({
+      path: "candidateId",
+      select: "name email phone role resumeData assignedProjectId",
+      populate: {
+        path: "assignedProjectId",
+        select: "title",
+      },
+    })
     .populate("projectId", "title")
     .lean();
+
+  const bookingIds = bookings.map((b) => b._id);
+  const aiInterviews =
+    typeof AiInterview?.find === "function"
+      ? await AiInterview.find({
+          bookingId: { $in: bookingIds },
+        }).lean()
+      : [];
+  const aiByBookingId = new Map(
+    aiInterviews.map((ai) => [ai.bookingId.toString(), ai])
+  );
 
   const byStart = new Map(
     bookings.map((booking) => [booking.startAt.getTime(), booking])
@@ -295,7 +399,10 @@ export async function getAdminSchedule(config, dateStr) {
         return { ...base, status: "available", booking: null };
       }
 
-      const candidate = booking.candidateId || {};
+      const candidateInfo = resolveCandidateInfo(booking.candidateId);
+      const ai = aiByBookingId.get(booking._id.toString());
+      const { interviewStatus, attendanceStatus } = resolveAttendanceAndInterviewStatus(booking, ai);
+      const projectTitle = booking.projectId?.title || booking.candidateId?.assignedProjectId?.title || null;
 
       return {
         ...base,
@@ -303,16 +410,13 @@ export async function getAdminSchedule(config, dateStr) {
         booking: {
           id: booking._id.toString(),
           status: booking.status,
+          interviewStatus,
+          attendanceStatus,
+          interviewId: ai?._id ? ai._id.toString() : null,
           bookedAt: booking.bookedAt,
-          candidate: {
-            id: candidate._id ? candidate._id.toString() : null,
-            name: candidate.name || null,
-            email: candidate.email || null,
-            phone: candidate.phone || null,
-            role: candidate.role || null,
-          },
-          project: booking.projectId?.title || null,
-          meetLink: booking.meetLink || null,
+          candidate: candidateInfo,
+          project: projectTitle,
+          meetLink: booking.meetLink || ai?.meetLink || null,
         },
       };
     }),
@@ -353,7 +457,14 @@ export async function getUpcomingBookings(config, options = {}) {
     status: { $in: ACTIVE_BOOKING_STATUSES },
     startAt: { $gte: now },
   })
-    .populate("candidateId", "name email phone role")
+    .populate({
+      path: "candidateId",
+      select: "name email phone role resumeData assignedProjectId",
+      populate: {
+        path: "assignedProjectId",
+        select: "title",
+      },
+    })
     .populate("projectId", "title")
     .sort({ startAt: 1 })
     .lean();
@@ -364,33 +475,45 @@ export async function getUpcomingBookings(config, options = {}) {
     (a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime()
   );
 
+  const topBookings = ordered.slice(0, limit);
+  const bookingIds = topBookings.map((b) => b._id);
+  const aiInterviews =
+    typeof AiInterview?.find === "function"
+      ? await AiInterview.find({
+          bookingId: { $in: bookingIds },
+        }).lean()
+      : [];
+  const aiByBookingId = new Map(
+    aiInterviews.map((ai) => [ai.bookingId.toString(), ai])
+  );
+
   return {
     readOnly: true,
     timezone: config.timezone,
     interviewDurationMinutes: config.interviewDurationMinutes,
     mode: config.mode,
     location: config.location,
-    interviews: ordered.slice(0, limit).map((booking) => {
-      const candidate = booking.candidateId || {};
+    interviews: topBookings.map((booking) => {
+      const candidateInfo = resolveCandidateInfo(booking.candidateId);
+      const ai = aiByBookingId.get(booking._id.toString());
+      const { interviewStatus, attendanceStatus } = resolveAttendanceAndInterviewStatus(booking, ai);
+      const projectTitle = booking.projectId?.title || booking.candidateId?.assignedProjectId?.title || null;
 
       return {
         id: booking._id.toString(),
         status: booking.status,
+        interviewStatus,
+        attendanceStatus,
+        interviewId: ai?._id ? ai._id.toString() : null,
         startAt: booking.startAt.toISOString(),
         endAt: booking.endAt.toISOString(),
         date: formatDateInZone(booking.startAt, config.timezone),
         time: formatTimeInZone(booking.startAt, config.timezone),
         endTime: formatTimeInZone(booking.endAt, config.timezone),
         bookedAt: booking.bookedAt,
-        candidate: {
-          id: candidate._id ? candidate._id.toString() : null,
-          name: candidate.name || null,
-          email: candidate.email || null,
-          phone: candidate.phone || null,
-          role: candidate.role || null,
-        },
-        project: booking.projectId?.title || null,
-        meetLink: booking.meetLink || null,
+        candidate: candidateInfo,
+        project: projectTitle,
+        meetLink: booking.meetLink || ai?.meetLink || null,
       };
     }),
   };

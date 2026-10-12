@@ -262,7 +262,7 @@ export default function InterviewsPage() {
                         className="hover:bg-[#F5F7FA]/75 transition-colors group cursor-pointer"
                       >
                         <td className="py-3.5 px-4">
-                          <Link href={`/admin/interviews/${row._id}`} className="block">
+                          <Link href={`/admin/reports/${row._id}`} className="block">
                             <p className="font-semibold text-[#111F33] group-hover:text-[#1976D2] transition-colors">
                               {candidate?.name || "Candidate"}
                             </p>
@@ -273,7 +273,7 @@ export default function InterviewsPage() {
                         </td>
 
                         <td className="py-3.5 px-4">
-                          <Link href={`/admin/interviews/${row._id}`} className="block">
+                          <Link href={`/admin/reports/${row._id}`} className="block">
                             <p className="font-medium text-[#111F33]">
                               {project?.title || "Technical Project"}
                             </p>
@@ -284,7 +284,7 @@ export default function InterviewsPage() {
                         </td>
 
                         <td className="py-3.5 px-4">
-                          <Link href={`/admin/interviews/${row._id}`} className="block">
+                          <Link href={`/admin/reports/${row._id}`} className="block">
                             <p className="font-medium text-[#111F33]">
                               {row.scheduledAt ? new Date(row.scheduledAt).toLocaleDateString() : "—"}
                             </p>
@@ -330,7 +330,7 @@ export default function InterviewsPage() {
                         </td>
 
                         <td className="py-3.5 px-4 text-right">
-                          <Link href={`/admin/interviews/${row._id}`}>
+                          <Link href={`/admin/reports/${row._id}`}>
                             <Button
                               variant="outline"
                               size="sm"

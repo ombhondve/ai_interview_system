@@ -37,6 +37,7 @@ import ProjectAIGeneratorModal, {
 import ProjectAIPreview, {
   ProjectAIPreviewData as GeneratedProject,
 } from "@/components/projects/ProjectAIPreview";
+import { publishAdminSync, subscribeAdminSync } from "@/lib/adminDataSync";
 
 type FormInitial = ComponentProps<typeof ProjectForm>["initialData"];
 
@@ -237,6 +238,12 @@ export default function ProjectsPage() {
     loadProjects();
   }, []);
 
+  useEffect(() => {
+    return subscribeAdminSync("admin:project:updated", () => {
+      void loadProjects();
+    });
+  }, []);
+
   /* =======================================================
      LOAD STUDENTS FOR AI PROJECT GENERATION
   ======================================================= */
@@ -340,12 +347,13 @@ export default function ProjectsPage() {
 
     return students.filter((student) => {
       return (
-        student.name.toLowerCase().includes(value) ||
-        student.email.toLowerCase().includes(value) ||
-        student.role.toLowerCase().includes(value) ||
-        student.skills.some((skill) =>
-          skill.toLowerCase().includes(value)
-        )
+        (student.name || "").toLowerCase().includes(value) ||
+        (student.email || "").toLowerCase().includes(value) ||
+        (student.role || "").toLowerCase().includes(value) ||
+        (Array.isArray(student.skills) &&
+          student.skills.some((skill) =>
+            String(skill).toLowerCase().includes(value)
+          ))
       );
     });
   }, [students, studentSearch]);
@@ -537,6 +545,11 @@ export default function ProjectsPage() {
       setGeneratedProject(null);
       setAiDraft(null);
       setSelectedStudent(null);
+
+      publishAdminSync("admin:project:updated", savedProject);
+      if (studentId) {
+        publishAdminSync("admin:candidate:updated");
+      }
     } catch (error) {
       console.error(
         "Create project failed:",
@@ -1959,7 +1972,7 @@ export default function ProjectsPage() {
 
                         {/* ACTION */}
                         <div className="hidden shrink-0 items-center self-center sm:flex">
-                          <span className="flex h-9 items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 text-xs font-semibold text-indigo-700 transition group-hover:bg-indigo-600 group-hover:text-white dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-400 dark:group-hover:bg-indigo-600 dark:group-hover:text-white">
+                          <span className="flex h-8 items-center gap-1 rounded-md bg-[#1976D2] px-3 text-xs font-semibold text-white transition group-hover:bg-[#1565C0]">
                             Select
                             <span aria-hidden="true">→</span>
                           </span>
@@ -1967,7 +1980,7 @@ export default function ProjectsPage() {
                       </div>
 
                       <div className="mt-3 flex sm:hidden">
-                        <span className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-indigo-600 text-xs font-semibold text-white shadow-sm transition group-hover:bg-indigo-700">
+                        <span className="flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-[#1976D2] text-xs font-semibold text-white shadow-xs transition group-hover:bg-[#1565C0]">
                           Select Student
                           <span aria-hidden="true">→</span>
                         </span>
@@ -1976,14 +1989,14 @@ export default function ProjectsPage() {
                   ))}
                 </div>
               ) : (
-                <div className="flex min-h-[300px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-6 text-center dark:border-white/10 dark:bg-[#151922]">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400 dark:bg-white/5 dark:text-slate-500">
-                    <Search size={24} />
+                <div className="flex min-h-[220px] flex-col items-center justify-center rounded-lg border border-dashed border-[#E2E8F0] bg-white px-6 text-center">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-md bg-[#F5F7FA] text-[#64748B]">
+                    <Search size={20} />
                   </div>
-                  <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">
+                  <h3 className="mt-3 text-sm font-semibold text-[#111F33]">
                     No students found
                   </h3>
-                  <p className="mt-1 max-w-sm text-sm leading-5 text-slate-500 dark:text-slate-400">
+                  <p className="mt-1 max-w-sm text-xs leading-5 text-[#64748B]">
                     {studentSearch
                       ? "Try a different name, email, role, or skill."
                       : "There are no approved students available for project generation."}
@@ -1992,7 +2005,7 @@ export default function ProjectsPage() {
                     <button
                       type="button"
                       onClick={() => setStudentSearch("")}
-                      className="mt-4 h-9 rounded-lg border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:bg-[#151922] dark:text-slate-300 dark:hover:bg-white/5"
+                      className="mt-3 h-8 rounded-md border border-[#E2E8F0] bg-white px-3.5 text-xs font-medium text-[#111F33] transition hover:bg-[#F5F7FA]"
                     >
                       Clear Search
                     </button>
@@ -2002,7 +2015,7 @@ export default function ProjectsPage() {
             </div>
 
             {/* FOOTER */}
-            <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-4 sm:px-7 dark:border-white/10 dark:bg-[#151922]">
+            <div className="shrink-0 border-t border-[#E2E8F0] bg-[#F5F7FA]/60 px-5 py-3">
               <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
                   <button
@@ -2014,9 +2027,9 @@ export default function ProjectsPage() {
                       setShowAIGenerationChoice(true);
                     }}
                     disabled={studentsLoading}
-                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto dark:border-white/10 dark:bg-[#151922] dark:text-slate-200 dark:hover:border-indigo-500/30 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-400"
+                    className="inline-flex h-8.5 w-full items-center justify-center gap-1.5 rounded-md border border-[#E2E8F0] bg-white px-3.5 text-xs font-medium text-[#64748B] transition hover:bg-[#F5F7FA] hover:text-[#111F33] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                   >
-                    <ArrowLeft size={16} />
+                    <ArrowLeft size={14} />
                     Back
                   </button>
 
@@ -2024,14 +2037,14 @@ export default function ProjectsPage() {
                     type="button"
                     onClick={() => setShowStudentSelector(false)}
                     disabled={studentsLoading}
-                    className="h-10 w-full rounded-xl border border-slate-200 bg-white px-5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto dark:border-white/10 dark:bg-[#151922] dark:text-slate-300 dark:hover:bg-white/5"
+                    className="h-8.5 w-full rounded-md border border-[#E2E8F0] bg-white px-4 text-xs font-medium text-[#64748B] transition hover:bg-[#F5F7FA] hover:text-[#111F33] disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                   >
                     Cancel
                   </button>
                 </div>
 
-                <p className="hidden text-xs text-slate-400 sm:block">
-                  Select a student to continue to the AI project generator.
+                <p className="hidden text-xs text-[#64748B] sm:block">
+                  Select an approved student to customize project requirements.
                 </p>
               </div>
             </div>

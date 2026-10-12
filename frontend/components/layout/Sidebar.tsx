@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   LayoutDashboard,
@@ -9,20 +9,14 @@ import {
   Video,
   CalendarDays,
   FolderKanban,
-  Layers,
   FileBarChart,
-  BarChart3,
   Bell,
   Settings,
-  LogOut,
   ChevronLeft,
   ChevronRight,
-  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { Modal } from "@/components/ui/Modal";
-import { Button } from "@/components/ui/Button";
 
 const navItems = [
   { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
@@ -42,23 +36,11 @@ export function Sidebar({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
-  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
 
   const isActive = (href: string) => {
     if (href === "/admin") return pathname === "/admin";
     return pathname.startsWith(href);
-  };
-
-  const handleLogout = async () => {
-    setLoggingOut(true);
-    try {
-      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-    } finally {
-      router.replace("/login");
-    }
   };
 
   return (
@@ -177,58 +159,8 @@ export function Sidebar({
               settingsLink
             );
           })()}
-
-          {/* Logout Button */}
-          {(() => {
-            const logoutButton = (
-              <button
-                type="button"
-                onClick={() => setLogoutModalOpen(true)}
-                className="group flex w-full items-center gap-3 rounded-md px-3 py-2 text-xs font-medium text-slate-300 hover:bg-red-500/15 hover:text-red-300 transition-colors"
-              >
-                <LogOut className="h-4 w-4 shrink-0 text-slate-400 group-hover:text-red-300" />
-                {(mobile || !collapsed) && <span className="truncate">Sign Out</span>}
-              </button>
-            );
-
-            return !mobile && collapsed ? (
-              <Tooltip content="Sign Out" side="right">
-                {logoutButton}
-              </Tooltip>
-            ) : (
-              logoutButton
-            );
-          })()}
         </div>
       </aside>
-
-      {/* Confirmation Modal */}
-      <Modal
-        open={logoutModalOpen}
-        onClose={() => setLogoutModalOpen(false)}
-        title="Sign Out of RecruitAI"
-        description="Are you sure you want to log out of your administrator session?"
-        footer={
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setLogoutModalOpen(false)}
-              disabled={loggingOut}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={handleLogout}
-              loading={loggingOut}
-            >
-              Sign Out
-            </Button>
-          </div>
-        }
-      />
     </>
   );
 }

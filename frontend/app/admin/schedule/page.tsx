@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { cn } from "@/lib/utils";
+import { subscribeAdminSync } from "@/lib/adminDataSync";
 
 /**
  * ============================================
@@ -32,29 +33,39 @@ import { cn } from "@/lib/utils";
  * The backend exposes no corresponding mutation endpoints either.
  */
 
-function toKey(date: Date) {
-  return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate())
-  )
-    .toISOString()
-    .slice(0, 10);
+function getTodayKolkata(): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  } catch {
+    const d = new Date();
+    return d.toISOString().slice(0, 10);
+  }
 }
 
-function shiftDate(dateStr: string, days: number) {
+function shiftDate(dateStr: string, days: number): string {
   const [year, month, day] = dateStr.split("-").map(Number);
   const shifted = new Date(Date.UTC(year, month - 1, day + days));
 
   return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}-${String(shifted.getUTCDate()).padStart(2, "0")}`;
 }
 
-function formatDateLabel(dateStr: string) {
-  return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString("en-IN", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-    timeZone: "UTC",
-  });
+function formatDateLabel(dateStr: string): string {
+  try {
+    return new Date(`${dateStr}T00:00:00Z`).toLocaleDateString("en-IN", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  } catch {
+    return dateStr;
+  }
 }
 
 function capitalize(value: string) {
@@ -63,7 +74,7 @@ function capitalize(value: string) {
 
 export default function SchedulePage() {
   const [selectedDate, setSelectedDate] = useState<string>(() =>
-    toKey(new Date())
+    getTodayKolkata()
   );
   const [schedule, setSchedule] = useState<AdminScheduleResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,6 +97,12 @@ export default function SchedulePage() {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  useEffect(() => {
+    return subscribeAdminSync("admin:interview:updated", () => {
+      load();
+    });
   }, [load]);
 
   const navigate = (direction: -1 | 1) => {
@@ -155,9 +172,16 @@ export default function SchedulePage() {
               <ChevronLeft className="h-4 w-4" />
             </Button>
 
-            <span className="min-w-[200px] text-sm font-semibold text-slate-900 dark:text-white">
-              {formatDateLabel(selectedDate)}
-            </span>
+            <div className="flex items-center gap-2 min-w-[200px]">
+              <span className="text-sm font-semibold text-slate-900 dark:text-white">
+                {formatDateLabel(selectedDate)}
+              </span>
+              {selectedDate === getTodayKolkata() && (
+                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-[#1976D2]">
+                  Today
+                </span>
+              )}
+            </div>
 
             <Button
               size="sm"
@@ -170,8 +194,10 @@ export default function SchedulePage() {
 
             <Button
               size="sm"
-              variant="ghost"
-              onClick={() => setSelectedDate(toKey(new Date()))}
+              variant={selectedDate === getTodayKolkata() ? "outline" : "ghost"}
+              onClick={() => setSelectedDate(getTodayKolkata())}
+              disabled={selectedDate === getTodayKolkata()}
+              className={selectedDate === getTodayKolkata() ? "opacity-50 cursor-default" : ""}
             >
               Today
             </Button>
@@ -300,7 +326,7 @@ export default function SchedulePage() {
                     <dl className="grid flex-1 gap-x-8 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
                       <Detail
                         label="Student"
-                        value={entry.booking.candidate.name}
+                        value={entry.booking.candidate.name || "Candidate details unavailable"}
                       />
                       <Detail
                         label="Email"
@@ -327,14 +353,35 @@ export default function SchedulePage() {
                         value={entry.time}
                       />
                       <Detail
-                        label="Status"
-                        value={capitalize(entry.booking.status)}
+                        label="Interview Status"
+                        value={entry.booking.interviewStatus || capitalize(entry.booking.status)}
                       />
+                      <div className="min-w-0">
+                        <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          Attendance Status
+                        </dt>
+                        <dd className="mt-0.5">
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                              entry.booking.attendanceStatus === "Attended" || entry.booking.attendanceStatus === "Attendance confirmed"
+                                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                : entry.booking.attendanceStatus === "Attending"
+                                ? "bg-blue-50 text-blue-700 border border-blue-200"
+                                : entry.booking.attendanceStatus === "Missed / No Show"
+                                ? "bg-red-50 text-red-700 border border-red-200"
+                                : "bg-slate-100 text-slate-700 border border-slate-200"
+                            )}
+                          >
+                            {entry.booking.attendanceStatus || "Not yet attended"}
+                          </span>
+                        </dd>
+                      </div>
                       <Detail
                         label="Booked at"
                         value={new Date(entry.booking.bookedAt).toLocaleString(
                           "en-IN",
-                          { timeZone: schedule?.timezone }
+                          { timeZone: schedule?.timezone || "Asia/Kolkata" }
                         )}
                       />
                       {entry.booking.meetLink && (

@@ -32,6 +32,7 @@ import {
 import { candidateService } from "@/services/candidate.api";
 import { apiUrl } from "@/lib/client";
 import { Candidate } from "@/types";
+import { subscribeAdminSync } from "@/lib/adminDataSync";
 
 interface CompletedReportRow {
   _id: string;
@@ -124,6 +125,23 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     loadDashboardData();
+  }, [loadDashboardData]);
+
+  useEffect(() => {
+    const unsubCandidate = subscribeAdminSync("admin:candidate:updated", () => {
+      void loadDashboardData();
+    });
+    const unsubProject = subscribeAdminSync("admin:project:updated", () => {
+      void loadDashboardData();
+    });
+    const unsubInterview = subscribeAdminSync("admin:interview:updated", () => {
+      void loadDashboardData();
+    });
+    return () => {
+      unsubCandidate();
+      unsubProject();
+      unsubInterview();
+    };
   }, [loadDashboardData]);
 
   // Compute accurate pipeline counts from real candidate status model

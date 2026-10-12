@@ -12,9 +12,13 @@ import {
   UserRound,
   Layers3,
   Target,
+  CheckCircle2,
+  Calendar,
+  GitBranch,
 } from "lucide-react";
 
 import { Candidate } from "@/types";
+import { apiUrl } from "@/lib/client";
 
 import {
   Card,
@@ -209,27 +213,29 @@ export function CandidateProjectTab({
 
 
   // =====================================================
-  // PROJECT ID
+  // PROJECT ID (extract cleanly whether object or string)
   // =====================================================
 
+  const rawProjectId =
+    candidate.assignedProjectId ||
+    (candidate as any).assignedProject?.id ||
+    (candidate as any).assignedProject?._id;
+
   const projectId =
-    candidate.assignedProjectId
-      ? String(candidate.assignedProjectId)
-      : "";
+    typeof rawProjectId === "object" && rawProjectId !== null
+      ? String((rawProjectId as any)._id || (rawProjectId as any).id || "")
+      : String(rawProjectId || "").trim();
 
 
   // =====================================================
   // FETCH PROJECT
   // =====================================================
 
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-
-
-    useEffect(() => {
+  useEffect(() => {
     let cancelled = false;
 
     async function fetchProject() {
-      if (!projectId) {
+      if (!projectId || projectId === "[object Object]") {
         setProject(null);
         setLoading(false);
         setError("");
@@ -240,19 +246,26 @@ export function CandidateProjectTab({
         setLoading(true);
         setError("");
 
-        const backendUrl =
-          process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL;
-
         const response = await fetch(
-          `${backendUrl}/api/projects/${encodeURIComponent(projectId)}`,
+          apiUrl(`/api/projects/${encodeURIComponent(projectId)}`),
           {
             method: "GET",
             headers: {
               Accept: "application/json",
             },
+            credentials: "include",
             cache: "no-store",
           }
         );
+
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          throw new Error(
+            response.ok
+              ? "Invalid response format: Expected JSON but received HTML/Text."
+              : `Project endpoint returned error status ${response.status}: ${response.statusText || "Resource not found"}`
+          );
+        }
 
         const data = await response.json();
 
@@ -712,6 +725,89 @@ export function CandidateProjectTab({
             value={project._id || project.id || projectId}
           />
 
+        </div>
+
+        {/* =================================================
+            ASSIGNMENT & VERIFICATION STATUS
+            ================================================= */}
+
+        <div className="rounded-xl border border-[#E2E8F0] bg-[#F5F7FA]/70 p-5 space-y-4">
+          <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-[#111F33]">
+              Candidate Assignment & Verification
+            </h3>
+            <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold bg-blue-50 text-[#1976D2] border border-blue-200">
+              <CheckCircle2 size={12} />
+              {candidate.projectSubmissionStatus
+                ? candidate.projectSubmissionStatus.replace(/_/g, " ").toUpperCase()
+                : candidate.projectSubmission?.aiVerificationStatus
+                  ? candidate.projectSubmission.aiVerificationStatus.toUpperCase()
+                  : "ASSIGNED"}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-lg bg-white p-3.5 border border-[#E2E8F0]">
+              <p className="text-[11px] font-medium text-[#64748B]">Assignment Date</p>
+              <p className="mt-1 text-xs font-semibold text-[#111F33]">
+                {candidate.projectAssignedAt
+                  ? new Date(candidate.projectAssignedAt).toLocaleDateString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })
+                  : candidate.createdAt
+                    ? new Date(candidate.createdAt).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    : "Assigned"}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-white p-3.5 border border-[#E2E8F0]">
+              <p className="text-[11px] font-medium text-[#64748B]">Deadline / Duration</p>
+              <p className="mt-1 text-xs font-semibold text-[#111F33]">
+                {candidate.submissionDeadline
+                  ? new Date(candidate.submissionDeadline).toLocaleDateString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })
+                  : project.duration
+                    ? `${project.duration} days`
+                    : "Not specified"}
+              </p>
+            </div>
+
+            <div className="rounded-lg bg-white p-3.5 border border-[#E2E8F0]">
+              <p className="text-[11px] font-medium text-[#64748B]">Submission Repository</p>
+              {candidate.submissionUrl || candidate.projectSubmission?.url ? (
+                <a
+                  href={candidate.submissionUrl || candidate.projectSubmission?.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-[#1976D2] hover:underline truncate max-w-full"
+                >
+                  <GitBranch size={13} className="shrink-0" />
+                  <span className="truncate">{candidate.submissionUrl || candidate.projectSubmission?.url}</span>
+                  <ExternalLink size={11} className="shrink-0" />
+                </a>
+              ) : (
+                <p className="mt-1 text-xs text-[#64748B]">Awaiting candidate submission</p>
+              )}
+            </div>
+          </div>
+
+          {candidate.projectSubmission?.aiVerificationResult?.summary && (
+            <div className="rounded-lg bg-white p-3.5 border border-emerald-200 bg-emerald-50/40">
+              <p className="text-[11px] font-semibold text-emerald-800">AI Verification Feedback</p>
+              <p className="mt-1 text-xs leading-relaxed text-slate-700">
+                {candidate.projectSubmission.aiVerificationResult.summary}
+              </p>
+            </div>
+          )}
         </div>
 
 

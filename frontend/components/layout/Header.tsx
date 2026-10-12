@@ -5,22 +5,17 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   Menu,
-  Search,
   Bell,
-  Moon,
-  Sun,
   ChevronDown,
   LogOut,
-  User,
   Settings,
   ShieldCheck,
-  Check,
 } from "lucide-react";
 import { Dropdown, DropdownItem, DropdownSeparator } from "@/components/ui/Dropdown";
-import { Avatar } from "@/components/ui/Avatar";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
+import { subscribeAdminSync } from "@/lib/adminDataSync";
 import {
   fetchNotifications,
   fetchUnreadCount,
@@ -44,6 +39,15 @@ function formatTimeAgo(dateString?: string | null) {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
+interface AdminProfile {
+  id?: string;
+  name: string;
+  email: string;
+  role: string;
+  avatar?: string;
+  phone?: string;
+}
+
 interface HeaderProps {
   onMenuClick: () => void;
 }
@@ -51,12 +55,10 @@ interface HeaderProps {
 export function Header({ onMenuClick }: HeaderProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const [dark, setDark] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [unreadCount, setUnreadCount] = useState(0);
   const [recentNotifications, setRecentNotifications] = useState<NotificationItem[]>([]);
-  const [loadingNotifications, setLoadingNotifications] = useState(false);
+  const [adminUser, setAdminUser] = useState<AdminProfile | null>(null);
 
   const loadNotificationData = useCallback(async () => {
     try {
@@ -71,31 +73,46 @@ export function Header({ onMenuClick }: HeaderProps) {
     }
   }, []);
 
+  const loadAdminProfile = useCallback(async () => {
+    try {
+      const res = await fetch("/api/auth/me", { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.user) {
+          setAdminUser(data.user);
+        }
+      }
+    } catch {
+      // Ignore transient errors
+    }
+  }, []);
+
   useEffect(() => {
     void loadNotificationData();
+    void loadAdminProfile();
+
     const interval = setInterval(() => {
       void loadNotificationData();
     }, 30000);
-    return () => clearInterval(interval);
-  }, [loadNotificationData]);
 
-  // Sync theme
-  useEffect(() => {
-    const isDark = document.documentElement.classList.contains("dark");
-    setDark(isDark);
-  }, []);
+    const unsubscribeProfile = subscribeAdminSync("admin:profile:updated", (data) => {
+      if (data && typeof data === "object") {
+        setAdminUser((prev) => ({ ...(prev || { name: "", email: "", role: "superadmin" }), ...(data as Partial<AdminProfile>) }));
+      } else {
+        void loadAdminProfile();
+      }
+    });
 
-  const toggleTheme = () => {
-    const next = !dark;
-    setDark(next);
-    document.documentElement.classList.toggle("dark", next);
-  };
+    const unsubscribeNotifs = subscribeAdminSync("notifications:updated", () => {
+      void loadNotificationData();
+    });
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!searchQuery.trim()) return;
-    router.push(`/admin/candidates?search=${encodeURIComponent(searchQuery.trim())}`);
-  };
+    return () => {
+      clearInterval(interval);
+      unsubscribeProfile();
+      unsubscribeNotifs();
+    };
+  }, [loadNotificationData, loadAdminProfile]);
 
   const handleLogout = async () => {
     try {
@@ -112,10 +129,26 @@ export function Header({ onMenuClick }: HeaderProps) {
     return segments[0].charAt(0).toUpperCase() + segments[0].slice(1).replace("-", " ");
   };
 
+  const getInitials = (name?: string) => {
+    if (!name) return "A";
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  };
+
+  const displayName = adminUser?.name || "System Administrator";
+  const displayRole =
+    adminUser?.role === "superadmin"
+      ? "Super Admin"
+      : adminUser?.role === "recruiter"
+      ? "Recruiter"
+      : "Admin";
+  const displayEmail = adminUser?.email || "admin@recruitai.com";
+
   return (
     <>
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-[#E2E8F0] bg-white px-4 sm:px-6 z-10 select-none">
-        {/* Left: Mobile Toggle & Page Context */}
+        {/* Left: Mobile Toggle & Page Breadcrumb Context */}
         <div className="flex items-center gap-3">
           <button
             onClick={onMenuClick}
@@ -133,25 +166,8 @@ export function Header({ onMenuClick }: HeaderProps) {
           </div>
         </div>
 
-        {/* Center: Global Search */}
-        <div className="flex-1 max-w-md mx-4">
-          <form onSubmit={handleSearchSubmit} className="relative w-full">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#64748B]" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search candidate, project, or role (Press Enter)..."
-              className="h-8.5 w-full rounded-md border border-[#E2E8F0] bg-[#F5F7FA] pl-8 pr-12 text-xs text-[#111F33] placeholder:text-slate-400 focus:border-[#1976D2] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#1976D2]"
-            />
-            <kbd className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded border border-[#E2E8F0] bg-white px-1.5 text-[10px] font-medium text-slate-400">
-              ↵
-            </kbd>
-          </form>
-        </div>
-
-        {/* Right: Notifications, Theme, Profile */}
-        <div className="flex items-center gap-2">
+        {/* Right: Notifications, Profile Menu */}
+        <div className="flex items-center gap-3">
           {/* Notifications Dropdown */}
           <Dropdown
             trigger={
@@ -274,38 +290,40 @@ export function Header({ onMenuClick }: HeaderProps) {
             </div>
           </Dropdown>
 
-          {/* Theme Toggle */}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="rounded-md p-2 text-[#64748B] hover:bg-[#F5F7FA] hover:text-[#111F33] transition-colors"
-            aria-label="Toggle visual theme"
-          >
-            {dark ? <Sun className="h-4 w-4 text-amber-500" /> : <Moon className="h-4 w-4" />}
-          </button>
-
           {/* Admin Profile Dropdown */}
           <Dropdown
             trigger={
               <button
                 type="button"
                 className="flex items-center gap-2 rounded-md p-1.5 hover:bg-[#F5F7FA] transition-colors text-left"
+                aria-label="Administrator profile menu"
               >
-                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#111F33] text-white text-xs font-semibold">
-                  A
-                </div>
+                {adminUser?.avatar ? (
+                  <img
+                    src={adminUser.avatar}
+                    alt={displayName}
+                    className="h-7 w-7 rounded-full object-cover border border-[#E2E8F0]"
+                  />
+                ) : (
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#111F33] text-white text-xs font-semibold">
+                    {getInitials(displayName)}
+                  </div>
+                )}
                 <div className="hidden sm:block leading-tight">
-                  <p className="text-xs font-semibold text-[#111F33]">Administrator</p>
-                  <p className="text-[10px] text-[#64748B]">Super Admin</p>
+                  <p className="text-xs font-semibold text-[#111F33]">{displayName}</p>
+                  <p className="text-[10px] text-[#64748B]">{displayRole}</p>
                 </div>
                 <ChevronDown className="h-3.5 w-3.5 text-[#64748B] hidden sm:block" />
               </button>
             }
           >
-            <div className="w-48 py-1">
+            <div className="w-52 py-1">
               <div className="px-3 py-2 border-b border-[#E2E8F0] mb-1">
-                <p className="text-xs font-semibold text-[#111F33]">System Admin</p>
-                <p className="text-[11px] text-[#64748B] truncate">admin@recruitai.com</p>
+                <p className="text-xs font-semibold text-[#111F33] truncate">{displayName}</p>
+                <p className="text-[11px] text-[#64748B] truncate">{displayEmail}</p>
+                <span className="inline-block mt-1 rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold text-[#1976D2] uppercase tracking-wide">
+                  {displayRole}
+                </span>
               </div>
               <DropdownItem onClick={() => router.push("/admin/settings")}>
                 <Settings className="h-3.5 w-3.5 mr-2 text-[#64748B]" />

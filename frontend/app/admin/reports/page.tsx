@@ -431,18 +431,11 @@ export default function ReportsPage() {
                         <div className="flex justify-end gap-2">
                           <Link
                             href={`/admin/reports/${report.id}`}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 transition hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-xs transition hover:bg-slate-50 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
                           >
                             <Eye size={14} />
-                            View
-                          </Link>
-
-                          <Link
-                            href={`/admin/reports/${report.id}`}
-                            className="inline-flex items-center gap-1.5 rounded-md bg-[#1976D2] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#1565C0]"
-                          >
-                            Decision
-                            <ChevronRight size={14} />
+                            View Report
+                            <ChevronRight size={13} className="text-slate-400" />
                           </Link>
                         </div>
                       </td>

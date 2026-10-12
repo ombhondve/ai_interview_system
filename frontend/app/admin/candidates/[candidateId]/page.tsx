@@ -39,6 +39,10 @@ import ProjectAIPreview, {
 import {
   useToast,
 } from "@/components/ui/Toast";
+import {
+  publishAdminSync,
+  subscribeAdminSync,
+} from "@/lib/adminDataSync";
 
 import {
   Card,
@@ -333,11 +337,21 @@ export default function CandidateDetailPage() {
   // ===================================================
 
   useEffect(() => {
-
     load();
-
   }, [load]);
 
+  useEffect(() => {
+    const unsubCandidate = subscribeAdminSync("admin:candidate:updated", () => {
+      void load();
+    });
+    const unsubInterview = subscribeAdminSync("admin:interview:updated", () => {
+      void load();
+    });
+    return () => {
+      unsubCandidate();
+      unsubInterview();
+    };
+  }, [load]);
 
   // ===================================================
   // APPROVE WITHOUT PROJECT
@@ -372,6 +386,7 @@ export default function CandidateDetailPage() {
             false
           );
 
+          publishAdminSync("admin:candidate:updated", updated);
 
           toast({
             type: "success",
@@ -523,6 +538,8 @@ export default function CandidateDetailPage() {
       });
 
       await load();
+      publishAdminSync("admin:candidate:updated", candidate);
+      publishAdminSync("admin:project:updated");
 
     } catch (error) {
 
@@ -888,6 +905,8 @@ export default function CandidateDetailPage() {
        * ===================================================
        */
       await load();
+      publishAdminSync("admin:candidate:updated", updatedCandidate || candidate);
+      publishAdminSync("admin:project:updated", savedProject);
 
       /*
        * ===================================================
@@ -1100,6 +1119,8 @@ export default function CandidateDetailPage() {
 
 
         await load();
+        publishAdminSync("admin:candidate:updated", updated || candidate);
+        publishAdminSync("admin:project:updated");
 
       } catch (error) {
 

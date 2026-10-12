@@ -96,11 +96,30 @@ export interface Candidate {
   finalDecision?: "selected" | "rejected" | "pending";
 
   createdAt?: string;
+  updatedAt?: string;
   resumeUrl?: string;
   resumeFileName?: string;
   interviewDate?: string;
   interviewUrl?: string;
   assignedProjectId?: string;
+  submissionUrl?: string;
+  projectSubmissionStatus?: string;
+  projectAssignedAt?: string;
+  submissionDeadline?: string;
+  projectSubmission?: {
+    url?: string;
+    submittedAt?: string;
+    aiVerificationStartedAt?: string;
+    aiVerificationStatus?: string;
+    aiVerificationCompletedAt?: string;
+    aiVerificationResult?: {
+      verificationStatus?: string;
+      confidence?: number;
+      summary?: string;
+      detailedAnalysis?: any;
+      recommendations?: any;
+    };
+  };
 }
 
 /* =========================================================

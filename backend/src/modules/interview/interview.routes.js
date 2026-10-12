@@ -32,6 +32,34 @@ function validInterviewId(req, res, next) {
 }
 
 import { syncInterviewLifecycles, recordCandidatePresence } from "./interview.lifecycle.service.js";
+import InterviewBooking from "../scheduling/interviewBooking.model.js";
+
+router.get("/admin/candidate/:candidateId", requireAuth, requireRole("superadmin", "recruiter", "admin"), async (req, res) => {
+  try {
+    const candidateId = req.params.candidateId;
+    if (!isValidObjectId(candidateId)) {
+      return res.status(400).json({ success: false, message: "Invalid candidate ID." });
+    }
+
+    const interview = await AiInterview.findOne({ candidateId })
+      .sort({ scheduledAt: -1, createdAt: -1 })
+      .populate("projectId", "title role difficulty technologies duration")
+      .populate("bookingId");
+
+    const booking = await InterviewBooking.findOne({
+      candidateId,
+      status: { $ne: "cancelled" },
+    }).sort({ startAt: -1, createdAt: -1 });
+
+    return res.json({
+      success: true,
+      interview: interview || null,
+      booking: booking || null,
+    });
+  } catch (error) {
+    return handleError(res, error);
+  }
+});
 
 router.get("/admin/reports", requireAuth, requireRole("superadmin", "recruiter", "admin"), async (_req, res) => {
   try {

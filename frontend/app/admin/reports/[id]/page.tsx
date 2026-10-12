@@ -128,7 +128,6 @@ export default function AdminReportDetailPage() {
 
   const [interview, setInterview] = useState<InterviewReport | null>(null);
   const [loading, setLoading] = useState(true);
-  const [notes, setNotes] = useState("");
   const [notice, setNotice] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -138,7 +137,6 @@ export default function AdminReportDetailPage() {
       setLoading(true);
       const data = await request<{ interview: InterviewReport }>(`/${interviewId}/report`);
       setInterview(data.interview);
-      setNotes(data.interview.adminDecision?.notes || "");
     } catch (err: unknown) {
       setNotice({
         text: err instanceof Error ? err.message : "Unable to load interview report.",
@@ -166,30 +164,6 @@ export default function AdminReportDetailPage() {
     } catch (err: unknown) {
       setNotice({
         text: err instanceof Error ? err.message : "Analysis generation failed.",
-        type: "error",
-      });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleAdminDecision = async (status: "selected" | "rejected" | "another_interview") => {
-    if (!interviewId) return;
-    setBusy(true);
-    setNotice(null);
-    try {
-      const data = await request<{ interview: InterviewReport }>(`/${interviewId}/admin-decision`, {
-        method: "POST",
-        body: JSON.stringify({ status, notes }),
-      });
-      setInterview(data.interview);
-      setNotice({
-        text: `Admin decision saved: ${status.toUpperCase().replace("_", " ")}`,
-        type: "success",
-      });
-    } catch (err: unknown) {
-      setNotice({
-        text: err instanceof Error ? err.message : "Unable to persist decision.",
         type: "error",
       });
     } finally {
@@ -274,18 +248,12 @@ export default function AdminReportDetailPage() {
             </button>
             <span
               className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                interview.adminDecision?.status && interview.adminDecision.status !== "pending"
+                analysis
                   ? "bg-[#16A34A]/10 text-[#16A34A] border border-[#16A34A]/30"
-                  : analysis
-                  ? "bg-[#D97706]/10 text-[#D97706] border border-[#D97706]/30"
                   : "bg-[#F5F7FA] text-[#64748B] border border-[#E2E8F0]"
               }`}
             >
-              {interview.adminDecision?.status && interview.adminDecision.status !== "pending"
-                ? `Decided: ${interview.adminDecision.status.toUpperCase()}`
-                : analysis
-                ? "Awaiting Admin Decision"
-                : interview.status}
+              {analysis ? "AI Evaluation Complete" : (interview.status.replace("_", " ").toUpperCase() || "PENDING")}
             </span>
           </div>
         </div>
@@ -700,72 +668,6 @@ export default function AdminReportDetailPage() {
               ))
             )}
           </div>
-        </section>
-
-        {/* 7. FINAL ADMIN DECISION (HUMAN DECISION ONLY) */}
-        <section className="rounded-lg border border-[#E2E8F0] bg-white p-6 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-base font-bold text-[#111F33]">
-                Final Admin Hiring Decision
-              </h2>
-              <p className="text-xs text-[#64748B]">
-                The AI provides an advisory assessment. The final hiring decision is made by the Admin.
-              </p>
-            </div>
-            {interview.adminDecision?.status && interview.adminDecision.status !== "pending" && (
-              <span className="rounded-full bg-[#16A34A]/10 px-3 py-1 text-xs font-semibold text-[#16A34A] border border-[#16A34A]/30">
-                Current: {interview.adminDecision.status.toUpperCase()}
-              </span>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-[#111F33]">
-              Admin Decision Notes / Rationale
-            </label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add review feedback, justification, or interview follow-up notes..."
-              rows={3}
-              maxLength={2000}
-              className="mt-1.5 w-full rounded-lg border border-[#E2E8F0] bg-white p-3 text-xs outline-none focus:border-[#1976D2] text-[#111F33] transition-colors"
-            />
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 pt-2">
-            <button
-              onClick={() => void handleAdminDecision("selected")}
-              disabled={busy}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#16A34A] px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition hover:bg-[#15803D] disabled:opacity-50"
-            >
-              <CheckCircle size={15} /> Select Candidate (Hire)
-            </button>
-
-            <button
-              onClick={() => void handleAdminDecision("rejected")}
-              disabled={busy}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#DC2626] px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition hover:bg-[#B91C1C] disabled:opacity-50"
-            >
-              <XCircle size={15} /> Reject Candidate
-            </button>
-
-            <button
-              onClick={() => void handleAdminDecision("another_interview")}
-              disabled={busy}
-              className="inline-flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white px-4 py-2.5 text-xs font-semibold text-[#111F33] transition hover:bg-[#F5F7FA] disabled:opacity-50"
-            >
-              <Clock size={15} /> Hold / Request Another Interview
-            </button>
-          </div>
-
-          {interview.adminDecision?.decidedAt && (
-            <p className="text-[11px] text-[#64748B]">
-              Decided on {new Date(interview.adminDecision.decidedAt).toLocaleString()}
-              {interview.adminDecision.decidedBy ? ` by ${interview.adminDecision.decidedBy}` : ""}
-            </p>
-          )}
         </section>
       </div>
     </main>
