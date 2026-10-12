@@ -545,3 +545,101 @@ describe("5. Rejection reason persistence and candidate verification state deriv
     expect(derived.rejectionReason).toBeNull();
   });
 });
+
+describe("7. Final payload source code preservation & budget enforcement", () => {
+  const { prepareVerificationMessages } = require("../verification.service.js");
+  const { projectVerificationPrompt } = require("../../ai/ai.prompt.js");
+
+  test("Simple Task Management API source code survives compaction and remains in final serialized payload", () => {
+    const sampleProject = {
+      title: "Simple Task Management API",
+      description: "Build a task API using FastAPI with CRUD and tests.",
+      difficulty: "junior",
+      technologies: ["Python", "FastAPI", "Pydantic", "SQLAlchemy", "pytest"],
+      requirements: [
+        "Create CRUD endpoints for tasks (GET /tasks, POST /tasks, GET /tasks/{id}, PUT /tasks/{id}, DELETE /tasks/{id})",
+        "Persist tasks to SQLite using SQLAlchemy ORM",
+        "Validate task request bodies with Pydantic schemas",
+        "Write unit and integration tests using pytest"
+      ],
+      functionalRequirements: [
+        "User can list all tasks with pagination",
+        "User can create a new task with required title",
+        "User can retrieve task by ID, returning 404 if not found",
+        "User can update task title, description, or completed status",
+        "User can delete task by ID"
+      ],
+      nonFunctionalRequirements: [
+        "Follow RESTful design principles and HTTP status codes",
+        "Organize code with clean architecture: routers, models, schemas, database config",
+        "Include comprehensive README with setup instructions and test execution guide"
+      ],
+      deliverables: [
+        "FastAPI application source code",
+        "Database model and migration or SQLite setup",
+        "Automated test suite with test cases",
+        "requirements.txt dependency manifest"
+      ],
+      modules: [
+        {
+          name: "Task Router",
+          features: ["Task listing", "Task creation", "Task retrieval", "Task update", "Task deletion"]
+        },
+        {
+          name: "Data Models & Schemas",
+          features: ["Task SQLAlchemy model", "Pydantic request and response schemas"]
+        }
+      ],
+      expectedFiles: ["app/main.py", "app/routers/tasks.py", "app/models/task.py", "requirements.txt"]
+    };
+
+    const keyFiles = {
+      "README.md": { content: "# Simple Task Management API\nRun with uvicorn app.main:app", size: 60 },
+      "requirements.txt": { content: "fastapi\nuvicorn\npydantic\nsqlalchemy\npytest\n", size: 50 },
+      "app/main.py": { content: "from fastapi import FastAPI\nfrom app.routers import tasks\napp = FastAPI()\napp.include_router(tasks.router)\n", size: 120 },
+      "app/database.py": { content: "from sqlalchemy import create_engine\nengine = create_engine('sqlite:///./tasks.db')\n", size: 90 },
+      "app/models/task.py": { content: "from sqlalchemy import Column, Integer, String\nclass Task:\n  id = Column(Integer, primary_key=True)\n", size: 100 },
+      "app/schemas/task.py": { content: "from pydantic import BaseModel\nclass TaskCreate(BaseModel):\n  title: str\n", size: 80 },
+      "app/routers/tasks.py": { content: "from fastapi import APIRouter\nrouter = APIRouter(prefix='/tasks')\n@router.get('/')\ndef get_tasks(): return []\n", size: 120 },
+      "tests/test_tasks.py": { content: "def test_get_tasks(): assert True\n", size: 40 }
+    };
+
+    const repo = {
+      structure: {
+        files: Object.keys(keyFiles).map(p => ({ path: p })),
+        directories: ["app", "tests"],
+        languageBreakdown: { Python: "100%" },
+        filesWithContent: 8
+      },
+      keyFiles,
+      metadata: { platform: "github" }
+    };
+
+    const { messages, payloadStats } = prepareVerificationMessages(sampleProject, repo);
+
+    expect(messages).toHaveLength(2);
+    expect(messages[0].role).toBe("system");
+    expect(messages[1].role).toBe("user");
+
+    // Must be under the 6500 token ceiling (~26,000 characters)
+    expect(payloadStats.totalChars).toBeLessThanOrEqual(26000);
+    expect(payloadStats.estimatedInputTokens).toBeLessThanOrEqual(6500);
+
+    // Verify final serialized user payload contains non-empty source code
+    const parsedUser = JSON.parse(messages[1].content);
+    const finalKeyFiles = parsedUser.REPOSITORY_CONTENT.keyFiles;
+    expect(Object.keys(finalKeyFiles).length).toBe(8);
+
+    // Critical source files must have actual content in the final serialized payload
+    expect(finalKeyFiles["app/main.py"].content).toContain("FastAPI");
+    expect(finalKeyFiles["app/routers/tasks.py"].content).toContain("APIRouter");
+    expect(finalKeyFiles["app/models/task.py"].content).toContain("class Task");
+    expect(finalKeyFiles["tests/test_tasks.py"].content).toContain("def test_get_tasks");
+
+    // Compaction stats must report withinBudget and no configurationError
+    expect(payloadStats.enforcedStats.withinBudget).toBe(true);
+    expect(payloadStats.enforcedStats.configurationError).toBeUndefined();
+    expect(payloadStats.enforcedStats.filesIncluded).toBe(8);
+  });
+});
+

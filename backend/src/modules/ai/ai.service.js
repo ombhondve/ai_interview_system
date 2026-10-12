@@ -163,84 +163,84 @@ export const generateWhatsAppChatResponse = async (messages) => {
   return content.trim();
 };
 
-export const generateAIResponse = async (messages) => {
+export const generateAIResponse = async (messages, options = {}) => {
   if (!process.env.GROQ_API_KEY) {
     throw new Error("GROQ_API_KEY is not configured.");
   }
 
   const { client, model } = getGroqClient();
-  
+  const correlationId = options.correlationId || `req_${Date.now()}`;
+  const maxCompletionTokens = options.max_completion_tokens || 2500;
+
+  console.log(
+    `[ai-provider] request started correlationId=${correlationId} model=${model} maxCompletionTokens=${maxCompletionTokens}`
+  );
+
   const response = await client.chat.completions.create({
     model,
     messages,
-    max_completion_tokens: 2500,
-    temperature: 0.2,
+    max_completion_tokens: maxCompletionTokens,
+    temperature: options.temperature ?? 0.2,
     response_format: {
       type: "json_object"
     },
-
     stream: false
   });
 
-  const content = response?.choices?.[0]?.message?.content;
+  const choice = response?.choices?.[0];
+  const content = choice?.message?.content;
+  const finishReason = choice?.finish_reason || "unknown";
+  const usage = response?.usage || {};
 
-  if (!content) {
+  console.log(
+    `[ai-provider] response received correlationId=${correlationId} model=${model} finishReason=${finishReason} promptTokens=${usage.prompt_tokens || 'unknown'} completionTokens=${usage.completion_tokens || 'unknown'} totalTokens=${usage.total_tokens || 'unknown'} contentChars=${typeof content === "string" ? content.length : 0}`
+  );
+
+  if (finishReason === "length") {
+    throw new Error(
+      `AI response was truncated due to output length limit (finish_reason=length). Completion tokens: ${usage.completion_tokens || maxCompletionTokens}.`
+    );
+  }
+
+  if (typeof content !== "string" || !content.trim()) {
     throw new Error("Groq returned an empty response.");
   }
 
-  console.log("AI generation completed using model:", model);
   return content;
 };
 
-export async function generateStructuredAI(messages) {
+export async function generateStructuredAI(messages, options = {}) {
+  const correlationId = options.correlationId || `req_${Date.now()}`;
   try {
-    const content =
-      await generateAIResponse(messages);
-
-    return extractJson(content);
-
-  } catch (firstError) {
-    console.warn(
-      "First AI generation failed. Retrying with compact output..."
-    );
-
-    const retryMessages = messages.map((message) => {
-      if (message.role !== "user") {
-        return message;
-      }
-
-      return {
-        ...message,
-
-        content: `${message.content}
-
-RETRY INSTRUCTION:
-
-The previous response was incomplete.
-
-Generate the same project again.
-
-Keep the JSON compact.
-
-Use short descriptions.
-
-Do not repeat information.
-
-Do not create unnecessary sections.
-
-Maximum 8 items per dynamic section.
-
-Complete the entire JSON object.
-
-Return ONLY valid JSON.`
-      };
+    const content = await generateAIResponse(messages, {
+      correlationId,
+      max_completion_tokens: options.max_completion_tokens || 2500
     });
 
-    const content =
-      await generateAIResponse(
-        retryMessages
-      );
+    return extractJson(content);
+  } catch (firstError) {
+    console.warn(
+      `[ai-provider] First AI generation failed correlationId=${correlationId} error="${firstError.message}". Retrying with compact schema instructions...`
+    );
+
+    // On retry, adjust system prompt instructions rather than appending a bloated instruction
+    // to the large user prompt, avoiding exceeding request budget.
+    const retryMessages = messages.map((message) => {
+      if (message.role === "system") {
+        return {
+          ...message,
+          content: `${message.content}\n\nIMPORTANT RETRY INSTRUCTION: Keep JSON concise. Summarize evidence briefly (<100 chars per item). Output ONLY valid, complete JSON matching the required schema.`
+        };
+      }
+      return message;
+    });
+
+    const content = await generateAIResponse(retryMessages, {
+      correlationId: `${correlationId}_retry`,
+      max_completion_tokens: options.retry_max_completion_tokens || 2000
+    });
 
     return extractJson(content);
   }
 }
+

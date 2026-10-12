@@ -376,4 +376,70 @@ describe("RecruitAI Project Verification - 13 Regression Scenarios", () => {
     expect(result.status).toBe(expectedStatus);
     expect(result.verificationStatus).toBe(expectedStatus);
   });
+
+  // Scenario 14: Prompt + requirements exceed budget -> safe ERROR, never calls AI
+  test("Scenario 14: Oversized requirements causing configuration error aborts safely as ERROR without calling AI", async () => {
+    repositoryService.fetchRepositoryContent.mockResolvedValue(validRepoContent());
+    aiService.generateStructuredAI.mockClear();
+
+    // Create a mock project whose requirements exceed the entire cap
+    const hugeProject = {
+      ...MOCK_PROJECT,
+      requirements: Array.from({ length: 300 }, (_, i) => `Requirement ${i}: ${'x'.repeat(200)}`)
+    };
+    mockProjectFound(hugeProject);
+
+    const result = await verifyProjectSubmission("cand-14", "proj-14", "https://github.com/student/repo");
+
+    expect(result.status).toBe(VERIFICATION_STATUS.ERROR);
+    expect(result.verificationStatus).toBe(VERIFICATION_STATUS.ERROR);
+    expect(result.verificationMetadata.configurationError).toBe(true);
+    expect(result.verificationMetadata.retryable).toBe(true);
+    expect(aiService.generateStructuredAI).not.toHaveBeenCalled();
+
+    // Restore standard project mock
+    mockProjectFound(MOCK_PROJECT);
+  });
+
+  // Scenario 15: Provider returns empty response -> handled as ERROR
+  test("Scenario 15: AI provider returning empty response results in retryable ERROR", async () => {
+    repositoryService.fetchRepositoryContent.mockResolvedValue(validRepoContent());
+    aiService.generateStructuredAI.mockRejectedValue(new Error("Groq returned an empty response."));
+
+    const result = await verifyProjectSubmission("cand-15", "proj-15", "https://github.com/student/repo");
+
+    expect(result.status).toBe(VERIFICATION_STATUS.ERROR);
+    expect(result.verificationStatus).toBe(VERIFICATION_STATUS.ERROR);
+    expect(result.verificationMetadata.retryable).toBe(true);
+  });
+
+  // Scenario 16: Provider truncates JSON due to output token length -> handled as ERROR
+  test("Scenario 16: Provider response truncated due to output length limit results in ERROR", async () => {
+    repositoryService.fetchRepositoryContent.mockResolvedValue(validRepoContent());
+    aiService.generateStructuredAI.mockRejectedValue(
+      new Error("AI response was truncated due to output length limit (finish_reason=length). Completion tokens: 2500.")
+    );
+
+    const result = await verifyProjectSubmission("cand-16", "proj-16", "https://github.com/student/repo");
+
+    expect(result.status).toBe(VERIFICATION_STATUS.ERROR);
+    expect(result.verificationStatus).toBe(VERIFICATION_STATUS.ERROR);
+    expect(result.summary).toContain("finish_reason=length");
+    expect(result.verificationMetadata.retryable).toBe(true);
+  });
+
+  // Scenario 17: Provider returns invalid / unparseable JSON -> handled as ERROR
+  test("Scenario 17: Provider invalid JSON results in ERROR, not REJECTED", async () => {
+    repositoryService.fetchRepositoryContent.mockResolvedValue(validRepoContent());
+    aiService.generateStructuredAI.mockRejectedValue(
+      new Error("Groq returned invalid JSON. Unable to parse the generated project data.")
+    );
+
+    const result = await verifyProjectSubmission("cand-17", "proj-17", "https://github.com/student/repo");
+
+    expect(result.status).toBe(VERIFICATION_STATUS.ERROR);
+    expect(result.verificationStatus).toBe(VERIFICATION_STATUS.ERROR);
+    expect(result.verificationMetadata.retryable).toBe(true);
+  });
 });
+

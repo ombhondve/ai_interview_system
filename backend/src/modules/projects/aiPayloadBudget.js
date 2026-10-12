@@ -108,16 +108,19 @@ export function getUserPayloadBudgetChars(systemPromptChars = 0) {
  * context, even when a large requirement list would otherwise consume
  * everything.
  */
-export function getRepositoryBudgetChars(requirementsChars = 0, wrapperOverhead = 0) {
-  const userBudget = getUserPayloadBudgetChars(0);
+export function getRepositoryBudgetChars(requirementsChars = 0, wrapperOverhead = 0, systemPromptChars = 0) {
+  const userBudget = getUserPayloadBudgetChars(systemPromptChars);
   const requirements = Math.max(0, Number(requirementsChars) || 0);
   const wrapper = Math.max(0, Number(wrapperOverhead) || 0);
 
-  return Math.max(
-    MIN_REPOSITORY_BUDGET_CHARS,
-    userBudget - requirements - wrapper - 200
-  );
+  // If systemPromptChars was not supplied (e.g. unit tests passing 0), guarantee at least MIN_REPOSITORY_BUDGET_CHARS
+  const calculated = userBudget - requirements - wrapper - 200;
+  if (!systemPromptChars) {
+    return Math.max(MIN_REPOSITORY_BUDGET_CHARS, calculated);
+  }
+  return Math.max(MIN_FILE_CHARS, calculated);
 }
+
 
 // ---------------------------------------------------------------------------
 // Exclusion rules - what must never be sent to the model
@@ -486,24 +489,21 @@ export function enforcePayloadBudget(userPrompt, maxChars) {
   const availableForRepository = cap - fixedChars;
 
   if (availableForRepository < MIN_FILE_CHARS) {
+    const fixedOnly = serialize({
+      ...userPrompt,
+      REPOSITORY_CONTENT: emptyRepository
+    });
     return {
-      content: serialize({
-        ...userPrompt,
-        REPOSITORY_CONTENT: emptyRepository
-      }),
+      content: fixedOnly,
       stats: {
         initialChars: serialize(userPrompt).length,
-        finalChars: serialize({
-          ...userPrompt,
-          REPOSITORY_CONTENT: emptyRepository
-        }).length,
+        finalChars: fixedOnly.length,
         shrank: true,
-        withinBudget: serialize({
-          ...userPrompt,
-          REPOSITORY_CONTENT: emptyRepository
-        }).length <= cap,
+        withinBudget: fixedOnly.length <= cap,
+        configurationError: true,
+        reason: "Fixed prompt/requirements leave insufficient budget for repository source code",
         filesIncluded: 0,
-        filesDroppedByBudget: 0,
+        filesDroppedByBudget: Object.keys(userPrompt.REPOSITORY_CONTENT?.keyFiles || {}).length,
         truncatedFiles: 0
       }
     };

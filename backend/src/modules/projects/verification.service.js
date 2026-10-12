@@ -294,25 +294,23 @@ function prepareProjectRequirements(project) {
     evaluationCriteria.completeness = 0.1;
   }
   
-  // E. SUPPORTING CONTEXT FIELDS (help AI understand project scope)
+  // E. SUPPORTING CONTEXT FIELDS (compact representation to preserve evidence budget)
   const supportingContext = {
-    // Objectives provide project goals but aren't individual requirements
-    objectives: project.objectives || [],
-    
-    // Implementation plan provides development phases
-    implementationPlan: project.implementationPlan || [],
-    
-    // API endpoints, database design, testing plan are implementation details
-    apiEndpoints: project.apiEndpoints || [],
-    databaseDesign: project.databaseDesign || [],
-    testingPlan: project.testingPlan || [],
-    
-    // Suggested folder structure is guidance, not mandatory requirements
-    suggestedFolderStructure: project.suggestedFolderStructure || [],
-    
-    // Module names provide project structure context
-    moduleNames: (project.modules || []).map(module => module.name).filter(name => name)
+    objectives: Array.isArray(project.objectives) ? project.objectives.slice(0, 5) : [],
+    implementationPlan: Array.isArray(project.implementationPlan)
+      ? project.implementationPlan.slice(0, 5).map(p => ({ phase: p.phase || p.name || "", tasks: Array.isArray(p.tasks) ? p.tasks.slice(0, 4) : [] }))
+      : [],
+    apiEndpoints: Array.isArray(project.apiEndpoints)
+      ? project.apiEndpoints.slice(0, 10).map(e => ({ method: e.method || "", path: e.path || "" }))
+      : [],
+    databaseDesign: Array.isArray(project.databaseDesign)
+      ? project.databaseDesign.slice(0, 5).map(d => ({ collectionName: d.collectionName || d.table || "", purpose: d.purpose || "" }))
+      : [],
+    testingPlan: Array.isArray(project.testingPlan) ? project.testingPlan.slice(0, 5) : [],
+    suggestedFolderStructure: Array.isArray(project.suggestedFolderStructure) ? project.suggestedFolderStructure.slice(0, 10) : [],
+    moduleNames: (project.modules || []).map(module => module.name).filter(Boolean)
   };
+
   
   return {
     title: project.title || "Untitled Project",
@@ -421,11 +419,13 @@ function prepareVerificationMessages(projectRequirements, repositoryContent) {
   const enforced = enforcePayloadBudget(userPrompt, userBudget);
 
   const totalChars = systemPrompt.length + enforced.content.length;
+  const estimatedInputTokens = estimateTokens(systemPrompt) + estimateTokens(enforced.content);
   logger.info(
     `AI verification payload: ${totalChars} characters / approximately ` +
-      `${estimateTokens(systemPrompt) + estimateTokens(enforced.content)} tokens ` +
+      `${estimatedInputTokens} tokens ` +
       `(repo section ${enforced.stats.finalChars} chars, budget ${userBudget}; ` +
-      `files ${compact.stats.filesIncluded}/${compact.stats.filesConsidered} included)`
+      `files ${compact.stats.filesIncluded}/${compact.stats.filesConsidered} included, ` +
+      `withinBudget=${enforced.stats.withinBudget}, configError=${!!enforced.stats.configurationError})`
   );
 
   // SAFE DIAGNOSTICS: counts, syntax results and sizes only, never file contents.
@@ -438,17 +438,30 @@ function prepareVerificationMessages(projectRequirements, repositoryContent) {
       `payloadChars=${enforced.stats.finalChars}`
   );
 
-  return [
-    {
-      role: "system",
-      content: systemPrompt
-    },
-    {
-      role: "user",
-      content: enforced.content
+  return {
+    messages: [
+      {
+        role: "system",
+        content: systemPrompt
+      },
+      {
+        role: "user",
+        content: enforced.content
+      }
+    ],
+    payloadStats: {
+      systemPromptChars: systemPrompt.length,
+      userPayloadChars: enforced.content.length,
+      totalChars,
+      estimatedInputTokens,
+      userBudget,
+      enforcedStats: enforced.stats,
+      compactStats: compact.stats,
+      syntaxCheck
     }
-  ];
+  };
 }
+
 
 /**
  * Validate verification result structure
@@ -816,19 +829,94 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
 
 
     // Step 5: Prepare and call AI for verification
-    logger.debug("Preparing AI verification request");
+    const correlationId = `verify_${candidateId || 'anon'}_${submissionId || Date.now()}`;
+    logger.debug(`[verification] Preparing AI verification request correlationId=${correlationId}`);
     if (submissionId) {
       await markStageCompleted(candidateId, submissionId, "analyzing");
       await markStageActive(candidateId, submissionId, "requirements");
     }
-    const messages = prepareVerificationMessages(projectRequirements, structuredRepoContent);
-    
+
+    const { messages, payloadStats } = prepareVerificationMessages(projectRequirements, structuredRepoContent);
+
+    // Validate the EXACT final serialized payload transmitted to AI (messages[1].content)
+    let parsedFinalUserPayload;
+    try {
+      parsedFinalUserPayload = JSON.parse(messages[1].content);
+    } catch (parseError) {
+      logger.error(`[verification] Failed to parse final enforced user payload correlationId=${correlationId}:`, parseError);
+    }
+
+    const finalKeyFiles = parsedFinalUserPayload?.REPOSITORY_CONTENT?.keyFiles || {};
+    const finalFilesWithContent = Object.entries(finalKeyFiles).filter(
+      ([path, file]) => file && typeof file.content === "string" && (file.content.trim().length > 0 || path.endsWith("__init__.py"))
+    );
+
+    // Record Stage B Diagnostics
+    logger.info(
+      `[verification-diagnostics] Stage B: Final AI Payload correlationId=${correlationId} submissionId=${submissionId} ` +
+      `systemPromptChars=${payloadStats.systemPromptChars} userPayloadChars=${payloadStats.userPayloadChars} ` +
+      `estimatedTokens=${payloadStats.estimatedInputTokens} inputBudget=${payloadStats.userBudget} ` +
+      `filesInFinalPayload=${Object.keys(finalKeyFiles).length} filesWithSourceInFinal=${finalFilesWithContent.length} ` +
+      `truncatedFiles=${payloadStats.enforcedStats.truncatedFiles} droppedFiles=${payloadStats.enforcedStats.filesDroppedByBudget} ` +
+      `withinBudget=${payloadStats.enforcedStats.withinBudget} configError=${!!payloadStats.enforcedStats.configurationError}`
+    );
+
+    // SAFEGUARD: If payload compaction suffered a configuration error or dropped all source files
+    // even though the repo has content, this is a technical/configuration error, NOT a student rejection!
+    if (payloadStats.enforcedStats.configurationError || (finalFilesWithContent.length === 0 && structuredRepoContent.structure?.filesWithContent > 0)) {
+      logger.error(
+        `[verification] Payload compaction error: repository evidence could not fit within token budget correlationId=${correlationId}`
+      );
+
+      if (submissionId) {
+        await markStageFailed(
+          candidateId,
+          submissionId,
+          "requirements",
+          "Verification payload compaction error: prompt and requirements exceeded context budget."
+        );
+      }
+
+      return {
+        status: VERIFICATION_STATUS.ERROR,
+        verificationStatus: VERIFICATION_STATUS.ERROR,
+        confidence: 0,
+        summary: "Verification could not proceed because project requirements exceeded the model context budget. Please try again or contact support.",
+        detailedAnalysis: {
+          repositoryValidity: {
+            isValid: true,
+            issues: ["Verification payload configuration error: insufficient budget for repository evidence"],
+            strengths: [`${structuredRepoContent.structure?.filesWithContent || 0} source files fetched`]
+          },
+          requirementsAssessment: [],
+          technicalEvaluation: {
+            codeQuality: "UNKNOWN",
+            projectOrganization: "UNKNOWN",
+            documentation: "UNKNOWN",
+            issuesFound: ["Payload budget configuration error"]
+          },
+          overallAssessment: "Automated verification encountered a configuration error while packing repository evidence. The submission has not been rejected."
+        },
+        recommendations: {
+          forStudent: ["A temporary verification engine error occurred. Please retry verification."],
+          forReviewer: []
+        },
+        verificationMetadata: {
+          filesAnalyzed: finalFilesWithContent.length,
+          requirementsTotal: projectRequirements.requirements.length,
+          requirementsMet: 0,
+          requirementsPartial: 0,
+          requirementsMissing: 0,
+          analysisTimestamp: new Date().toISOString(),
+          configurationError: true,
+          aiSkipped: true,
+          retryable: true
+        },
+        rawData: null
+      };
+    }
+
     // Check we have enough file content for meaningful analysis.
-    //
-    // Count files that ACTUALLY carry content, not just keys. Counting keys
-    // reported "7 files" even when every one had `content: null` after a
-    // failed fetch, which sent the model a payload with no evidence while the
-    // log claimed content was present.
     const keyFiles = structuredRepoContent.keyFiles || {};
     const filesWithContent = Object.values(keyFiles).filter(
       (file) =>
@@ -991,7 +1079,7 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       };
     }
 
-    logger.info("Calling AI for project verification");
+    logger.info(`[verification] Calling AI for project verification correlationId=${correlationId}`);
     let aiResult;
     try {
       if (submissionId) {
@@ -999,7 +1087,7 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
         await markStageActive(candidateId, submissionId, "ai");
       }
 
-      aiResult = await generateStructuredAI(messages);
+      aiResult = await generateStructuredAI(messages, { correlationId });
 
       // Step 6: Validate and process AI result
       validateVerificationResult(aiResult);
@@ -1010,7 +1098,7 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
       }
 
     } catch (aiError) {
-      logger.error("AI verification failed:", aiError);
+      logger.error(`[verification] AI verification failed correlationId=${correlationId}:`, aiError);
 
       if (submissionId) {
         await markStageFailed(
@@ -1020,11 +1108,11 @@ export async function verifyProjectSubmission(candidateId, projectId, repository
           aiError.message || "AI verification failed."
         );
       }
-
       
       // Handle AI failure gracefully as a technical error (NOT false rejection)
       return {
         status: VERIFICATION_STATUS.ERROR,
+
         verificationStatus: VERIFICATION_STATUS.ERROR,
         confidence: 0,
         summary: `AI verification service encountered a processing error: ${aiError.message}. Verification could not be completed.`,
@@ -1343,4 +1431,8 @@ export function getVerificationStatistics(verificationResult) {
   };
 }
 
-export { VERIFICATION_STATUS };
+export {
+  VERIFICATION_STATUS,
+  prepareVerificationMessages,
+  prepareProjectRequirements
+};
