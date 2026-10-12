@@ -42,7 +42,14 @@ const CandidatePortalTokenSchema = new mongoose.Schema(
   }
 );
 
-
+/**
+ * TTL index to automatically remove portal tokens 30 days after expiration.
+ * This preserves a 30-day diagnostics window while preventing infinite accumulation.
+ */
+CandidatePortalTokenSchema.index(
+  { expiresAt: 1 },
+  { expireAfterSeconds: 30 * 24 * 3600 }
+);
 
 const CandidatePortalToken =
   mongoose.models.CandidatePortalToken ||

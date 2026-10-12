@@ -1203,25 +1203,74 @@ export const archiveProject =
 export const deleteProject =
   async (req, res) => {
     try {
-      const project =
-        await deleteProjectService(
-          req.params.id
-        );
+      const projectId = req.params.id;
 
-      if (!project) {
+      if (!mongoose.Types.ObjectId.isValid(projectId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid project ID.",
+        });
+      }
+
+      const existingProject = await Project.findById(projectId);
+      if (!existingProject) {
         return res.status(404).json({
           success: false,
-          message:
-            "Project not found.",
+          message: "Project not found.",
         });
+      }
+
+      // 1. Guard against deleting projects with active candidate assignments
+      const Candidate = (await import("../candidate/candidate.model.js")).default;
+      const assignedCount = await Candidate.countDocuments({ projectId: existingProject._id });
+      if (assignedCount > 0) {
+        return res.status(409).json({
+          success: false,
+          code: "PROJECT_HAS_ASSIGNED_CANDIDATES",
+          message: `Cannot delete project: ${assignedCount} candidate(s) are currently assigned to this project. Please archive the project instead or reassign candidates before deletion.`,
+        });
+      }
+
+      // 2. Perform deletion
+      const project =
+        await deleteProjectService(
+          projectId
+        );
+
+      // 3. Safely cleanup Cloudinary PDF artifact if present
+      if (existingProject.pdfPublicId) {
+        try {
+          const cloudinary = (await import("../../config/cloudinary.js")).default;
+          await cloudinary.uploader.destroy(existingProject.pdfPublicId);
+        } catch (cErr) {
+          console.warn("Could not delete project PDF from Cloudinary:", cErr.message);
+        }
+      }
+
+      // 4. Record audit log
+      try {
+        const AuditLog = (await import("../auditLog/auditLog.model.js")).default;
+        await AuditLog.create({
+          actor: req.user?._id || "system",
+          actorId: String(req.user?._id || ""),
+          actorName: req.user?.name || "Administrator",
+          actorEmail: req.user?.email || "",
+          actorRole: req.user?.role || "admin",
+          action: "PROJECT_DELETED",
+          targetType: "Project",
+          targetId: existingProject._id,
+          targetName: existingProject.title || "Untitled Project",
+          outcome: "SUCCESS",
+          details: { title: existingProject.title, role: existingProject.role },
+        });
+      } catch (auditErr) {
+        console.warn("Failed to write audit log for project deletion:", auditErr.message);
       }
 
       return res.status(200).json({
         success: true,
-
         message:
           "Project deleted successfully.",
-
         project,
       });
     } catch (error) {
@@ -1232,7 +1281,6 @@ export const deleteProject =
 
       return res.status(500).json({
         success: false,
-
         message:
           "Failed to delete project.",
       });

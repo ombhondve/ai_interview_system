@@ -678,11 +678,28 @@ class BotWorkerAgent:
         self.running = True
         self._start_heartbeat_loop()
 
+        # Run startup cleanup of stale local diagnostic artifacts (utterance WAVs > 48h, screenshots > 7d)
+        self._last_cleanup_ts = time.time()
+        try:
+            from app.cleanup import run_local_cleanup
+            run_local_cleanup()
+        except Exception as cleanup_err:
+            logger.warning(f"Startup local artifact cleanup notice: {cleanup_err}")
+
         target_interval = float(self.config.poll_seconds)
         logger.info(f"Worker '{self.config.worker_id}' is active and polling for jobs every {target_interval}s.")
 
         try:
             while not self._stop_event.is_set():
+                # Periodic 24h cleanup cycle
+                if (time.time() - self._last_cleanup_ts) > 86400.0:
+                    try:
+                        from app.cleanup import run_local_cleanup
+                        run_local_cleanup()
+                    except Exception as p_cleanup_err:
+                        logger.warning(f"Periodic local artifact cleanup notice: {p_cleanup_err}")
+                    self._last_cleanup_ts = time.time()
+
                 poll_start_time = time.monotonic()
 
                 if not self.enabled:

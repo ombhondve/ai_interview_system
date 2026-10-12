@@ -20,36 +20,71 @@ export function classifyCandidateIntent(text) {
   const clean = String(text || "").trim().toLowerCase();
   if (!clean) return { intent: "SILENCE", text: "" };
 
-  // Explanation request (when candidate asks what a technical term, word or question means)
+  // 1. Audio / Mic check detection
   if (
-    /\b(what does (that|this|it|.+?) mean|what do you mean by|i don't understand what.+means|i don't know what that means|can you explain|explain what you mean|don't understand (the word|the term|what you mean)|samajh nahi aaya|samajla nahi|samajh nahi aa raha|arth samjhla nahi|matlab kya hai)\b/i.test(clean)
+    /\b(is (my )?voice audible|can you hear me|can you hear my voice|is (my )?mic(rophone)? working|am i audible|can you hear me clearly|hear me properly|voice is audible|voice audible|mic test|microphone test|testing testing|can you hear me now|aawaz aa rahi hai|awaaz aa rahi hai|aawaj yetoy ka|maza aawaz yetoy ka)\b/i.test(clean) ||
+    /^(can you hear me|is my voice audible|am i audible|hello can you hear me)\b/i.test(clean)
+  ) {
+    return { intent: "AUDIO_CHECK", text: clean };
+  }
+
+  // 2. Explicit request to end / terminate interview early
+  if (
+    /\b(i (want|would like) to end the interview|can we (please )?(end|finish|stop|wrap up) the interview|stop the interview|end the interview (here|now)?|i want to (stop|leave|exit)|i cannot continue (the interview)?|can we stop here|i would like to stop here)\b/i.test(clean)
+  ) {
+    return { intent: "END_INTERVIEW_REQUEST", text: clean };
+  }
+
+  // 3. Explanation request (when candidate asks what a technical term, word or question means)
+  if (
+    /\b(what does (that|this|it|.+?) mean|what do you mean by|i don't understand what.+means|i don't know what that means|can you explain|explain what you mean|don't understand (the word|the term|what you mean|the question)|samajh nahi aaya|samajla nahi|samajh nahi aa raha|arth samjhla nahi|matlab kya hai|clarify the question|can you clarify what you mean)\b/i.test(clean)
   ) {
     return { intent: "EXPLAIN_REQUEST", text: clean };
   }
 
-  // Clarification / repeat request (English, Hindi, Marathi)
+  // 4. Clarification / repeat request (English, Hindi, Marathi)
   if (
     /^(can you (please )?repeat|could you repeat|repeat the question|can you rephrase|pardon|could you clarify|can you clarify)\b/i.test(clean) ||
-    /\b(repeat (the )?question|say that again|ekda parat sanga|phir se bolo|dobara boliye)\b/i.test(clean)
+    /\b(repeat (the )?question|say that again|ekda parat sanga|phir se bolo|dobara boliye|could you say that again)\b/i.test(clean)
   ) {
     return { intent: "REPEAT_REQUEST", text: clean };
   }
 
-  // Thinking / pause request (English, Hindi, Marathi)
+  // 5. Explicit indication of no questions (or negative response)
+  if (
+    /^(no|nope|nah|not really|no questions?|no questions from my side|nothing|nothing else|nothing from my side|i don't have any (more )?questions?|i have no (more )?questions?|don't have any (more )?questions?|no thank you|no thanks|all good|everything is clear|all clear|i'm good|im good|that's all|that's all from my side|that is all|nahi|nahi hai|kahi nahi|kahi nahiye)\b/i.test(clean) ||
+    /\b(no (more |other )?questions?|nothing (else|from my side)|no thank you|no thanks|nahi hai|kahi nahi|all good|all clear|that's all from my side)\b/i.test(clean)
+  ) {
+    return { intent: "NO_MORE_QUESTIONS", text: clean };
+  }
+
+  // 6. Candidate asking question about role, company, team, or interview process
+  const hasQuestionPunctuation = clean.includes("?");
+  const isCompanyOrRoleQuery = /\b(what (technologies|tech stack|tools|frameworks|projects|kind of work|products|is the culture|are the next steps)|how (many rounds|does the team|is the team)|when (will|do|can|are)|is there (any|a)|do you (guys|use|have)|can you tell me about the (team|role|company|process)|where is the office|what does the company do)\b/i.test(clean);
+  const isDirectCandidateQuestion = isCompanyOrRoleQuery || (hasQuestionPunctuation && /^(what|how|why|when|where|who|is|does|do|can|could|will)\b/i.test(clean));
+
+  const words = clean.split(/\s+/).filter(Boolean);
+  const hasImplementationDetail = /\b(I (used|built|implemented|chose|designed|handled)|because|for example|specifically|the reason)\b/i.test(clean);
+
+  if (isDirectCandidateQuestion && words.length >= 10 && hasImplementationDetail) {
+    return { intent: "COMPOUND_ANSWER_QUESTION", text: clean, wordsCount: words.length };
+  }
+  if (isDirectCandidateQuestion) {
+    return { intent: "CANDIDATE_QUESTION", text: clean, wordsCount: words.length };
+  }
+
+  // 7. Thinking / pause request (English, Hindi, Marathi)
   if (
     /\b(give me a (moment|second|min)|let me think|i'm thinking|just a (moment|sec|second)|give me a sec|trying to remember|thinking about it|ek minute|thoda sochna hai|zara thamba|thoda vel dya)\b/i.test(clean)
   ) {
     return { intent: "THINKING", text: clean };
   }
 
-  // "I don't know" / unsure (English, Hindi, Marathi code-switching)
-  // "I don't know", "not sure", "mala exact athvat nahi", "mujhe nahi pata", "mala mahit nahi", "ye part nahi pata"
+  // 8. "I don't know" / unsure (English, Hindi, Marathi code-switching)
   if (
     /^(i don't know|i do not know|not sure|i'm not sure|i am not sure|i don't remember|i do not remember|haven't worked with that|never used that|no idea|cannot answer|can't answer|don't have an answer|can't remember)\b/i.test(clean) ||
     /\b(i don't know|i don't remember|not really sure|haven't used that|mala mahit nahi|mala athvat nahi|mala exact athvat nahi|mujhe nahi pata|ye part nahi pata|pata nahi|athavat nahi)\b/i.test(clean)
   ) {
-    // If the candidate mentions a technical keyword despite saying "don't remember exactly" (e.g. "Mala exact athvat nahi, but I think JWT")
-    // treat as a valid answer mentioning that keyword so AI can probe it!
     const techMention = /\b(jwt|token|tokens|react|node|mongodb|mongo|express|sql|redis|aws|docker|auth|api|rest)\b/i.test(clean);
     if (techMention) {
       return { intent: "VALID_ANSWER", text: clean, note: "Hesitant answer with technical mention" };
@@ -57,12 +92,11 @@ export function classifyCandidateIntent(text) {
     return { intent: "DONT_KNOW", text: clean };
   }
 
-  // Off-topic detection (e.g. "Actually during college I also worked on sports/event...")
+  // 9. Off-topic detection
   if (/\b(during college i also|in my free time i like|unrelated to this project|out of topic)\b/i.test(clean)) {
     return { intent: "OFF_TOPIC", text: clean };
   }
 
-  const words = clean.split(/\s+/).filter(Boolean);
   if (words.length <= 3 && !/\b(yes|no|yeah|yep|sure|fine)\b/i.test(clean)) {
     return { intent: "SHORT_ANSWER", text: clean, wordsCount: words.length };
   }
@@ -85,6 +119,7 @@ export function getNaturalAcknowledgment(index = 0) {
 
 /**
  * Classify candidate intent specifically during the CLOSING phase:
+ * - AUDIO_CHECK: Candidate checks audio/microphone
  * - NO_QUESTIONS: Candidate does not have questions ("No", "No questions", "Nahi", "Nothing", etc.)
  * - WANTS_TO_ASK: Candidate indicates they have a question ("Yes", "I have a question", "Can I ask something?", etc.)
  * - CANDIDATE_QUESTION: Candidate directly asks a substantive question ("What is the tech stack?", "When will results be out?", etc.)
@@ -93,10 +128,18 @@ export function classifyClosingIntent(text) {
   const clean = String(text || "").trim().toLowerCase();
   if (!clean) return { intent: "NO_QUESTIONS", text: "" };
 
+  // Audio check during closing
+  if (
+    /\b(is (my )?voice audible|can you hear me|can you hear my voice|is (my )?mic(rophone)? working|am i audible|can you hear me clearly|hear me properly|voice is audible|voice audible|mic test|testing testing|can you hear me now|aawaz aa rahi hai|awaaz aa rahi hai|aawaj yetoy ka|maza aawaz yetoy ka)\b/i.test(clean) ||
+    /^(can you hear me|is my voice audible|am i audible|hello can you hear me)\b/i.test(clean)
+  ) {
+    return { intent: "AUDIO_CHECK", text: clean };
+  }
+
   // Explicit negative / no questions (English, Hindi, Marathi)
   if (
-    /^(no|nope|nah|not really|no questions?|no questions from my side|nothing|nothing else|nothing from my side|i don't have any questions?|i have no questions?|don't have any questions?|no thank you|no thanks|all good|everything is clear|nahi|nahi hai|kahi nahi|kahi nahiye)\b/i.test(clean) ||
-    /\b(no questions?|nothing (else|from my side)|no thank you|nahi hai|kahi nahi)\b/i.test(clean)
+    /^(no|nope|nah|not really|no questions?|no questions from my side|nothing|nothing else|nothing from my side|i don't have any (more )?questions?|i have no (more )?questions?|don't have any (more )?questions?|no thank you|no thanks|all good|everything is clear|all clear|i'm good|im good|that's all|that's all from my side|that is all|nahi|nahi hai|kahi nahi|kahi nahiye)\b/i.test(clean) ||
+    /\b(no (more |other )?questions?|nothing (else|from my side)|no thank you|no thanks|nahi hai|kahi nahi|all good|all clear|that's all from my side)\b/i.test(clean)
   ) {
     return { intent: "NO_QUESTIONS", text: clean };
   }
@@ -110,7 +153,7 @@ export function classifyClosingIntent(text) {
     return { intent: "WANTS_TO_ASK", text: clean };
   }
 
-  // Direct candidate question or longer query
+  // Direct candidate question or query
   return { intent: "CANDIDATE_QUESTION", text: clean };
 }
 
@@ -121,11 +164,17 @@ function assessAnswer(text) {
   if (intentInfo.intent === "DONT_KNOW") {
     return { quality: "WEAK", intent: "DONT_KNOW", reason: "Candidate is unsure or does not know; move on gracefully." };
   }
-  if (intentInfo.intent === "CLARIFY_REPEAT") {
-    return { quality: "INCOMPLETE", intent: "CLARIFY_REPEAT", reason: "Candidate asked for clarification or question repeat." };
+  if (intentInfo.intent === "CLARIFY_REPEAT" || intentInfo.intent === "REPEAT_REQUEST") {
+    return { quality: "INCOMPLETE", intent: intentInfo.intent, reason: "Candidate asked for question repeat." };
+  }
+  if (intentInfo.intent === "EXPLAIN_REQUEST") {
+    return { quality: "INCOMPLETE", intent: "EXPLAIN_REQUEST", reason: "Candidate asked for explanation of term or concept." };
   }
   if (intentInfo.intent === "THINKING") {
     return { quality: "INCOMPLETE", intent: "THINKING", reason: "Candidate asked for a moment to think." };
+  }
+  if (intentInfo.intent === "AUDIO_CHECK" || intentInfo.intent === "CANDIDATE_QUESTION") {
+    return { quality: "POTENTIALLY_DETAILED", intent: intentInfo.intent, reason: "Conversational question / audio check; not penalized." };
   }
   const hasImplementationDetail = /\b(I (used|built|implemented|chose|designed|handled)|because|for example|specifically|the reason)\b/i.test(answer);
   if (words.length < 8) return { quality: "WEAK", intent: intentInfo.intent, reason: "The response is very brief; ask for a clearer explanation." };
@@ -246,7 +295,43 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
       const closingIntent = classifyClosingIntent(clean);
       logger.info(`Candidate closing turn received ${doc._id}: intent=${closingIntent.intent}`);
 
-      if (closingIntent.intent === "NO_QUESTIONS") {
+      if (closingIntent.intent === "AUDIO_CHECK") {
+        actionType = "FOLLOW_UP";
+        const audioPrompt = "Yes, I can hear you clearly. Your audio is coming through well. Do you have any questions for me before we finish?";
+        answer.answerProcessed = true;
+        const nextQuestionId = String(doc.questions.length);
+        const promptObj = {
+          category: "CLOSING",
+          question: audioPrompt,
+          difficulty: "EASY",
+          reason: "Candidate checked audio during closing; confirmed audio and re-invited questions.",
+          source: "fallback",
+          followUpExpected: true,
+          questionId: nextQuestionId,
+          askedAt: new Date(),
+        };
+        doc.questions.push(promptObj);
+        doc.currentQuestionIndex = doc.questions.length - 1;
+        doc.transcript.push({
+          sequence: doc.transcript.length,
+          speaker: "AI",
+          text: audioPrompt,
+          timestamp: new Date(),
+          questionId: nextQuestionId,
+          category: "CLOSING",
+          section: "CLOSING",
+        });
+        await doc.save();
+        return {
+          interview: doc,
+          duplicate: false,
+          nextQuestion: promptObj,
+          acknowledgment: "Yes, I can hear you clearly.",
+          action: "FOLLOW_UP",
+          phase: "CLOSING",
+          closing: false,
+        };
+      } else if (closingIntent.intent === "NO_QUESTIONS") {
         // Case 1: Candidate has no questions ("No", "Nothing", "Nahi", etc.)
         actionType = "CLOSING";
         const farewell = "That's perfectly fine. Thank you for your time today. That concludes the interview.";
@@ -383,6 +468,76 @@ Return JSON ONLY:
       const intentInfo = classifyCandidateIntent(clean);
       const lastQ = doc.questions[doc.currentQuestionIndex] || doc.questions[doc.questions.length - 1];
 
+      // 0. AUDIO_CHECK handling (Do NOT advance question, do NOT score as incorrect, confirm audio)
+      if (intentInfo.intent === "AUDIO_CHECK") {
+        actionType = "AUDIO_CHECK";
+        const audioMsg = `Yes, I can hear you clearly. Your audio is coming through well.${lastQ?.question ? ` Whenever you're ready, let's return to our question: ${lastQ.question}` : " Whenever you're ready, let's continue."}`;
+        answer.answerProcessed = true;
+        answer.answerQuality = "POTENTIALLY_DETAILED";
+        doc.transcript.push({
+          sequence: doc.transcript.length,
+          speaker: "AI",
+          text: audioMsg,
+          timestamp: new Date(),
+          questionId: String(doc.currentQuestionIndex ?? 0),
+          category: "FOLLOW_UP",
+          section: doc.phase,
+        });
+        await doc.save();
+        logger.info(`[INTENT_AUDIO_CHECK] Candidate verified audio ${doc._id} q=${doc.currentQuestionIndex}`);
+        return {
+          interview: doc,
+          duplicate: false,
+          nextQuestion: { ...(lastQ || {}), question: audioMsg, reason: "Candidate audio check verification." },
+          acknowledgment: "Yes, I can hear you clearly.",
+          action: "AUDIO_CHECK",
+          phase: doc.phase,
+          closing: false,
+        };
+      }
+
+      // 0b. END_INTERVIEW_REQUEST handling (Candidate requests to conclude early)
+      if (intentInfo.intent === "END_INTERVIEW_REQUEST") {
+        actionType = "CLOSING";
+        const farewell = "Understood. We will conclude the interview here as you requested. Thank you for your time today.";
+        answer.answerProcessed = true;
+        const nextQuestionId = String(doc.questions.length);
+        const closingObj = {
+          category: "CLOSING",
+          question: farewell,
+          difficulty: "EASY",
+          reason: "Candidate explicitly requested to end the interview.",
+          source: "fallback",
+          followUpExpected: false,
+          questionId: nextQuestionId,
+          askedAt: new Date(),
+        };
+        doc.questions.push(closingObj);
+        doc.currentQuestionIndex = doc.questions.length - 1;
+        doc.phase = "CLOSING";
+        doc.completionReason = "CANDIDATE_REQUESTED_EARLY_TERMINATION";
+        doc.transcript.push({
+          sequence: doc.transcript.length,
+          speaker: "AI",
+          text: farewell,
+          timestamp: new Date(),
+          questionId: nextQuestionId,
+          category: "CLOSING",
+          section: "CLOSING",
+        });
+        await doc.save();
+        logger.info(`[INTENT_EARLY_END] Candidate requested early termination ${doc._id}`);
+        return {
+          interview: doc,
+          duplicate: false,
+          nextQuestion: closingObj,
+          acknowledgment: null,
+          action: "CLOSING",
+          phase: "CLOSING",
+          closing: true,
+        };
+      }
+
       // 1. EXPLAIN technical term / concept handling
       if (intentInfo.intent === "EXPLAIN_REQUEST") {
         actionType = "EXPLAIN";
@@ -431,6 +586,56 @@ Return JSON ONLY:
           nextQuestion: { ...lastQ, question: repeatedText, reason: "Candidate requested question repeat" },
           acknowledgment: "Sure.",
           action: "REPEAT",
+          phase: doc.phase,
+          closing: false,
+        };
+      }
+
+      // 1c. CANDIDATE_QUESTION during active interview (answer politely, do NOT advance question index)
+      if (intentInfo.intent === "CANDIDATE_QUESTION") {
+        actionType = "CANDIDATE_QUESTION";
+        let candidateAnswerText = "";
+        try {
+          const { generateStructuredAI } = await import("../ai/ai.service.js");
+          const qPrompt = `The candidate is asking a question during their technical interview: "${clean}".
+Answer politely and concisely as the AI interviewer (under 30 words).
+Return JSON ONLY:
+{ "answer": "<concise answer>" }`;
+          const qRes = await generateStructuredAI([
+            { role: "system", content: "You are a professional technical interviewer answering a candidate's question concisely." },
+            { role: "user", content: qPrompt },
+          ]);
+          if (qRes?.answer) {
+            candidateAnswerText = qRes.answer;
+          }
+        } catch (err) {
+          logger.warn(`AI candidate question response generation failed: ${err.message}`);
+        }
+
+        if (!candidateAnswerText) {
+          candidateAnswerText = "That's a good question. Our engineering team works with modern cloud and full-stack technologies, and our recruitment team will share more details with you in the next steps.";
+        }
+
+        const combinedText = `${candidateAnswerText} Now, coming back to our question: ${lastQ?.question || "can you tell me more about your project?"}`;
+        answer.answerProcessed = true;
+        answer.answerQuality = "POTENTIALLY_DETAILED";
+        doc.transcript.push({
+          sequence: doc.transcript.length,
+          speaker: "AI",
+          text: combinedText,
+          timestamp: new Date(),
+          questionId: String(doc.currentQuestionIndex ?? 0),
+          category: "FOLLOW_UP",
+          section: doc.phase,
+        });
+        await doc.save();
+        logger.info(`[INTENT_CANDIDATE_QUESTION] Answered candidate query and resumed current question ${doc._id}`);
+        return {
+          interview: doc,
+          duplicate: false,
+          nextQuestion: { ...(lastQ || {}), question: combinedText, reason: "Answered candidate question and resumed current question." },
+          acknowledgment: "Good question.",
+          action: "CANDIDATE_QUESTION",
           phase: doc.phase,
           closing: false,
         };
@@ -491,16 +696,27 @@ Return JSON ONLY:
         }
       }
 
-      // Adaptive Phase Progression:
-      // QUESTIONING (turns 4-7) -> STRENGTH_DEPTH or WEAKNESS_GAP (turns 8-10) -> CLOSING (turn 11+)
+      // Duration-Aware Adaptive Phase Progression:
+      // Computes elapsed time against configured scheduled duration (authoritative doc.durationMinutes)
+      const interviewStart = doc.startedAt || doc.candidateJoinedAt || doc.scheduledAt || doc.createdAt || new Date();
+      const elapsedMinutes = Math.max(0, (Date.now() - new Date(interviewStart).getTime()) / (60 * 1000));
+      const totalDurationMinutes = doc.durationMinutes || 30;
+      const closingWindowDuration = Math.min(5, Math.max(2.5, totalDurationMinutes * 0.12));
+      const closingThresholdMinutes = Math.max(5, totalDurationMinutes - closingWindowDuration);
+      const inClosingWindow = opts?.closing === true || elapsedMinutes >= closingThresholdMinutes;
+
       const techQuestionCount = doc.questions.filter((q) =>
         !["PRECHECK", "INTRODUCTION", "PROJECT_CONFIRMATION"].includes(q.category)
       ).length;
 
-      if (techQuestionCount >= 3 && phase === "QUESTIONING") {
+      if (inClosingWindow) {
+        phase = "CLOSING";
+      } else if (techQuestionCount >= 3 && phase === "QUESTIONING") {
         phase = doc.candidateStrengths.length > 0 ? "STRENGTH_DEPTH" : "WEAKNESS_GAP";
       } else if (techQuestionCount >= 6 && ["STRENGTH_DEPTH", "WEAKNESS_GAP"].includes(phase)) {
-        phase = "CLOSING";
+        phase = "PROJECT_WALKTHROUGH";
+      } else if (techQuestionCount >= 9 && phase === "PROJECT_WALKTHROUGH") {
+        phase = doc.candidateWeaknesses.length > 0 ? "WEAKNESS_GAP" : "STRENGTH_DEPTH";
       }
 
       await doc.save();

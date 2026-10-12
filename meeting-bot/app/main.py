@@ -15,6 +15,7 @@ import signal
 import asyncio
 import logging
 import argparse
+import re
 from typing import Optional
 
 from fastapi import FastAPI, Depends, HTTPException, Header, status
@@ -995,13 +996,54 @@ async def run_cli():
                         if conv_mgr.current_phase == "CLOSING":
                             # Candidate response in CLOSING phase
                             lower_trans = transcript.lower().strip()
+
+                            # 1. Audio Check during CLOSING phase
+                            is_audio_check = bool(
+                                re.search(
+                                    r"\b(is (my )?voice audible|can you hear me|can you hear my voice|is (my )?mic(rophone)? working|am i audible|can you hear me clearly|hear me properly|voice is audible|voice audible|mic test|microphone test|testing testing|can you hear me now|aawaz aa rahi hai|awaaz aa rahi hai|aawaj yetoy ka|maza aawaz yetoy ka)\b",
+                                    lower_trans,
+                                    re.IGNORECASE,
+                                )
+                            )
+                            if is_audio_check:
+                                logger.info("[CLOSING][AUDIO_CHECK] Candidate checked audio during closing.")
+                                conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="audio_check_confirmed_closing")
+                                audio_ack = "Yes, I can hear you clearly. Your audio is coming through well. Do you have any questions for me before we finish?"
+                                await bot_instance.speak_text(audio_ack)
+                                audio_capture.reset_buffer()
+                                conv_mgr.last_speech_time = time.monotonic()
+                                conv_mgr.set_state(ConversationState.LISTENING_TO_STUDENT, decision="waiting_after_audio_check")
+                                continue
+
+                            # 2. Candidate declining further questions (NO_MORE_QUESTIONS)
+                            clean_trans = re.sub(r"[^\w\s]", "", lower_trans).strip()
                             is_no_question = (
-                                lower_trans in ("no", "nope", "nothing", "no questions", "all good", "i'm good", "no thank you", "nah", "none", "no i don't", "no questions from my side", "no sir", "no ma'am", "nothing else")
-                                or "no questions" in lower_trans
-                                or "nothing from my side" in lower_trans
-                                or "all good" in lower_trans
-                                or "all clear" in lower_trans
-                                or "nothing else" in lower_trans
+                                clean_trans in (
+                                    "no", "nope", "nothing", "no questions", "all good", "im good", "i am good",
+                                    "no thank you", "no thanks", "nah", "none", "no i dont", "no questions from my side",
+                                    "no sir", "no maam", "nothing else", "thats all", "that is all",
+                                    "thats all from my side", "that is all from my side", "nothing from my side",
+                                    "all clear", "no more questions", "no other questions", "i dont have any questions",
+                                    "i have no questions", "i dont have any more questions", "i have no more questions",
+                                    "no more", "done", "we are good", "no further questions",
+                                    "nahi", "nahi hai", "kahi nahi", "kahi nahiye"
+                                )
+                                or "no questions" in clean_trans
+                                or "no more questions" in clean_trans
+                                or "no other questions" in clean_trans
+                                or "nothing from my side" in clean_trans
+                                or "nothing else" in clean_trans
+                                or "all good" in clean_trans
+                                or "all clear" in clean_trans
+                                or "thats all" in clean_trans
+                                or "that is all" in clean_trans
+                                or "dont have any questions" in clean_trans
+                                or "have no questions" in clean_trans
+                                or "dont have any more questions" in clean_trans
+                                or "have no more questions" in clean_trans
+                                or "no further questions" in clean_trans
+                                or "no thank you" in clean_trans
+                                or "no thanks" in clean_trans
                             )
                             if is_no_question:
                                 conv_mgr.set_state(ConversationState.CLOSING_INTERVIEW, decision="candidate_declined_questions")
@@ -1049,7 +1091,7 @@ async def run_cli():
                                 await asyncio.sleep(1.5)
                                 break
                             else:
-                                # Candidate asked a question!
+                                # 3. Candidate asked a substantive question!
                                 conv_mgr.student_question_count += 1
                                 conv_mgr.set_state(ConversationState.ANSWERING_STUDENT_QUESTION, decision="answering_student_q")
                                 ans_text = "That is a great question. Our recruitment team will review the evaluation results and follow up with you on the next steps."
@@ -1068,11 +1110,22 @@ async def run_cli():
                                 conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="speaking_answer_to_student")
                                 await bot_instance.speak_text(ans_text)
                                 audio_capture.reset_buffer()
+
+                                # Check if the answer itself already included an invitation for more questions
+                                already_invited_more = bool(
+                                    re.search(
+                                        r"(anything else you'?d like to ask|any other questions|any questions for me|anything else\?|what would you like to ask)",
+                                        ans_text,
+                                        re.IGNORECASE,
+                                    )
+                                )
+
                                 rem_time = conv_mgr.get_remaining_time_sec()
-                                if rem_time > 70.0 and conv_mgr.student_question_count < 3:
-                                    conv_mgr.set_state(ConversationState.CHECKING_FOR_MORE_QUESTIONS, decision="checking_additional_q")
-                                    await bot_instance.speak_text("Do you have any other questions for me?")
-                                    audio_capture.reset_buffer()
+                                if rem_time > 45.0 and conv_mgr.student_question_count < 4:
+                                    if not already_invited_more:
+                                        conv_mgr.set_state(ConversationState.CHECKING_FOR_MORE_QUESTIONS, decision="checking_additional_q")
+                                        await bot_instance.speak_text("Do you have any other questions for me?")
+                                        audio_capture.reset_buffer()
                                     conv_mgr.last_speech_time = time.monotonic()
                                     conv_mgr.set_state(ConversationState.LISTENING_TO_STUDENT, decision="listening_for_next_student_q")
                                     continue
@@ -1143,15 +1196,23 @@ async def run_cli():
                             )
 
                             if is_closing or conv_mgr.current_phase == "CLOSING":
-                                conv_mgr.current_phase = "CLOSING"
-                                conv_mgr.set_state(ConversationState.INVITING_STUDENT_QUESTIONS, decision="closing_phase_initiated")
-                                closing_prompt = next_q or "We are now approaching the end of our interview. Do you have any questions for me?"
-                                conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="speaking_closing_invitation")
-                                await bot_instance.speak_text(closing_prompt)
-                                audio_capture.reset_buffer()
-                                conv_mgr.last_speech_time = time.monotonic()
-                                conv_mgr.set_state(ConversationState.LISTENING_TO_STUDENT, decision="waiting_for_student_questions")
-                                continue
+                                # Duration guard: Only transition to closing if actually in closing window or explicit closing action
+                                if is_closing or conv_mgr.is_in_closing_window():
+                                    conv_mgr.current_phase = "CLOSING"
+                                    conv_mgr.set_state(ConversationState.INVITING_STUDENT_QUESTIONS, decision="closing_phase_initiated")
+                                    closing_prompt = next_q or "We are now approaching the end of our interview. Do you have any questions for me?"
+                                    conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="speaking_closing_invitation")
+                                    await bot_instance.speak_text(closing_prompt)
+                                    audio_capture.reset_buffer()
+                                    conv_mgr.last_speech_time = time.monotonic()
+                                    conv_mgr.set_state(ConversationState.LISTENING_TO_STUDENT, decision="waiting_for_student_questions")
+                                    continue
+                                else:
+                                    logger.warning(
+                                        f"[DURATION_GUARD] Backend returned phase=CLOSING with {conv_mgr.get_remaining_time_sec():.1f}s remaining. "
+                                        "Continuing technical interview questioning to fulfill scheduled duration."
+                                    )
+                                    conv_mgr.current_phase = "QUESTIONING"
 
                             # Compose spoken payload
                             spoken_payload = ""

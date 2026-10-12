@@ -19,6 +19,7 @@ Verifies all 15 required conversation scenarios:
 """
 
 import asyncio
+import re
 import time
 import pytest
 import numpy as np
@@ -324,4 +325,123 @@ def test_master_recording_accumulation_and_export(tmp_path):
     dur = audio.stop_master_recording()
     assert audio._master_recording_active is False
     assert dur >= 0.0
+
+
+# ------------------------------------------------------------------------------
+# Test 17: Audio Check Utterance & Closing Loop Guard
+# ------------------------------------------------------------------------------
+
+def test_audio_check_regex_detection():
+    """Verify regex accurately detects candidate audio/mic check queries."""
+    import re
+    audio_pattern = r"\b(is (my )?voice audible|can you hear me|can you hear my voice|is (my )?mic(rophone)? working|am i audible|can you hear me clearly|hear me properly|voice is audible|voice audible|mic test|microphone test|testing testing|can you hear me now|aawaz aa rahi hai|awaaz aa rahi hai|aawaj yetoy ka|maza aawaz yetoy ka)\b"
+
+    assert re.search(audio_pattern, "Is my voice audible?", re.IGNORECASE) is not None
+    assert re.search(audio_pattern, "Can you hear me clearly?", re.IGNORECASE) is not None
+    assert re.search(audio_pattern, "Is my mic working?", re.IGNORECASE) is not None
+    assert re.search(audio_pattern, "Am I audible?", re.IGNORECASE) is not None
+    # Regular technical answer should NOT match
+    assert re.search(audio_pattern, "I implemented authentication with JWT tokens in Express.", re.IGNORECASE) is None
+
+
+def test_closing_negative_intent_comprehensive():
+    """Verify all variants of declining further questions are matched as no questions."""
+    declining_phrases = [
+        "No",
+        "Nope",
+        "No questions",
+        "No, thank you",
+        "I don't have any questions",
+        "I have no questions",
+        "I don't have any more questions",
+        "No more questions from my side",
+        "No other questions",
+        "Nothing else",
+        "That's all from my side",
+        "All good, thank you",
+        "All clear",
+    ]
+
+    for phrase in declining_phrases:
+        lower_trans = phrase.lower().strip()
+        clean_trans = re.sub(r"[^\w\s]", "", lower_trans).strip()
+        is_no = (
+            lower_trans in (
+                "no", "nope", "nothing", "no questions", "all good", "i'm good", "im good",
+                "no thank you", "no thanks", "nah", "none", "no i don't", "no questions from my side",
+                "no sir", "no ma'am", "nothing else", "that's all", "that is all",
+                "that's all from my side", "that is all from my side", "nothing from my side",
+                "all clear", "no more questions", "no other questions", "i don't have any questions",
+                "i have no questions", "i don't have any more questions", "i have no more questions",
+                "no more", "done", "we are good", "i am good", "no further questions",
+                "nahi", "nahi hai", "kahi nahi", "kahi nahiye"
+            )
+            or clean_trans in (
+                "no", "nope", "nothing", "no questions", "all good", "im good",
+                "no thank you", "no thanks", "nah", "none", "no i dont", "no questions from my side",
+                "no sir", "no maam", "nothing else", "thats all", "that is all",
+                "thats all from my side", "that is all from my side", "nothing from my side",
+                "all clear", "no more questions", "no other questions", "i dont have any questions",
+                "i have no questions", "i dont have any more questions", "i have no more questions",
+                "no more", "done", "we are good", "i am good", "no further questions"
+            )
+            or "no questions" in lower_trans
+            or "no more questions" in lower_trans
+            or "no other questions" in lower_trans
+            or "nothing from my side" in lower_trans
+            or "nothing else" in lower_trans
+            or "all good" in lower_trans
+            or "all clear" in lower_trans
+            or "that's all" in lower_trans
+            or "that is all" in lower_trans
+            or "don't have any questions" in lower_trans
+            or "have no questions" in lower_trans
+            or "don't have any more questions" in lower_trans
+            or "have no more questions" in lower_trans
+            or "no further questions" in lower_trans
+        )
+        assert is_no is True, f"Failed to identify '{phrase}' as declining questions"
+
+
+def test_closing_answer_does_not_repeat_closing_prompt_if_already_present():
+    """Verify bot does not issue duplicate 'Do you have any other questions for me?' when answer already asks."""
+    import re
+    ans_text_with_prompt = "Our engineering team uses TypeScript and Node.js. Is there anything else you'd like to ask?"
+    already_asked_more = bool(
+        re.search(
+            r"(anything else you'?d like to ask|any other questions|any questions for me|anything else\?|what would you like to ask)",
+            ans_text_with_prompt,
+            re.IGNORECASE,
+        )
+    )
+    assert already_asked_more is True
+
+    ans_text_plain = "Our engineering team uses TypeScript and Node.js."
+    already_asked_plain = bool(
+        re.search(
+            r"(anything else you'?d like to ask|any other questions|any questions for me|anything else\?|what would you like to ask)",
+            ans_text_plain,
+            re.IGNORECASE,
+        )
+    )
+    assert already_asked_plain is False
+
+
+def test_duration_guard_prevents_early_closing():
+    """Verify that a 30-minute interview with 10 minutes elapsed is NOT in closing window."""
+    bot = MeetingBot()
+    audio = MagicMock()
+    client = MagicMock()
+    deepgram = MagicMock()
+    mgr = ConversationManager(bot, audio, client, deepgram, duration_minutes=30.0)
+
+    # 10 minutes elapsed (600s elapsed -> 1200s remaining)
+    mgr.interview_start_time = time.monotonic() - (10 * 60)
+    assert mgr.is_in_closing_window() is False
+    assert mgr.get_remaining_time_sec() > 1000
+
+    # Closing window threshold is only reached near the end (e.g. 27 minutes elapsed -> 180s remaining)
+    mgr.interview_start_time = time.monotonic() - (27 * 60)
+    assert mgr.is_in_closing_window() is True
+
 

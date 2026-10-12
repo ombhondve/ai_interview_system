@@ -43,7 +43,6 @@ const verificationSessionSchema =
       otpExpiresAt: {
         type: Date,
         required: true,
-        index: true,
       },
 
       /**
@@ -100,15 +99,26 @@ const verificationSessionSchema =
   );
 
 /**
- * TTL index.
- *
- * Once sessionExpiresAt is reached,
- * MongoDB automatically removes the document.
+ * TTL index for verified sessions.
+ * Once sessionExpiresAt is reached, MongoDB automatically removes the document.
  */
 verificationSessionSchema.index(
   { sessionExpiresAt: 1 },
   {
     expireAfterSeconds: 0,
+  }
+);
+
+/**
+ * TTL index for abandoned (unverified) OTP attempts.
+ * Once otpExpiresAt + 1 hour is reached, MongoDB automatically removes unverified attempts.
+ * Verified sessions have sessionToken != null and are preserved until sessionExpiresAt.
+ */
+verificationSessionSchema.index(
+  { otpExpiresAt: 1 },
+  {
+    expireAfterSeconds: 3600,
+    partialFilterExpression: { sessionToken: null },
   }
 );
 

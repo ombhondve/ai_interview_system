@@ -87,6 +87,24 @@ async function startServer() {
     }, 60 * 1000);
     console.log("✅ Interview lifecycle scheduler initialized (every 60s)");
 
+    // Start background data retention & cleanup scheduler (runs every 6 hours)
+    const { runAllBackendCleanups } = await import("./services/dataCleanup.service.js");
+    setTimeout(async () => {
+      try {
+        await runAllBackendCleanups();
+      } catch (err) {
+        console.error("Initial data cleanup error:", err.message);
+      }
+    }, 30 * 1000); // 30s after start
+    setInterval(async () => {
+      try {
+        await runAllBackendCleanups();
+      } catch (err) {
+        console.error("Periodic data cleanup error:", err.message);
+      }
+    }, 6 * 60 * 60 * 1000); // Every 6 hours
+    console.log("✅ Data retention & cleanup scheduler initialized (every 6h)");
+
   } catch (error) {
     console.error("MongoDB connection failed:", error.message);
     process.exit(1);
