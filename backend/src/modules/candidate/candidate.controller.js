@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import Candidate from "./candidate.model.js";
 import { notifyAdmins } from "../notifications/notification.service.js";
+import { createAuditLog } from "../auditLog/auditLog.service.js";
 
 import {
     getCandidates,
@@ -306,6 +307,21 @@ export async function approveCandidateController(
             dedupKeyPrefix: `cand_approved_${updatedCandidate._id}`,
         }).catch((err) => console.error("Notification error:", err.message));
 
+        createAuditLog({
+            actor: req.user?.id || "admin",
+            actorId: req.user?.id,
+            actorName: req.user?.name || req.user?.email || "Administrator",
+            actorEmail: req.user?.email || "",
+            actorRole: req.user?.role || "admin",
+            action: "CANDIDATE_APPROVE",
+            targetType: "Candidate",
+            targetId: String(updatedCandidate._id),
+            targetName: updatedCandidate.name || "Candidate",
+            description: `Candidate ${updatedCandidate.name || ""} was approved by admin`,
+            outcome: "SUCCESS",
+            ipAddress: req.ip || req.headers["x-forwarded-for"] || null,
+        }).catch(() => {});
+
         return res.status(200).json({
 
             success: true,
@@ -422,6 +438,22 @@ export async function rejectCandidateController(
             actionUrl: `/admin/candidates/${candidate._id}`,
             dedupKeyPrefix: `cand_rejected_${candidate._id}`,
         }).catch((err) => console.error("Notification error:", err.message));
+
+        createAuditLog({
+            actor: req.user?.id || "admin",
+            actorId: req.user?.id,
+            actorName: req.user?.name || req.user?.email || "Administrator",
+            actorEmail: req.user?.email || "",
+            actorRole: req.user?.role || "admin",
+            action: "CANDIDATE_REJECT",
+            targetType: "Candidate",
+            targetId: String(candidate._id),
+            targetName: candidate.name || "Candidate",
+            description: `Candidate ${candidate.name || ""} was rejected: ${reason}`,
+            outcome: "SUCCESS",
+            details: { reason },
+            ipAddress: req.ip || req.headers["x-forwarded-for"] || null,
+        }).catch(() => {});
 
         return res.status(200).json({
 
@@ -641,6 +673,22 @@ export async function assignProjectToCandidateController(
             actionUrl: `/admin/projects/${projectId}`,
             dedupKeyPrefix: `proj_assign_${candidateId}_${projectId}`,
         }).catch((err) => console.error("Notification error:", err.message));
+
+        createAuditLog({
+            actor: req.user?.id || "admin",
+            actorId: req.user?.id,
+            actorName: req.user?.name || req.user?.email || "Administrator",
+            actorEmail: req.user?.email || "",
+            actorRole: req.user?.role || "admin",
+            action: "PROJECT_ASSIGN",
+            targetType: "Candidate",
+            targetId: String(candidateId),
+            targetName: updatedCandidate.name || "Candidate",
+            description: `Project ${projectId} was assigned to candidate ${updatedCandidate.name || ""}`,
+            outcome: "SUCCESS",
+            details: { projectId: String(projectId), candidateId: String(candidateId) },
+            ipAddress: req.ip || req.headers["x-forwarded-for"] || null,
+        }).catch(() => {});
 
         return res.status(200).json({
 

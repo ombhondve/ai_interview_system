@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import mongoose from "mongoose";
 import Admin from "../admin/admin.model.js";
+import { createAuditLog } from "../auditLog/auditLog.service.js";
 
 const isProduction = process.env.NODE_ENV === "production";
 
@@ -92,6 +93,22 @@ export async function login(req, res) {
       );
 
       res.cookie("recruitai_admin", token, cookieOptions);
+
+      createAuditLog({
+        actor: String(dbAdmin._id),
+        actorId: String(dbAdmin._id),
+        actorName: dbAdmin.name,
+        actorEmail: dbAdmin.email,
+        actorRole: dbAdmin.role,
+        action: "ADMIN_LOGIN",
+        targetType: "Admin",
+        targetId: String(dbAdmin._id),
+        targetName: dbAdmin.name,
+        description: `Administrator ${dbAdmin.name} logged in successfully`,
+        outcome: "SUCCESS",
+        ipAddress: req.ip || req.headers["x-forwarded-for"] || null,
+      }).catch(() => {});
+
       return res.status(200).json({ user: userPayload, token });
     }
 
@@ -106,8 +123,36 @@ export async function login(req, res) {
       );
 
       res.cookie("recruitai_admin", token, cookieOptions);
+
+      createAuditLog({
+        actor: admin.id,
+        actorId: admin.id,
+        actorName: admin.name,
+        actorEmail: admin.email,
+        actorRole: admin.role,
+        action: "ADMIN_LOGIN",
+        targetType: "Admin",
+        targetId: admin.id,
+        targetName: admin.name,
+        description: `Administrator ${admin.name} logged in successfully`,
+        outcome: "SUCCESS",
+        ipAddress: req.ip || req.headers["x-forwarded-for"] || null,
+      }).catch(() => {});
+
       return res.status(200).json({ user: admin, token });
     }
+
+    createAuditLog({
+      actor: email || "unknown",
+      actorName: email || "Anonymous",
+      actorEmail: email || "",
+      actorRole: "none",
+      action: "ADMIN_LOGIN_FAILED",
+      targetType: "Authentication",
+      description: `Failed login attempt for ${email || "unknown"}`,
+      outcome: "FAILURE",
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || null,
+    }).catch(() => {});
 
     return res.status(401).json({ message: "Invalid email or password." });
   } catch (error) {
@@ -236,9 +281,21 @@ export async function updateProfile(req, res) {
         { new: true, runValidators: true }
       ).select("-passwordHash").lean();
 
-      if (!updated) {
-        return res.status(404).json({ success: false, message: "Administrator record not found." });
-      }
+      createAuditLog({
+        actor: String(updated._id),
+        actorId: String(updated._id),
+        actorName: updated.name,
+        actorEmail: updated.email,
+        actorRole: updated.role,
+        action: "ADMIN_PROFILE_UPDATE",
+        targetType: "Admin",
+        targetId: String(updated._id),
+        targetName: updated.name,
+        description: `Administrator ${updated.name} updated profile`,
+        outcome: "SUCCESS",
+        details: { updatedFields: Object.keys(updateData) },
+        ipAddress: req.ip || req.headers["x-forwarded-for"] || null,
+      }).catch(() => {});
 
       return res.status(200).json({
         success: true,
@@ -268,6 +325,21 @@ export async function updateProfile(req, res) {
     if (avatar !== undefined) process.env.DEMO_ADMIN_AVATAR = avatar || "";
     if (phone !== undefined) process.env.DEMO_ADMIN_PHONE = phone || "";
 
+    createAuditLog({
+      actor: currentAdmin.id,
+      actorId: currentAdmin.id,
+      actorName: currentAdmin.name,
+      actorEmail: currentAdmin.email,
+      actorRole: currentAdmin.role,
+      action: "ADMIN_PROFILE_UPDATE",
+      targetType: "Admin",
+      targetId: currentAdmin.id,
+      targetName: currentAdmin.name,
+      description: `Administrator ${currentAdmin.name} updated profile`,
+      outcome: "SUCCESS",
+      ipAddress: req.ip || req.headers["x-forwarded-for"] || null,
+    }).catch(() => {});
+
     return res.status(200).json({
       success: true,
       message: "Profile updated successfully.",
@@ -280,6 +352,27 @@ export async function updateProfile(req, res) {
 }
 
 export async function logout(req, res) {
+  try {
+    const authHeader = req.headers?.authorization;
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    const token = bearerToken || req.cookies?.recruitai_admin;
+    if (token) {
+      const payload = jwt.verify(token, getSecret());
+      createAuditLog({
+        actor: payload.adminId || "admin",
+        actorId: payload.adminId,
+        actorEmail: payload.email,
+        actorRole: payload.role,
+        action: "ADMIN_LOGOUT",
+        targetType: "Admin",
+        targetId: payload.adminId,
+        description: `Administrator ${payload.email || "user"} logged out`,
+        outcome: "SUCCESS",
+        ipAddress: req.ip || req.headers["x-forwarded-for"] || null,
+      }).catch(() => {});
+    }
+  } catch (_) {}
+
   res.clearCookie("recruitai_admin", {
     httpOnly: true,
     secure: isProduction,

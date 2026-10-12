@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { apiUrl } from "@/lib/client";
+import { publishAdminSync } from "@/lib/adminDataSync";
 import {
   FileText,
   User,
@@ -130,6 +131,8 @@ export default function AdminReportDetailPage() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<{ text: string; type: "success" | "error" | "info" } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [confirmStatus, setConfirmStatus] = useState<"selected" | "rejected" | "another_interview" | null>(null);
 
   const loadReport = useCallback(async () => {
     if (!interviewId) return;
@@ -137,6 +140,9 @@ export default function AdminReportDetailPage() {
       setLoading(true);
       const data = await request<{ interview: InterviewReport }>(`/${interviewId}/report`);
       setInterview(data.interview);
+      if (data.interview?.adminDecision?.notes) {
+        setNotes(data.interview.adminDecision.notes);
+      }
     } catch (err: unknown) {
       setNotice({
         text: err instanceof Error ? err.message : "Unable to load interview report.",
@@ -150,6 +156,34 @@ export default function AdminReportDetailPage() {
   useEffect(() => {
     void loadReport();
   }, [loadReport]);
+
+  const handleAdminDecision = async (status: "selected" | "rejected" | "another_interview") => {
+    if (!interviewId) return;
+    setBusy(true);
+    setNotice(null);
+    setConfirmStatus(null);
+    try {
+      const data = await request<{ interview: InterviewReport }>(`/${interviewId}/admin-decision`, {
+        method: "POST",
+        body: JSON.stringify({ status, notes }),
+      });
+      setInterview(data.interview);
+      const label = status === "selected" ? "Candidate Hired" : status === "rejected" ? "Candidate Rejected" : "Follow-up Round Requested";
+      setNotice({
+        text: `Admin hiring decision successfully saved: ${label}`,
+        type: "success",
+      });
+      publishAdminSync("admin:candidate:updated");
+      publishAdminSync("admin:interview:updated");
+    } catch (err: unknown) {
+      setNotice({
+        text: err instanceof Error ? err.message : "Failed to record hiring decision.",
+        type: "error",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handleRetryAnalysis = async () => {
     if (!interviewId) return;
@@ -668,6 +702,130 @@ export default function AdminReportDetailPage() {
               ))
             )}
           </div>
+        </section>
+
+        {/* 7. FINAL HUMAN ADMIN DECISION */}
+        <section className="rounded-lg border border-[#E2E8F0] bg-white p-6 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#E2E8F0] pb-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <ShieldCheck size={18} className="text-[#1976D2]" />
+                <h2 className="text-base font-bold text-[#111F33]">
+                  Final Human Admin Decision
+                </h2>
+              </div>
+              <p className="mt-1 text-xs text-[#64748B]">
+                The AI provides an advisory assessment. The authoritative hiring decision is made by the Administrator.
+              </p>
+            </div>
+            <div>
+              {interview.adminDecision?.status === "selected" ? (
+                <span className="rounded-full bg-[#16A34A]/10 px-3 py-1 text-xs font-semibold text-[#16A34A] border border-[#16A34A]/30 flex items-center gap-1.5">
+                  <CheckCircle size={13} /> Selected / Hired
+                </span>
+              ) : interview.adminDecision?.status === "rejected" ? (
+                <span className="rounded-full bg-[#DC2626]/10 px-3 py-1 text-xs font-semibold text-[#DC2626] border border-[#DC2626]/30 flex items-center gap-1.5">
+                  <XCircle size={13} /> Rejected
+                </span>
+              ) : interview.adminDecision?.status === "another_interview" ? (
+                <span className="rounded-full bg-[#D97706]/10 px-3 py-1 text-xs font-semibold text-[#D97706] border border-[#D97706]/30 flex items-center gap-1.5">
+                  <Clock size={13} /> Follow-up Round Requested
+                </span>
+              ) : (
+                <span className="rounded-full bg-[#F5F7FA] px-3 py-1 text-xs font-medium text-[#64748B] border border-[#E2E8F0]">
+                  Decision Pending
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-[#111F33]">
+              Admin Decision Notes / Feedback
+            </label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Add review feedback, justification, offer details, or interview follow-up notes..."
+              rows={3}
+              maxLength={2000}
+              className="mt-1.5 w-full rounded-lg border border-[#E2E8F0] bg-white p-3 text-xs outline-none focus:border-[#1976D2] text-[#111F33] transition-colors"
+            />
+            <div className="mt-1 flex justify-between text-[11px] text-[#64748B]">
+              <span>Decision rationale is preserved permanently with candidate audit history.</span>
+              <span>{notes.length}/2000</span>
+            </div>
+          </div>
+
+          {/* Action buttons or Confirmation prompt */}
+          {confirmStatus ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3.5 space-y-2">
+              <p className="text-xs font-semibold text-amber-900">
+                Confirm {confirmStatus === "selected" ? "Hiring" : confirmStatus === "rejected" ? "Rejection" : "Follow-up Request"}?
+              </p>
+              <p className="text-xs text-amber-800">
+                {confirmStatus === "selected"
+                  ? "This will mark the candidate as hired in the applicant tracking pipeline."
+                  : confirmStatus === "rejected"
+                  ? "This will update the candidate's recruitment status to rejected."
+                  : "This will record a follow-up interview request without rejecting or hiring the candidate."}
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => void handleAdminDecision(confirmStatus)}
+                  disabled={busy}
+                  className="rounded-md bg-[#111F33] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#1a2d47] disabled:opacity-50"
+                >
+                  {busy ? "Saving..." : "Yes, Confirm Decision"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmStatus(null)}
+                  disabled={busy}
+                  className="rounded-md border border-[#E2E8F0] bg-white px-3 py-1.5 text-xs font-medium text-[#111F33] hover:bg-[#F5F7FA]"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setConfirmStatus("selected")}
+                disabled={busy}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#16A34A] px-4 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-[#15803D] disabled:opacity-50"
+              >
+                <CheckCircle size={14} /> Approve / Hire Candidate
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setConfirmStatus("another_interview")}
+                disabled={busy}
+                className="inline-flex items-center gap-2 rounded-lg border border-[#1976D2] bg-blue-50/50 px-4 py-2 text-xs font-semibold text-[#1976D2] shadow-xs transition hover:bg-blue-50 disabled:opacity-50"
+              >
+                <Clock size={14} /> Request Follow-up Round
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setConfirmStatus("rejected")}
+                disabled={busy}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#DC2626] px-4 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-[#B91C1C] disabled:opacity-50"
+              >
+                <XCircle size={14} /> Reject Candidate
+              </button>
+            </div>
+          )}
+
+          {interview.adminDecision?.decidedAt && (
+            <div className="border-t border-[#E2E8F0] pt-2 text-[11px] text-[#64748B]">
+              Last recorded on {new Date(interview.adminDecision.decidedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST
+              {interview.adminDecision.decidedBy ? ` by ${interview.adminDecision.decidedBy}` : ""}
+            </div>
+          )}
         </section>
       </div>
     </main>

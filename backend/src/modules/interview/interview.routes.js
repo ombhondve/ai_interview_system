@@ -118,7 +118,13 @@ router.post("/:interviewId/admin-decision", requireAuth, requireRole("superadmin
   const input = validateDecisionInput(req.body);
   if (!input.ok) return res.status(400).json({ success: false, message: input.message });
   try {
-    const interview = await answerService.saveAdminDecision(req.params.interviewId, { ...input, decidedBy: req.user.id });
+    const actorName = req.user.name || req.user.email || "Admin";
+    const interview = await answerService.saveAdminDecision(req.params.interviewId, {
+      ...input,
+      decidedBy: req.user.id,
+      actorName,
+      actorRole: req.user.role,
+    });
     notifyAdmins({
       type: "evaluation_completed",
       title: "Hiring Decision Finalized",

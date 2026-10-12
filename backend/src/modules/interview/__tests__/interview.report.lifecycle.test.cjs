@@ -53,12 +53,47 @@ describe("Interview Report & Admin Decision Lifecycle Synchronization", () => {
       status: "selected",
       notes: "Candidate has strong backend architecture skills.",
       decidedBy: "admin-user-1",
+      actorName: "Super Admin",
     });
 
     expect(res.adminDecision).toMatchObject({
       status: "selected",
       notes: "Candidate has strong backend architecture skills.",
-      decidedBy: "admin-user-1",
+      decidedBy: "Super Admin",
+    });
+    expect(res.adminDecision.decidedAt).toBeInstanceOf(Date);
+    expect(mockDoc.save).toHaveBeenCalled();
+  });
+
+  test("saveAdminDecision saves another_interview without marking as hired or rejected", async () => {
+    const res = await saveAdminDecision(mockDoc._id, {
+      status: "another_interview",
+      notes: "Needs technical follow-up on concurrency.",
+      decidedBy: "admin-user-2",
+      actorName: "Recruiter Alice",
+    });
+
+    expect(res.adminDecision).toMatchObject({
+      status: "another_interview",
+      notes: "Needs technical follow-up on concurrency.",
+      decidedBy: "Recruiter Alice",
+    });
+    expect(res.adminDecision.decidedAt).toBeInstanceOf(Date);
+    expect(mockDoc.save).toHaveBeenCalled();
+  });
+
+  test("saveAdminDecision saves rejected decision with feedback", async () => {
+    const res = await saveAdminDecision(mockDoc._id, {
+      status: "rejected",
+      notes: "Failed system design verification requirements.",
+      decidedBy: "admin-user-3",
+      actorName: "Tech Lead Bob",
+    });
+
+    expect(res.adminDecision).toMatchObject({
+      status: "rejected",
+      notes: "Failed system design verification requirements.",
+      decidedBy: "Tech Lead Bob",
     });
     expect(res.adminDecision.decidedAt).toBeInstanceOf(Date);
     expect(mockDoc.save).toHaveBeenCalled();

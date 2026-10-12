@@ -20,6 +20,8 @@ import interviewVoiceRoutes from "./modules/interview/interview.voice.routes.js"
 import botControlRoutes from "./modules/botControl/botControl.routes.js";
 import notificationRoutes from "./modules/notifications/notification.routes.js";
 import teamManagementRoutes from "./modules/admin/teamManagement.routes.js";
+import analyticsRoutes from "./modules/analytics/analytics.routes.js";
+import auditLogRoutes from "./modules/auditLog/auditLog.routes.js";
 import { getProfile, updateProfile } from "./modules/auth/auth.controller.js";
 import { requireAuth } from "./modules/auth/auth.middleware.js";
 import cookieParser from "./middleware/cookieParser.middleware.js";
@@ -404,6 +406,13 @@ adminProfileRouter.patch("/", updateProfile);
 adminProfileRouter.put("/", updateProfile);
 
 app.use("/api/admin/profile", adminProfileRouter);
+
+// =====================================================
+// ADMIN ANALYTICS & AUDIT LOGS
+// =====================================================
+
+app.use("/api/admin/analytics", analyticsRoutes);
+app.use("/api/admin/audit-logs", auditLogRoutes);
 
 // =====================================================
 // 404 HANDLER

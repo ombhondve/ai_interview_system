@@ -591,23 +591,78 @@ export async function endInterview(interviewId, candidateId = null, options = {}
 }
 
 export async function saveAdminDecision(interviewId, input) {
-  const { status, notes, decidedBy } = input || {};
+  const { status, notes, decidedBy, actorName, actorRole } = input || {};
   const doc = await AiInterview.findById(interviewId);
   if (!doc) { const e = new Error("Interview not found"); e.status = 404; throw e; }
   if (!["selected", "rejected", "another_interview"].includes(status)) { const e = new Error("Invalid decision"); e.status = 400; throw e; }
-  doc.adminDecision = { status, notes: String(notes || "").slice(0, 2000), decidedBy, decidedAt: new Date() };
+  
+  const actorDisplay = actorName || decidedBy || "Administrator";
+  doc.adminDecision = {
+    status,
+    notes: String(notes || "").slice(0, 2000),
+    decidedBy: actorDisplay,
+    decidedAt: new Date(),
+  };
   await doc.save();
 
-  // Sync candidate document status
+  // Sync candidate document status and activity timeline
   try {
     const { default: mongoose } = await import("mongoose");
-    if (mongoose.connection.readyState === 1) {
+    if (mongoose.connection.readyState === 1 && doc.candidateId) {
       const { default: Candidate } = await import("../candidate/candidate.model.js");
-      const candidateStatus = status === "selected" ? "approved" : (status === "rejected" ? "rejected" : "decided");
-      await Candidate.findByIdAndUpdate(doc.candidateId, { status: candidateStatus });
+      const updateData = {};
+      
+      if (status === "selected") {
+        updateData.status = "decided";
+      } else if (status === "rejected") {
+        updateData.status = "rejected";
+      }
+      // Note: "another_interview" does not mark as hired or rejected
+
+      const label = status === "selected"
+        ? "Candidate Hired"
+        : (status === "rejected" ? "Candidate Rejected" : "Follow-up Round Requested");
+        
+      const activityItem = {
+        id: `decision-${Date.now()}`,
+        label,
+        description: notes ? `Admin Decision: ${notes}` : `Decision marked as ${status}`,
+        timestamp: new Date(),
+        state: "complete",
+      };
+
+      await Candidate.findByIdAndUpdate(doc.candidateId, {
+        ...(Object.keys(updateData).length > 0 ? updateData : {}),
+        $push: { activity: activityItem },
+      });
     }
   } catch (cErr) {
     logger.warn(`Could not update candidate status on admin decision: ${cErr.message}`);
+  }
+
+  // Persist audit log event
+  try {
+    const { createAuditLog } = await import("../auditLog/auditLog.service.js");
+    await createAuditLog({
+      actor: decidedBy || "admin",
+      actorId: decidedBy,
+      actorName: actorDisplay,
+      actorRole: actorRole || "admin",
+      action: "SUBMIT_ADMIN_DECISION",
+      targetType: "Interview",
+      targetId: String(doc._id),
+      targetName: `Interview ${doc._id}`,
+      description: `Admin recorded recruitment decision '${status.toUpperCase()}' for candidate ${doc.candidateId}`,
+      outcome: "SUCCESS",
+      details: {
+        interviewId: String(doc._id),
+        candidateId: String(doc.candidateId),
+        decisionStatus: status,
+        notes: String(notes || "").slice(0, 500),
+      },
+    });
+  } catch (aErr) {
+    logger.warn(`Could not create audit log for admin decision: ${aErr.message}`);
   }
 
   return doc;

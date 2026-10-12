@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   BarChart3,
   Users,
@@ -8,362 +10,527 @@ import {
   Target,
   Award,
   TrendingUp,
+  RefreshCw,
+  FolderKanban,
+  FileCheck2,
+  Video,
+  ShieldCheck,
+  Clock,
+  XCircle,
+  FileText,
+  Filter,
+  ArrowRight,
 } from "lucide-react";
-import { useState } from "react";
+import { apiUrl } from "@/lib/client";
+import { Card, CardContent, CardHeader } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { ErrorState } from "@/components/ui/ErrorState";
 
-const statusData = [
-  { label: "Received", value: 124 },
-  { label: "Under Review", value: 38 },
-  { label: "Approved", value: 31 },
-  { label: "Scheduled", value: 24 },
-  { label: "Completed", value: 19 },
-];
-
-const scoreData = [
-  { label: "50–59", value: 3 },
-  { label: "60–69", value: 7 },
-  { label: "70–79", value: 18 },
-  { label: "80–89", value: 27 },
-  { label: "90–100", value: 11 },
-];
-
-const interviewData = [
-  { label: "Sep 11", value: 4 },
-  { label: "Sep 12", value: 7 },
-  { label: "Sep 13", value: 5 },
-  { label: "Sep 14", value: 9 },
-  { label: "Sep 15", value: 8 },
-  { label: "Sep 16", value: 12 },
-  { label: "Sep 17", value: 10 },
-];
+interface AnalyticsData {
+  overview: {
+    candidates: {
+      total: number;
+      awaitingApproval: number;
+      approved: number;
+      rejected: number;
+      approvalRate: number;
+    };
+    projects: {
+      totalCreated: number;
+      assigned: number;
+      submitted: number;
+      awaitingVerification: number;
+      verified: number;
+      rejected: number;
+      completionRate: number;
+    };
+    interviews: {
+      totalBooked: number;
+      upcoming: number;
+      completed: number;
+      cancelled: number;
+      completionRate: number;
+    };
+    decisions: {
+      hired: number;
+      rejected: number;
+      followUp: number;
+      pending: number;
+      totalDecided: number;
+    };
+  };
+  funnel: Array<{ stage: string; label: string; count: number }>;
+  scoreDistribution: Record<string, number>;
+  candidateStatusDistribution: Array<{ status: string; count: number }>;
+  filtersApplied: {
+    range: string;
+    role: string | null;
+    status: string | null;
+    decision: string | null;
+  };
+}
 
 export default function AnalyticsPage() {
-  const [range, setRange] = useState("30 days");
+  const [range, setRange] = useState("30d");
+  const [role, setRole] = useState("ALL");
+  const [status, setStatus] = useState("ALL");
+  const [decision, setDecision] = useState("ALL");
+
+  const [data, setData] = useState<AnalyticsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  const fetchAnalytics = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const params = new URLSearchParams();
+      if (range) params.set("range", range);
+      if (role && role !== "ALL") params.set("role", role);
+      if (status && status !== "ALL") params.set("status", status);
+      if (decision && decision !== "ALL") params.set("decision", decision);
+
+      const res = await fetch(apiUrl(`/api/admin/analytics?${params.toString()}`), {
+        credentials: "include",
+      });
+
+      if (!res.ok) throw new Error("Failed to load analytics");
+      const json = await res.json();
+      if (json.success && json.data) {
+        setData(json.data);
+      } else {
+        throw new Error("Invalid analytics response");
+      }
+    } catch (err) {
+      console.error("Analytics fetch error:", err);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [range, role, status, decision]);
+
+  useEffect(() => {
+    void fetchAnalytics();
+  }, [fetchAnalytics]);
+
+  const overview = data?.overview;
+  const maxFunnelCount = data?.funnel?.[0]?.count || 1;
 
   return (
-    <main className="min-h-screen">
-      <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
-        {/* Header */}
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-sm text-slate-500">
-              <BarChart3 size={16} />
-              Insights
-            </div>
+    <div className="space-y-6">
+      {/* 1. Header & Navigation Tabs */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#1976D2]">
+            <BarChart3 className="h-4 w-4" />
+            Executive Oversight
+          </div>
+          <h1 className="text-xl font-bold tracking-tight text-[#111F33]">
+            Recruitment Analytics & Insights
+          </h1>
+          <p className="mt-0.5 text-xs text-[#64748B]">
+            Data-backed metrics across candidate pipeline, technical verifications, AI interviews, and admin hiring decisions.
+          </p>
+        </div>
 
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900 dark:text-white">
-              Recruitment Analytics
-            </h1>
-
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Understand candidate flow, interview performance and recruitment
-              activity.
-            </p>
+        {/* Tab switch to Audit Logs */}
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-[#E2E8F0] bg-white p-1 shadow-xs">
+            <button
+              type="button"
+              className="rounded-md bg-[#111F33] px-3 py-1.5 text-xs font-semibold text-white shadow-xs"
+            >
+              Analytics
+            </button>
+            <Link
+              href="/admin/audit-log"
+              className="rounded-md px-3 py-1.5 text-xs font-medium text-[#64748B] hover:text-[#111F33] transition-colors"
+            >
+              Audit Logs
+            </Link>
           </div>
 
-          <select
-            value={range}
-            onChange={(e) => setRange(e.target.value)}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium outline-none dark:border-white/10 dark:bg-[#151922]"
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchAnalytics}
+            disabled={loading}
+            className="text-xs"
           >
-            <option>7 days</option>
-            <option>30 days</option>
-            <option>90 days</option>
-            <option>Custom</option>
-          </select>
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
         </div>
+      </div>
 
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <MetricCard
-            icon={<Users size={19} />}
-            label="Total Candidates"
-            value="124"
-            change="+12.4%"
-          />
-
-          <MetricCard
-            icon={<CheckCircle2 size={19} />}
-            label="Approval Rate"
-            value="73.4%"
-            change="+4.8%"
-          />
-
-          <MetricCard
-            icon={<CalendarCheck size={19} />}
-            label="Interview Completion"
-            value="82.6%"
-            change="+6.2%"
-          />
-
-          <MetricCard
-            icon={<Target size={19} />}
-            label="Average JD Match"
-            value="84%"
-            change="+3.1%"
-          />
-
-          <MetricCard
-            icon={<Award size={19} />}
-            label="Average Interview Score"
-            value="82/100"
-            change="+2.7%"
-          />
-
-          <MetricCard
-            icon={<TrendingUp size={19} />}
-            label="Selected Candidates"
-            value="18"
-            change="+5"
-          />
-        </div>
-
-        {/* Funnel */}
-        <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-sm">
-          <ChartHeader
-            title="Recruitment Funnel"
-            description="Candidate progression through the recruitment workflow."
-          />
-
-          <div className="mt-6 space-y-4">
-            {[
-              ["Applications", 124],
-              ["Reviewed", 82],
-              ["Approved", 31],
-              ["Scheduled", 24],
-              ["Interviewed", 19],
-              ["Selected", 18],
-            ].map(([label, value]) => {
-              const numericValue = Number(value);
-              const width = (numericValue / 124) * 100;
-
-              return (
-                <div key={label as string}>
-                  <div className="mb-1.5 flex items-center justify-between text-xs">
-                    <span className="font-medium text-[#64748B]">
-                      {label}
-                    </span>
-                    <span className="font-semibold text-[#111F33]">
-                      {value}
-                    </span>
-                  </div>
-
-                  <div className="h-2 overflow-hidden rounded-full bg-[#E2E8F0]">
-                    <div
-                      className="h-full rounded-full bg-[#1976D2] transition-all duration-700"
-                      style={{ width: `${width}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Two Charts */}
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-          <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-sm">
-            <ChartHeader
-              title="Candidates by Status"
-              description="Current candidate distribution."
-            />
-
-            <div className="mt-8 flex h-64 items-end justify-between gap-3">
-              {statusData.map((item) => {
-                const height = (item.value / 124) * 100;
-
-                return (
-                  <div
-                    key={item.label}
-                    className="flex h-full flex-1 flex-col items-center justify-end"
-                  >
-                    <span className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                      {item.value}
-                    </span>
-
-                    <div className="flex h-[85%] w-full items-end">
-                      <div
-                        className="w-full rounded-t-md bg-[#1976D2] transition-all duration-700 hover:bg-[#1565C0]"
-                        style={{ height: `${height}%` }}
-                      />
-                    </div>
-
-                    <span className="mt-3 text-center text-[11px] text-slate-400">
-                      {item.label}
-                    </span>
-                  </div>
-                );
-              })}
+      {/* 2. Global Filters Bar */}
+      <Card className="border-[#E2E8F0] shadow-xs">
+        <CardContent className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs font-semibold text-[#111F33]">
+              <Filter className="h-4 w-4 text-[#1976D2]" />
+              Filter Analytics:
             </div>
-          </section>
 
-          <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-sm">
-            <ChartHeader
-              title="Interviews Over Time"
-              description="Completed and scheduled interviews."
-            />
-
-            <div className="mt-8 flex h-64 items-end gap-3">
-              {interviewData.map((item) => {
-                const height = (item.value / 12) * 100;
-
-                return (
-                  <div
-                    key={item.label}
-                    className="flex h-full flex-1 flex-col items-center justify-end"
-                  >
-                    <span className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                      {item.value}
-                    </span>
-
-                    <div className="flex h-[85%] w-full items-end">
-                      <div
-                        className="w-full rounded-t-md bg-[#111F33] transition-all duration-700 hover:bg-[#1976D2]"
-                        style={{ height: `${height}%` }}
-                      />
-                    </div>
-
-                    <span className="mt-3 text-[11px] text-slate-400">
-                      {item.label.replace("Sep ", "")}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        </div>
-
-        {/* Score Distribution */}
-        <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-sm">
-          <ChartHeader
-            title="Interview Score Distribution"
-            description="Distribution of overall interview scores."
-          />
-
-          <div className="mt-8 flex h-64 items-end gap-4">
-            {scoreData.map((item) => {
-              const height = (item.value / 30) * 100;
-
-              return (
-                <div
-                  key={item.label}
-                  className="flex h-full flex-1 flex-col items-center justify-end"
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* Range Filter */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-medium text-[#64748B]">Timeframe:</span>
+                <select
+                  value={range}
+                  onChange={(e) => setRange(e.target.value)}
+                  className="rounded-md border border-[#E2E8F0] bg-white px-2.5 py-1.5 text-xs font-medium text-[#111F33] outline-none focus:border-[#1976D2]"
                 >
-                  <span className="mb-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                    {item.value}
-                  </span>
+                  <option value="7d">Last 7 Days</option>
+                  <option value="30d">Last 30 Days</option>
+                  <option value="90d">Last 90 Days</option>
+                  <option value="all">All Time</option>
+                </select>
+              </div>
 
-                  <div className="flex h-[85%] w-full items-end">
-                    <div
-                      className="w-full rounded-t-xl bg-indigo-500 transition-all duration-700"
-                      style={{ height: `${height}%` }}
-                    />
+              {/* Status Filter */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-medium text-[#64748B]">Status:</span>
+                <select
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className="rounded-md border border-[#E2E8F0] bg-white px-2.5 py-1.5 text-xs font-medium text-[#111F33] outline-none focus:border-[#1976D2]"
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="received">Received / Applied</option>
+                  <option value="approved">Approved</option>
+                  <option value="Project Assigned">Project Assigned</option>
+                  <option value="Project Completed">Project Completed</option>
+                  <option value="scheduled">Interview Scheduled</option>
+                  <option value="completed">Interview Completed</option>
+                  <option value="decided">Final Decided</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+
+              {/* Decision Filter */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-medium text-[#64748B]">Decision:</span>
+                <select
+                  value={decision}
+                  onChange={(e) => setDecision(e.target.value)}
+                  className="rounded-md border border-[#E2E8F0] bg-white px-2.5 py-1.5 text-xs font-medium text-[#111F33] outline-none focus:border-[#1976D2]"
+                >
+                  <option value="ALL">All Decisions</option>
+                  <option value="selected">Hired / Selected</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="another_interview">Follow-up Round</option>
+                  <option value="pending">Pending Decision</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {loading && !data ? (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-28 w-full rounded-lg" />
+            ))}
+          </div>
+          <Skeleton className="h-72 w-full rounded-lg" />
+        </div>
+      ) : error ? (
+        <ErrorState
+          title="Failed to Load Analytics"
+          description="Could not compute recruitment statistics. Please verify backend connectivity and try again."
+          onRetry={fetchAnalytics}
+        />
+      ) : data ? (
+        <>
+          {/* 3. Core KPI Summary Cards */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {/* KPI 1: Candidate Pool */}
+            <Card className="p-4 border-[#E2E8F0]">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#64748B]">
+                  Candidate Pipeline
+                </span>
+                <div className="rounded-md bg-blue-50 p-2 text-[#1976D2]">
+                  <Users className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-2xl font-bold text-[#111F33]">
+                  {overview?.candidates.total ?? 0}
+                </span>
+                <span className="text-xs text-[#64748B]">registered</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between border-t border-[#E2E8F0] pt-2 text-[11px]">
+                <span className="text-[#16A34A] font-semibold">
+                  {overview?.candidates.approved ?? 0} Approved
+                </span>
+                <span className="text-[#64748B]">
+                  {overview?.candidates.awaitingApproval ?? 0} Awaiting Review
+                </span>
+              </div>
+            </Card>
+
+            {/* KPI 2: Project Performance */}
+            <Card className="p-4 border-[#E2E8F0]">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#64748B]">
+                  Project Submissions
+                </span>
+                <div className="rounded-md bg-indigo-50 p-2 text-indigo-600">
+                  <FolderKanban className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-2xl font-bold text-[#111F33]">
+                  {overview?.projects.submitted ?? 0}
+                </span>
+                <span className="text-xs text-[#64748B]">
+                  / {overview?.projects.assigned ?? 0} assigned
+                </span>
+              </div>
+              <div className="mt-3 flex items-center justify-between border-t border-[#E2E8F0] pt-2 text-[11px]">
+                <span className="text-[#16A34A] font-semibold">
+                  {overview?.projects.verified ?? 0} Verified
+                </span>
+                <span className="text-[#D97706] font-medium">
+                  {overview?.projects.awaitingVerification ?? 0} Under Review
+                </span>
+              </div>
+            </Card>
+
+            {/* KPI 3: Interview Completion */}
+            <Card className="p-4 border-[#E2E8F0]">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#64748B]">
+                  Interview Sessions
+                </span>
+                <div className="rounded-md bg-emerald-50 p-2 text-[#16A34A]">
+                  <Video className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-2xl font-bold text-[#111F33]">
+                  {overview?.interviews.completed ?? 0}
+                </span>
+                <span className="text-xs text-[#64748B]">
+                  / {overview?.interviews.totalBooked ?? 0} booked
+                </span>
+              </div>
+              <div className="mt-3 flex items-center justify-between border-t border-[#E2E8F0] pt-2 text-[11px]">
+                <span className="text-[#1976D2] font-semibold">
+                  {overview?.interviews.upcoming ?? 0} Upcoming
+                </span>
+                <span className="text-[#64748B]">
+                  {overview?.interviews.completionRate ?? 0}% Completion
+                </span>
+              </div>
+            </Card>
+
+            {/* KPI 4: Hiring Decisions */}
+            <Card className="p-4 border-[#E2E8F0]">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wider text-[#64748B]">
+                  Admin Hiring Decisions
+                </span>
+                <div className="rounded-md bg-amber-50 p-2 text-amber-600">
+                  <ShieldCheck className="h-4 w-4" />
+                </div>
+              </div>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-2xl font-bold text-[#16A34A]">
+                  {overview?.decisions.hired ?? 0}
+                </span>
+                <span className="text-xs text-[#64748B]">
+                  Hired ({overview?.decisions.totalDecided ?? 0} Decided)
+                </span>
+              </div>
+              <div className="mt-3 flex items-center justify-between border-t border-[#E2E8F0] pt-2 text-[11px]">
+                <span className="text-[#D97706] font-medium">
+                  {overview?.decisions.followUp ?? 0} Follow-up
+                </span>
+                <span className="text-[#DC2626] font-medium">
+                  {overview?.decisions.rejected ?? 0} Rejected
+                </span>
+              </div>
+            </Card>
+          </div>
+
+          {/* 4. Recruitment Funnel & Score Distribution */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            {/* Recruitment Funnel Chart (2 Cols) */}
+            <Card className="lg:col-span-2 border-[#E2E8F0] shadow-xs">
+              <CardHeader
+                title="Candidate Recruitment Conversion Funnel"
+                subtitle="Stage-by-stage progression from initial application through final hiring decision."
+              />
+              <CardContent className="space-y-3.5 pt-2">
+                {data.funnel.map((item, idx) => {
+                  const percentOfApplied = maxFunnelCount > 0
+                    ? Math.round((item.count / maxFunnelCount) * 100)
+                    : 0;
+
+                  return (
+                    <div key={idx} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-[#111F33]">
+                          {idx + 1}. {item.label}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-[#111F33]">{item.count}</span>
+                          <span className="text-[11px] text-[#64748B] w-12 text-right">
+                            ({percentOfApplied}%)
+                          </span>
+                        </div>
+                      </div>
+                      <div className="h-2.5 w-full overflow-hidden rounded-full bg-[#F5F7FA] border border-[#E2E8F0]">
+                        <div
+                          className="h-full rounded-full transition-all duration-500 bg-gradient-to-r from-[#1976D2] to-[#1565C0]"
+                          style={{ width: `${Math.max(item.count > 0 ? 3 : 0, percentOfApplied)}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+
+            {/* AI Technical Score Distribution (1 Col) */}
+            <Card className="border-[#E2E8F0] shadow-xs flex flex-col justify-between">
+              <div>
+                <CardHeader
+                  title="AI Interview Score Tiers"
+                  subtitle="Candidate performance distribution evaluated across technical categories."
+                />
+                <CardContent className="space-y-3 pt-2">
+                  {Object.entries(data.scoreDistribution).map(([bracket, count]) => {
+                    const totalScored = Object.values(data.scoreDistribution).reduce((a, b) => a + b, 0);
+                    const pct = totalScored > 0 ? Math.round((count / totalScored) * 100) : 0;
+
+                    return (
+                      <div key={bracket} className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="font-medium text-[#111F33]">{bracket} Points</span>
+                          <span className="text-[#64748B]">
+                            {count} candidates ({pct}%)
+                          </span>
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-[#F5F7FA] border border-[#E2E8F0]">
+                          <div
+                            className={`h-full rounded-full transition-all duration-300 ${
+                              bracket === "90-100"
+                                ? "bg-[#16A34A]"
+                                : bracket === "80-89"
+                                ? "bg-[#1976D2]"
+                                : bracket === "70-79"
+                                ? "bg-[#0284C7]"
+                                : bracket === "60-69"
+                                ? "bg-[#D97706]"
+                                : "bg-[#DC2626]"
+                            }`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </div>
+
+              <div className="border-t border-[#E2E8F0] p-4 bg-[#F5F7FA] rounded-b-lg text-xs text-[#64748B]">
+                <p>
+                  Scores reflect AI rubrics for technical knowledge, problem solving, and architecture design.
+                </p>
+              </div>
+            </Card>
+          </div>
+
+          {/* 5. Breakdown Cards Grid */}
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            {/* Card A: Decision Outcomes */}
+            <Card className="border-[#E2E8F0] shadow-xs">
+              <CardHeader
+                title="Recruitment Decisions Breakdown"
+                subtitle="Authoritative admin decisions recorded post-interview."
+              />
+              <CardContent>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-lg border border-[#16A34A]/20 bg-[#16A34A]/5 p-3 text-center">
+                    <span className="text-[11px] font-semibold text-[#16A34A]">Hired / Selected</span>
+                    <p className="mt-1 text-xl font-bold text-[#16A34A]">
+                      {overview?.decisions.hired ?? 0}
+                    </p>
                   </div>
 
-                  <span className="mt-3 text-xs text-slate-400">
-                    {item.label}
-                  </span>
+                  <div className="rounded-lg border border-[#D97706]/20 bg-[#D97706]/5 p-3 text-center">
+                    <span className="text-[11px] font-semibold text-[#D97706]">Follow-up Round</span>
+                    <p className="mt-1 text-xl font-bold text-[#D97706]">
+                      {overview?.decisions.followUp ?? 0}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-[#DC2626]/20 bg-[#DC2626]/5 p-3 text-center">
+                    <span className="text-[11px] font-semibold text-[#DC2626]">Rejected</span>
+                    <p className="mt-1 text-xl font-bold text-[#DC2626]">
+                      {overview?.decisions.rejected ?? 0}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-[#E2E8F0] bg-[#F5F7FA] p-3 text-center">
+                    <span className="text-[11px] font-semibold text-[#64748B]">Pending Review</span>
+                    <p className="mt-1 text-xl font-bold text-[#111F33]">
+                      {overview?.decisions.pending ?? 0}
+                    </p>
+                  </div>
                 </div>
-              );
-            })}
+              </CardContent>
+            </Card>
+
+            {/* Card B: Project Verification Statuses */}
+            <Card className="border-[#E2E8F0] shadow-xs">
+              <CardHeader
+                title="Project AI Verification Statuses"
+                subtitle="Outcome of automated code repository inspections."
+              />
+              <CardContent>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="rounded-lg border border-[#16A34A]/20 bg-[#16A34A]/5 p-3 text-center">
+                    <span className="text-[11px] font-semibold text-[#16A34A]">Verified Code</span>
+                    <p className="mt-1 text-xl font-bold text-[#16A34A]">
+                      {overview?.projects.verified ?? 0}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-[#D97706]/20 bg-[#D97706]/5 p-3 text-center">
+                    <span className="text-[11px] font-semibold text-[#D97706]">Needs Review</span>
+                    <p className="mt-1 text-xl font-bold text-[#D97706]">
+                      {overview?.projects.awaitingVerification ?? 0}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-[#DC2626]/20 bg-[#DC2626]/5 p-3 text-center">
+                    <span className="text-[11px] font-semibold text-[#DC2626]">Failed / Rejected</span>
+                    <p className="mt-1 text-xl font-bold text-[#DC2626]">
+                      {overview?.projects.rejected ?? 0}
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border border-[#E2E8F0] bg-[#F5F7FA] p-3 text-center">
+                    <span className="text-[11px] font-semibold text-[#64748B]">Total Created</span>
+                    <p className="mt-1 text-xl font-bold text-[#111F33]">
+                      {overview?.projects.totalCreated ?? 0}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </section>
-
-        {/* JD Match */}
-        <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-xs">
-          <ChartHeader
-            title="JD Match Distribution"
-            description="How closely candidate profiles match the selected roles."
-          />
-
-          <div className="mt-6 space-y-5">
-            <DistributionRow label="90–100%" value={28} total={60} />
-            <DistributionRow label="80–89%" value={21} total={60} />
-            <DistributionRow label="70–79%" value={8} total={60} />
-            <DistributionRow label="60–69%" value={3} total={60} />
-          </div>
-        </section>
-      </div>
-    </main>
-  );
-}
-
-function MetricCard({
-  icon,
-  label,
-  value,
-  change,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  change: string;
-}) {
-  return (
-    <div className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-sm transition hover:border-[#1976D2]/40">
-      <div className="flex items-center justify-between">
-        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-blue-50 text-[#1976D2]">
-          {icon}
-        </div>
-
-        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-[#16A34A] border border-emerald-200/60">
-          {change}
-        </span>
-      </div>
-
-      <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-[#64748B]">{label}</p>
-
-      <p className="mt-1 text-2xl font-bold text-[#111F33]">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function ChartHeader({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-  return (
-    <div>
-      <h2 className="text-sm font-semibold text-[#111F33]">{title}</h2>
-      <p className="mt-0.5 text-xs text-[#64748B]">{description}</p>
-    </div>
-  );
-}
-
-function DistributionRow({
-  label,
-  value,
-  total,
-}: {
-  label: string;
-  value: number;
-  total: number;
-}) {
-  const percentage = (value / total) * 100;
-
-  return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between text-xs">
-        <span className="font-medium text-[#64748B]">
-          {label}
-        </span>
-
-        <span className="font-semibold text-[#111F33]">
-          {value} candidates ({Math.round(percentage)}%)
-        </span>
-      </div>
-
-      <div className="h-2 overflow-hidden rounded-full bg-[#E2E8F0]">
-        <div
-          className="h-full rounded-full bg-[#1976D2] transition-all duration-700"
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
+        </>
+      ) : null}
     </div>
   );
 }

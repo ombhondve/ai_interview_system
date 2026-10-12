@@ -19,6 +19,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { apiUrl } from "@/lib/client";
+import { publishAdminSync } from "@/lib/adminDataSync";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -90,11 +91,16 @@ export default function InterviewReportPage() {
   const [interview, setInterview] = useState<InterviewReport | null>(null);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [confirmStatus, setConfirmStatus] = useState<"selected" | "rejected" | "another_interview" | null>(null);
 
   const load = useCallback(async () => {
     try {
       const data = await request<{ interview: InterviewReport }>(`/${interviewId}/report`);
       setInterview(data.interview);
+      if (data.interview?.adminDecision?.notes) {
+        setNotes(data.interview.adminDecision.notes);
+      }
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Unable to load report.");
     }
@@ -103,6 +109,28 @@ export default function InterviewReportPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const handleAdminDecision = async (status: "selected" | "rejected" | "another_interview") => {
+    if (!interviewId) return;
+    setBusy(true);
+    setNotice("");
+    setConfirmStatus(null);
+    try {
+      const data = await request<{ interview: InterviewReport }>(`/${interviewId}/admin-decision`, {
+        method: "POST",
+        body: JSON.stringify({ status, notes }),
+      });
+      setInterview(data.interview);
+      const label = status === "selected" ? "Candidate Hired" : status === "rejected" ? "Candidate Rejected" : "Follow-up Round Requested";
+      setNotice(`Admin decision saved: ${label}`);
+      publishAdminSync("admin:candidate:updated");
+      publishAdminSync("admin:interview:updated");
+    } catch (err: unknown) {
+      setNotice(err instanceof Error ? err.message : "Failed to record hiring decision.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const retryAnalysis = async () => {
     setBusy(true);
@@ -429,6 +457,113 @@ export default function InterviewReportPage() {
                   ))
                 )}
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Final Human Admin Decision Card */}
+          <Card className="border-[#E2E8F0] shadow-xs">
+            <CardHeader
+              title="Final Human Admin Decision"
+              subtitle="The AI assessment is advisory. The authoritative recruitment decision is made by the Administrator."
+              action={
+                interview.adminDecision?.status === "selected" ? (
+                  <Badge variant="success" className="gap-1">
+                    <CheckCircle2 className="h-3 w-3" /> Hired / Selected
+                  </Badge>
+                ) : interview.adminDecision?.status === "rejected" ? (
+                  <Badge variant="danger" className="gap-1">
+                    <XCircle className="h-3 w-3" /> Rejected
+                  </Badge>
+                ) : interview.adminDecision?.status === "another_interview" ? (
+                  <Badge variant="warning" className="gap-1">
+                    <Clock className="h-3 w-3" /> Follow-up Round
+                  </Badge>
+                ) : (
+                  <Badge variant="neutral">Decision Pending</Badge>
+                )
+              }
+            />
+            <CardContent className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-[#111F33] mb-1">
+                  Admin Decision Notes / Feedback
+                </label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add evaluation feedback, decision rationale, or follow-up notes..."
+                  rows={3}
+                  maxLength={2000}
+                  className="w-full rounded-lg border border-[#E2E8F0] bg-white p-3 text-xs outline-none focus:border-[#1976D2] text-[#111F33] transition-colors"
+                />
+                <div className="mt-1 flex justify-between text-[11px] text-[#64748B]">
+                  <span>Decision notes are permanently preserved with candidate audit history.</span>
+                  <span>{notes.length}/2000</span>
+                </div>
+              </div>
+
+              {confirmStatus ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3.5 space-y-2">
+                  <p className="text-xs font-semibold text-amber-900">
+                    Confirm {confirmStatus === "selected" ? "Hiring" : confirmStatus === "rejected" ? "Rejection" : "Follow-up Request"}?
+                  </p>
+                  <p className="text-xs text-amber-800">
+                    {confirmStatus === "selected"
+                      ? "This will mark the candidate as hired in the applicant tracking pipeline."
+                      : confirmStatus === "rejected"
+                      ? "This will update the candidate's recruitment status to rejected."
+                      : "This will record a follow-up interview request without rejecting or hiring the candidate."}
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      onClick={() => void handleAdminDecision(confirmStatus)}
+                      disabled={busy}
+                    >
+                      {busy ? "Saving..." : "Yes, Confirm Decision"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setConfirmStatus(null)}
+                      disabled={busy}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    size="sm"
+                    className="bg-[#16A34A] hover:bg-[#15803D] text-white gap-1.5"
+                    onClick={() => setConfirmStatus("selected")}
+                    disabled={busy}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Approve / Hire Candidate
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-[#1976D2] text-[#1976D2] hover:bg-blue-50 gap-1.5"
+                    onClick={() => setConfirmStatus("another_interview")}
+                    disabled={busy}
+                  >
+                    <Clock className="h-3.5 w-3.5" /> Request Follow-up Round
+                  </Button>
+
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="gap-1.5"
+                    onClick={() => setConfirmStatus("rejected")}
+                    disabled={busy}
+                  >
+                    <XCircle className="h-3.5 w-3.5" /> Reject Candidate
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

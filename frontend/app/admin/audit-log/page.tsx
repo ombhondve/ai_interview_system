@@ -1,1498 +1,533 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Activity,
+  ShieldCheck,
   Search,
   Filter,
-  Download,
   RefreshCw,
   Eye,
-  X,
+  Calendar,
   User,
-  Shield,
-  Users,
-  CalendarDays,
-  FileText,
-  Settings,
+  Clock,
+  ArrowRight,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  AlertCircle,
   CheckCircle2,
   XCircle,
-  AlertTriangle,
-  Clock3,
-  ChevronDown,
-  Trash2,
-  LogIn,
-  LogOut,
-  UserPlus,
-  Pencil,
-  Ban,
+  FileText,
+  Activity,
+  X,
 } from "lucide-react";
+import { apiUrl } from "@/lib/client";
+import { Card, CardContent, CardHeader } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { Modal } from "@/components/ui/Modal";
 
-type AuditAction =
-  | "Login"
-  | "Logout"
-  | "Create"
-  | "Update"
-  | "Delete"
-  | "Approve"
-  | "Reject"
-  | "Activate"
-  | "Deactivate";
-
-type AuditCategory =
-  | "Authentication"
-  | "Candidates"
-  | "Interviews"
-  | "Slots"
-  | "Projects"
-  | "Reports"
-  | "Team"
-  | "Settings";
-
-type AuditSeverity = "Info" | "Success" | "Warning" | "Critical";
-
-type AuditLog = {
-  id: string;
-  action: AuditAction;
-  category: AuditCategory;
+interface AuditLogEntry {
+  _id: string;
+  id?: string;
+  actor: string;
+  actorId?: string;
+  actorName: string;
+  actorEmail?: string;
+  actorRole: string;
+  action: string;
+  targetType: string;
+  targetId?: string;
+  targetName?: string;
   description: string;
-  performedBy: string;
-  email: string;
-  target: string;
-  targetId: string;
+  outcome: "SUCCESS" | "FAILURE" | "ATTEMPT" | string;
+  details?: unknown;
+  beforeState?: unknown;
+  afterState?: unknown;
+  ipAddress?: string;
   timestamp: string;
-  ipAddress: string;
-  severity: AuditSeverity;
-};
-
-const initialLogs: AuditLog[] = [
-  {
-    id: "LOG-001",
-    action: "Login",
-    category: "Authentication",
-    description: "Administrator logged into the dashboard.",
-    performedBy: "Om Bhondve",
-    email: "admin@recruitai.com",
-    target: "Admin Dashboard",
-    targetId: "ADM-001",
-    timestamp: "2026-09-17 14:32:18",
-    ipAddress: "192.168.1.10",
-    severity: "Success",
-  },
-  {
-    id: "LOG-002",
-    action: "Approve",
-    category: "Candidates",
-    description: "Candidate application was approved for interview scheduling.",
-    performedBy: "Om Bhondve",
-    email: "admin@recruitai.com",
-    target: "Priya Patil",
-    targetId: "CAN-002",
-    timestamp: "2026-09-17 14:18:42",
-    ipAddress: "192.168.1.10",
-    severity: "Success",
-  },
-  {
-    id: "LOG-003",
-    action: "Create",
-    category: "Slots",
-    description: "New interview slot was created.",
-    performedBy: "Priya Patil",
-    email: "priya@recruitai.com",
-    target: "Interview Slot",
-    targetId: "SLOT-007",
-    timestamp: "2026-09-17 13:55:10",
-    ipAddress: "192.168.1.25",
-    severity: "Info",
-  },
-  {
-    id: "LOG-004",
-    action: "Update",
-    category: "Candidates",
-    description: "Candidate profile information was updated.",
-    performedBy: "Amit Joshi",
-    email: "amit@recruitai.com",
-    target: "Rahul Sharma",
-    targetId: "CAN-001",
-    timestamp: "2026-09-17 13:21:05",
-    ipAddress: "192.168.1.31",
-    severity: "Info",
-  },
-  {
-    id: "LOG-005",
-    action: "Reject",
-    category: "Candidates",
-    description: "Candidate application was rejected.",
-    performedBy: "Om Bhondve",
-    email: "admin@recruitai.com",
-    target: "Candidate Application",
-    targetId: "CAN-008",
-    timestamp: "2026-09-17 12:48:32",
-    ipAddress: "192.168.1.10",
-    severity: "Warning",
-  },
-  {
-    id: "LOG-006",
-    action: "Create",
-    category: "Team",
-    description: "New recruiter administrator account was created.",
-    performedBy: "Om Bhondve",
-    email: "admin@recruitai.com",
-    target: "Sneha More",
-    targetId: "ADM-004",
-    timestamp: "2026-09-17 11:35:22",
-    ipAddress: "192.168.1.10",
-    severity: "Success",
-  },
-  {
-    id: "LOG-007",
-    action: "Deactivate",
-    category: "Team",
-    description: "Administrator account was deactivated.",
-    performedBy: "Om Bhondve",
-    email: "admin@recruitai.com",
-    target: "Sneha More",
-    targetId: "ADM-004",
-    timestamp: "2026-09-17 11:10:14",
-    ipAddress: "192.168.1.10",
-    severity: "Warning",
-  },
-  {
-    id: "LOG-008",
-    action: "Update",
-    category: "Settings",
-    description: "Notification preferences were updated.",
-    performedBy: "Om Bhondve",
-    email: "admin@recruitai.com",
-    target: "Notification Settings",
-    targetId: "SETTINGS-001",
-    timestamp: "2026-09-17 10:42:08",
-    ipAddress: "192.168.1.10",
-    severity: "Info",
-  },
-  {
-    id: "LOG-009",
-    action: "Create",
-    category: "Projects",
-    description: "New demo project was added to the project bank.",
-    performedBy: "Priya Patil",
-    email: "priya@recruitai.com",
-    target: "Student Management Portal",
-    targetId: "PROJ-003",
-    timestamp: "2026-09-17 10:15:44",
-    ipAddress: "192.168.1.25",
-    severity: "Success",
-  },
-  {
-    id: "LOG-010",
-    action: "Delete",
-    category: "Slots",
-    description: "Interview slot was deleted from the schedule.",
-    performedBy: "Amit Joshi",
-    email: "amit@recruitai.com",
-    target: "Interview Slot",
-    targetId: "SLOT-004",
-    timestamp: "2026-09-17 09:52:31",
-    ipAddress: "192.168.1.31",
-    severity: "Warning",
-  },
-  {
-    id: "LOG-011",
-    action: "Approve",
-    category: "Reports",
-    description: "AI interview performance report was reviewed.",
-    performedBy: "Om Bhondve",
-    email: "admin@recruitai.com",
-    target: "Akash Kulkarni",
-    targetId: "REP-002",
-    timestamp: "2026-09-17 09:24:18",
-    ipAddress: "192.168.1.10",
-    severity: "Success",
-  },
-  {
-    id: "LOG-012",
-    action: "Login",
-    category: "Authentication",
-    description: "Recruiter logged into the dashboard.",
-    performedBy: "Priya Patil",
-    email: "priya@recruitai.com",
-    target: "Admin Dashboard",
-    targetId: "ADM-002",
-    timestamp: "2026-09-17 09:02:05",
-    ipAddress: "192.168.1.25",
-    severity: "Success",
-  },
-  {
-    id: "LOG-013",
-    action: "Deactivate",
-    category: "Slots",
-    description: "Interview slot was made unavailable for booking.",
-    performedBy: "Priya Patil",
-    email: "priya@recruitai.com",
-    target: "Interview Slot",
-    targetId: "SLOT-006",
-    timestamp: "2026-09-16 17:42:11",
-    ipAddress: "192.168.1.25",
-    severity: "Warning",
-  },
-  {
-    id: "LOG-014",
-    action: "Update",
-    category: "Projects",
-    description: "Demo project configuration was updated.",
-    performedBy: "Om Bhondve",
-    email: "admin@recruitai.com",
-    target: "E-Commerce API",
-    targetId: "PROJ-001",
-    timestamp: "2026-09-16 16:28:45",
-    ipAddress: "192.168.1.10",
-    severity: "Info",
-  },
-  {
-    id: "LOG-015",
-    action: "Logout",
-    category: "Authentication",
-    description: "Administrator logged out of the dashboard.",
-    performedBy: "Amit Joshi",
-    email: "amit@recruitai.com",
-    target: "Admin Dashboard",
-    targetId: "ADM-003",
-    timestamp: "2026-09-16 16:02:19",
-    ipAddress: "192.168.1.31",
-    severity: "Info",
-  },
-];
-
-const actions: Array<"All" | AuditAction> = [
-  "All",
-  "Login",
-  "Logout",
-  "Create",
-  "Update",
-  "Delete",
-  "Approve",
-  "Reject",
-  "Activate",
-  "Deactivate",
-];
-
-const categories: Array<"All" | AuditCategory> = [
-  "All",
-  "Authentication",
-  "Candidates",
-  "Interviews",
-  "Slots",
-  "Projects",
-  "Reports",
-  "Team",
-  "Settings",
-];
-
-const severities: Array<"All" | AuditSeverity> = [
-  "All",
-  "Info",
-  "Success",
-  "Warning",
-  "Critical",
-];
+}
 
 export default function AuditLogPage() {
-  const [logs, setLogs] =
-    useState<AuditLog[]>(initialLogs);
+  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [page, setPage] = useState(1);
+  const [limit] = useState(15);
 
   const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [actionFilter, setActionFilter] = useState("ALL");
+  const [targetFilter, setTargetFilter] = useState("ALL");
+  const [outcomeFilter, setOutcomeFilter] = useState("ALL");
 
-  const [actionFilter, setActionFilter] = useState<
-    "All" | AuditAction
-  >("All");
+  const [selectedLog, setSelectedLog] = useState<AuditLogEntry | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-  const [categoryFilter, setCategoryFilter] = useState<
-    "All" | AuditCategory
-  >("All");
+  const fetchLogs = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try {
+      const params = new URLSearchParams();
+      params.set("page", String(page));
+      params.set("limit", String(limit));
+      if (search) params.set("search", search);
+      if (actionFilter && actionFilter !== "ALL") params.set("action", actionFilter);
+      if (targetFilter && targetFilter !== "ALL") params.set("targetType", targetFilter);
+      if (outcomeFilter && outcomeFilter !== "ALL") params.set("outcome", outcomeFilter);
 
-  const [severityFilter, setSeverityFilter] = useState<
-    "All" | AuditSeverity
-  >("All");
+      const res = await fetch(apiUrl(`/api/admin/audit-logs?${params.toString()}`), {
+        credentials: "include",
+      });
 
-  const [adminFilter, setAdminFilter] =
-    useState("All");
+      if (!res.ok) throw new Error("Failed to load audit logs");
+      const json = await res.json();
+      if (json.success) {
+        setLogs(json.logs || []);
+        setTotal(json.total || 0);
+        setTotalPages(json.totalPages || 1);
+      } else {
+        throw new Error("Invalid audit logs response");
+      }
+    } catch (err) {
+      console.error("Audit log fetch error:", err);
+      setError(true);
+    } finally {
+      setLoading(false);
+    }
+  }, [page, limit, search, actionFilter, targetFilter, outcomeFilter]);
 
-  const [viewTarget, setViewTarget] =
-    useState<AuditLog | null>(null);
+  useEffect(() => {
+    void fetchLogs();
+  }, [fetchLogs]);
 
-  const [notice, setNotice] = useState("");
-
-  const [refreshing, setRefreshing] =
-    useState(false);
-
-  const [showFilters, setShowFilters] =
-    useState(false);
-
-  const filteredLogs = useMemo(() => {
-    const query = search.trim().toLowerCase();
-
-    return logs.filter((log) => {
-      const matchesSearch =
-        !query ||
-        log.id.toLowerCase().includes(query) ||
-        log.description.toLowerCase().includes(query) ||
-        log.performedBy.toLowerCase().includes(query) ||
-        log.email.toLowerCase().includes(query) ||
-        log.target.toLowerCase().includes(query) ||
-        log.targetId.toLowerCase().includes(query) ||
-        log.ipAddress.toLowerCase().includes(query);
-
-      const matchesAction =
-        actionFilter === "All" ||
-        log.action === actionFilter;
-
-      const matchesCategory =
-        categoryFilter === "All" ||
-        log.category === categoryFilter;
-
-      const matchesSeverity =
-        severityFilter === "All" ||
-        log.severity === severityFilter;
-
-      const matchesAdmin =
-        adminFilter === "All" ||
-        log.performedBy === adminFilter;
-
-      return (
-        matchesSearch &&
-        matchesAction &&
-        matchesCategory &&
-        matchesSeverity &&
-        matchesAdmin
-      );
-    });
-  }, [
-    logs,
-    search,
-    actionFilter,
-    categoryFilter,
-    severityFilter,
-    adminFilter,
-  ]);
-
-  const adminOptions = Array.from(
-    new Set(logs.map((log) => log.performedBy))
-  );
-
-  const loginCount = logs.filter(
-    (log) => log.action === "Login"
-  ).length;
-
-  const changesCount = logs.filter((log) =>
-    ["Create", "Update", "Delete"].includes(
-      log.action
-    )
-  ).length;
-
-  const warningsCount = logs.filter(
-    (log) =>
-      log.severity === "Warning" ||
-      log.severity === "Critical"
-  ).length;
-
-  const approvalCount = logs.filter(
-    (log) =>
-      log.action === "Approve" ||
-      log.action === "Reject"
-  ).length;
-
-  const showNotice = (message: string) => {
-    setNotice(message);
-
-    window.setTimeout(() => {
-      setNotice("");
-    }, 2500);
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPage(1);
+    setSearch(searchInput.trim());
   };
 
-  const refreshLogs = () => {
-    setRefreshing(true);
-
-    window.setTimeout(() => {
-      setRefreshing(false);
-      showNotice("Audit log refreshed.");
-    }, 700);
-  };
-
-  const resetFilters = () => {
+  const handleResetFilters = () => {
     setSearch("");
-    setActionFilter("All");
-    setCategoryFilter("All");
-    setSeverityFilter("All");
-    setAdminFilter("All");
+    setSearchInput("");
+    setActionFilter("ALL");
+    setTargetFilter("ALL");
+    setOutcomeFilter("ALL");
+    setPage(1);
   };
 
-  const exportLogs = () => {
-    const headers = [
-      "ID",
-      "Action",
-      "Category",
-      "Description",
-      "Performed By",
-      "Email",
-      "Target",
-      "Target ID",
-      "Timestamp",
-      "IP Address",
-      "Severity",
-    ];
-
-    const rows = filteredLogs.map((log) => [
-      log.id,
-      log.action,
-      log.category,
-      log.description,
-      log.performedBy,
-      log.email,
-      log.target,
-      log.targetId,
-      log.timestamp,
-      log.ipAddress,
-      log.severity,
+  const exportCSV = () => {
+    if (!logs.length) return;
+    const headers = ["Timestamp", "Action", "Actor Name", "Actor Role", "Target Type", "Target ID", "Description", "Outcome", "IP Address"];
+    const rows = logs.map((l) => [
+      `"${new Date(l.timestamp).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}"`,
+      `"${l.action}"`,
+      `"${l.actorName || l.actor}"`,
+      `"${l.actorRole || "admin"}"`,
+      `"${l.targetType || "System"}"`,
+      `"${l.targetId || ""}"`,
+      `"${(l.description || "").replace(/"/g, '""')}"`,
+      `"${l.outcome || "SUCCESS"}"`,
+      `"${l.ipAddress || ""}"`,
     ]);
-
-    const csv = [
-      headers,
-      ...rows,
-    ]
-      .map((row) =>
-        row
-          .map((value) =>
-            `"${String(value).replace(
-              /"/g,
-              '""'
-            )}"`
-          )
-          .join(",")
-      )
-      .join("\n");
-
-    const blob = new Blob([csv], {
-      type: "text/csv;charset=utf-8;",
-    });
-
+    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-
     const link = document.createElement("a");
-
     link.href = url;
-    link.download = `audit-log-${new Date()
-      .toISOString()
-      .slice(0, 10)}.csv`;
-
-    document.body.appendChild(link);
+    link.download = `recruitai_audit_logs_${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
-    document.body.removeChild(link);
-
     URL.revokeObjectURL(url);
-
-    showNotice(
-      `${filteredLogs.length} audit log records exported.`
-    );
-  };
-
-  const clearDemoLogs = () => {
-    setLogs([]);
-    showNotice("Demo audit logs cleared.");
   };
 
   return (
-    <main className="min-h-screen bg-[#F5F7FA]">
-      <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6 lg:p-8">
-        {/* HEADER */}
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="flex items-center gap-2 text-sm text-[#64748B]">
-              <Activity size={16} />
-              Security & Administration
-            </div>
-
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[#111F33] sm:text-3xl">
-              Audit Log
-            </h1>
-
-            <p className="mt-1 text-sm text-[#64748B]">
-              Track administrator actions and important system events.
-            </p>
+    <div className="space-y-6">
+      {/* 1. Header & Tab Switcher */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#1976D2]">
+            <Activity className="h-4 w-4" />
+            Security & Compliance
           </div>
+          <h1 className="text-xl font-bold tracking-tight text-[#111F33]">
+            System Audit Logs
+          </h1>
+          <p className="mt-0.5 text-xs text-[#64748B]">
+            Immutable chronological audit trail recording administrator activities, authorizations, and recruitment lifecycle changes.
+          </p>
+        </div>
 
-          <div className="flex flex-wrap gap-2">
+        {/* Tab switch to Analytics */}
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-[#E2E8F0] bg-white p-1 shadow-xs">
             <Link
-              href="/admin/settings"
-              className="inline-flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white px-4 py-2.5 text-sm font-medium text-[#111F33] shadow-xs hover:bg-[#F5F7FA] transition-colors"
+              href="/admin/analytics"
+              className="rounded-md px-3 py-1.5 text-xs font-medium text-[#64748B] hover:text-[#111F33] transition-colors"
             >
-              Settings
+              Analytics
             </Link>
-
             <button
               type="button"
-              onClick={refreshLogs}
-              className="inline-flex items-center gap-2 rounded-lg border border-[#E2E8F0] bg-white px-4 py-2.5 text-sm font-medium text-[#111F33] shadow-xs hover:bg-[#F5F7FA] transition-colors"
+              className="rounded-md bg-[#111F33] px-3 py-1.5 text-xs font-semibold text-white shadow-xs"
             >
-              <RefreshCw
-                size={16}
-                className={
-                  refreshing
-                    ? "animate-spin"
-                    : ""
-                }
-              />
-              Refresh
-            </button>
-
-            <button
-              type="button"
-              onClick={exportLogs}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#1976D2] px-4 py-2.5 text-sm font-medium text-white shadow-xs hover:bg-[#1565C0] transition-colors"
-            >
-              <Download size={16} />
-              Export CSV
+              Audit Logs
             </button>
           </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportCSV}
+            disabled={!logs.length}
+            className="text-xs"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Export CSV
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={fetchLogs}
+            disabled={loading}
+            className="text-xs"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
         </div>
+      </div>
 
-        {/* NOTICE */}
-        {notice && (
-          <div className="fixed bottom-5 right-5 z-[100] flex max-w-sm items-center gap-3 rounded-lg border border-[#E2E8F0] bg-white px-4 py-3 text-sm font-medium text-[#111F33] shadow-lg">
-            <CheckCircle2
-              size={18}
-              className="shrink-0 text-[#16A34A]"
-            />
-            {notice}
-          </div>
-        )}
-
-        {/* SECURITY INFO */}
-        <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-xs sm:p-6">
-          <div className="flex gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#F5F7FA] text-[#1976D2] border border-[#E2E8F0]">
-              <Shield size={20} />
-            </div>
-
-            <div>
-              <h2 className="font-semibold text-[#111F33]">
-                Activity monitoring
-              </h2>
-
-              <p className="mt-1 max-w-3xl text-sm leading-6 text-[#64748B]">
-                The audit log provides a record of important
-                administrator actions including authentication,
-                candidate decisions, scheduling, team changes
-                and system configuration updates.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* STATISTICS */}
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <StatCard
-            icon={<Activity size={19} />}
-            label="Total Events"
-            value={logs.length}
-          />
-
-          <StatCard
-            icon={<LogIn size={19} />}
-            label="Login Events"
-            value={loginCount}
-          />
-
-          <StatCard
-            icon={<Pencil size={19} />}
-            label="System Changes"
-            value={changesCount}
-          />
-
-          <StatCard
-            icon={<AlertTriangle size={19} />}
-            label="Warnings"
-            value={warningsCount}
-          />
-        </div>
-
-        {/* FILTER SECTION */}
-        <section className="rounded-lg border border-[#E2E8F0] bg-white shadow-xs">
-          <div className="p-5 sm:p-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <h2 className="font-semibold text-[#111F33]">
-                  Activity History
-                </h2>
-
-                <p className="mt-1 text-sm text-[#64748B]">
-                  {filteredLogs.length} event
-                  {filteredLogs.length !== 1
-                    ? "s"
-                    : ""}{" "}
-                  shown
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setShowFilters((value) => !value)
-                }
-                className="inline-flex items-center gap-2 self-start rounded-lg border border-[#E2E8F0] px-3 py-2 text-sm font-medium text-[#64748B] hover:bg-[#F5F7FA] transition-colors"
-              >
-                <Filter size={16} />
-                Filters
-                <ChevronDown
-                  size={14}
-                  className={
-                    showFilters
-                      ? "rotate-180 transition"
-                      : "transition"
-                  }
-                />
-              </button>
-            </div>
-
-            {/* SEARCH */}
-            <div className="relative mt-5">
-              <Search
-                size={17}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-[#64748B]"
-              />
-
+      {/* 2. Filters & Search Bar */}
+      <Card className="border-[#E2E8F0] shadow-xs">
+        <CardContent className="p-4 space-y-3">
+          <form onSubmit={handleSearchSubmit} className="flex flex-wrap items-center gap-3">
+            <div className="relative flex-1 min-w-[240px]">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-[#64748B]" />
               <input
                 type="text"
-                value={search}
-                onChange={(event) =>
-                  setSearch(event.target.value)
-                }
-                placeholder="Search by action, admin, target, description, IP address..."
-                className="w-full rounded-lg border border-[#E2E8F0] bg-white py-2.5 pl-10 pr-3 text-sm outline-none transition focus:border-[#1976D2] text-[#111F33]"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search audit events by description, actor, target ID..."
+                className="w-full rounded-md border border-[#E2E8F0] bg-white pl-9 pr-3 py-2 text-xs text-[#111F33] placeholder-[#64748B] outline-none focus:border-[#1976D2] transition-colors"
               />
             </div>
 
-            {/* FILTERS */}
-            {showFilters && (
-              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <FilterSelect
-                  label="Action"
-                  value={actionFilter}
-                  options={actions}
-                  onChange={(value) =>
-                    setActionFilter(
-                      value as "All" | AuditAction
-                    )
-                  }
-                />
+            <Button type="submit" size="sm" className="text-xs">
+              Search
+            </Button>
 
-                <FilterSelect
-                  label="Category"
-                  value={categoryFilter}
-                  options={categories}
-                  onChange={(value) =>
-                    setCategoryFilter(
-                      value as
-                        | "All"
-                        | AuditCategory
-                    )
-                  }
-                />
-
-                <FilterSelect
-                  label="Severity"
-                  value={severityFilter}
-                  options={severities}
-                  onChange={(value) =>
-                    setSeverityFilter(
-                      value as
-                        | "All"
-                        | AuditSeverity
-                    )
-                  }
-                />
-
-                <FilterSelect
-                  label="Administrator"
-                  value={adminFilter}
-                  options={[
-                    "All",
-                    ...adminOptions,
-                  ]}
-                  onChange={setAdminFilter}
-                />
-              </div>
+            {(search || actionFilter !== "ALL" || targetFilter !== "ALL" || outcomeFilter !== "ALL") && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleResetFilters}
+                className="text-xs text-[#64748B]"
+              >
+                Clear Filters
+              </Button>
             )}
+          </form>
 
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              {hasActiveFilters(
-                search,
-                actionFilter,
-                categoryFilter,
-                severityFilter,
-                adminFilter
-              ) && (
-                <button
-                  type="button"
-                  onClick={resetFilters}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
-                >
-                  <X size={13} />
-                  Clear Filters
-                </button>
-              )}
+          <div className="flex flex-wrap items-center gap-3 border-t border-[#E2E8F0] pt-3 text-xs">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-medium text-[#64748B]">Action:</span>
+              <select
+                value={actionFilter}
+                onChange={(e) => {
+                  setActionFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="rounded-md border border-[#E2E8F0] bg-white px-2.5 py-1 text-xs text-[#111F33] outline-none focus:border-[#1976D2]"
+              >
+                <option value="ALL">All Actions</option>
+                <option value="ADMIN_LOGIN">Admin Login</option>
+                <option value="ADMIN_LOGOUT">Admin Logout</option>
+                <option value="CANDIDATE_APPROVE">Candidate Approval</option>
+                <option value="CANDIDATE_REJECT">Candidate Rejection</option>
+                <option value="PROJECT_ASSIGN">Project Assigned</option>
+                <option value="SUBMIT_ADMIN_DECISION">Recruitment Decision</option>
+                <option value="ADMIN_PROFILE_UPDATE">Profile Update</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-medium text-[#64748B]">Entity:</span>
+              <select
+                value={targetFilter}
+                onChange={(e) => {
+                  setTargetFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="rounded-md border border-[#E2E8F0] bg-white px-2.5 py-1 text-xs text-[#111F33] outline-none focus:border-[#1976D2]"
+              >
+                <option value="ALL">All Entities</option>
+                <option value="Candidate">Candidate</option>
+                <option value="Interview">Interview</option>
+                <option value="Project">Project</option>
+                <option value="Admin">Admin</option>
+                <option value="Authentication">Auth</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-medium text-[#64748B]">Outcome:</span>
+              <select
+                value={outcomeFilter}
+                onChange={(e) => {
+                  setOutcomeFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="rounded-md border border-[#E2E8F0] bg-white px-2.5 py-1 text-xs text-[#111F33] outline-none focus:border-[#1976D2]"
+              >
+                <option value="ALL">All Outcomes</option>
+                <option value="SUCCESS">Success Only</option>
+                <option value="FAILURE">Failure Only</option>
+              </select>
+            </div>
+
+            <div className="ml-auto text-[11px] text-[#64748B]">
+              Showing {logs.length} of {total} events recorded
             </div>
           </div>
+        </CardContent>
+      </Card>
 
-          {/* DESKTOP TABLE */}
-          <div className="hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[1100px]">
-              <thead>
-                <tr className="border-y border-slate-200 bg-slate-50/70 dark:border-white/10 dark:bg-white/[0.02]">
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Event
-                  </th>
-
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Administrator
-                  </th>
-
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Target
-                  </th>
-
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Time
-                  </th>
-
-                  <th className="px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Severity
-                  </th>
-
-                  <th className="px-5 py-3 text-right text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Details
-                  </th>
+      {/* 3. Audit Log Records Table */}
+      {loading && !logs.length ? (
+        <Card>
+          <div className="p-6 space-y-3">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} className="h-12 w-full rounded" />
+            ))}
+          </div>
+        </Card>
+      ) : error ? (
+        <ErrorState
+          title="Audit Log Service Unavailable"
+          description="Could not retrieve administrative audit trail. Please verify database connectivity."
+          onRetry={fetchLogs}
+        />
+      ) : !logs.length ? (
+        <Card className="p-12 text-center border-[#E2E8F0]">
+          <ShieldCheck className="mx-auto h-10 w-10 text-[#64748B]" />
+          <h3 className="mt-3 text-sm font-semibold text-[#111F33]">No Audit Events Found</h3>
+          <p className="mt-1 text-xs text-[#64748B]">
+            No administrative events matched the specified filter criteria.
+          </p>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleResetFilters}
+            className="mt-4 text-xs"
+          >
+            Reset Filters
+          </Button>
+        </Card>
+      ) : (
+        <Card className="border-[#E2E8F0] overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-left text-xs">
+              <thead className="border-b border-[#E2E8F0] bg-[#F5F7FA] text-[#64748B]">
+                <tr>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[11px]">Timestamp (IST)</th>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[11px]">Actor</th>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[11px]">Action</th>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[11px]">Target Entity</th>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[11px]">Description</th>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[11px] text-center">Outcome</th>
+                  <th className="py-3 px-4 font-semibold uppercase tracking-wider text-[11px] text-right">Details</th>
                 </tr>
               </thead>
+              <tbody className="divide-y divide-[#E2E8F0] text-[#111F33]">
+                {logs.map((log) => (
+                  <tr key={log._id} className="hover:bg-[#F8FAFC] transition-colors">
+                    {/* Timestamp */}
+                    <td className="py-3 px-4 font-mono text-[11px] text-[#64748B] whitespace-nowrap">
+                      {new Date(log.timestamp).toLocaleString("en-IN", {
+                        timeZone: "Asia/Kolkata",
+                        month: "short",
+                        day: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit",
+                      })}
+                    </td>
 
-              <tbody>
-                {filteredLogs.map((log) => (
-                  <AuditTableRow
-                    key={log.id}
-                    log={log}
-                    onView={() =>
-                      setViewTarget(log)
-                    }
-                  />
+                    {/* Actor */}
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-[#111F33]">
+                          {log.actorName || "Admin"}
+                        </span>
+                        <span className="rounded bg-slate-100 px-1 py-0.2 text-[9px] font-medium text-[#64748B] uppercase">
+                          {log.actorRole || "admin"}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Action */}
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <span className="rounded-md border border-[#E2E8F0] bg-[#F5F7FA] px-2 py-0.5 text-[11px] font-mono text-[#111F33]">
+                        {log.action}
+                      </span>
+                    </td>
+
+                    {/* Target Entity */}
+                    <td className="py-3 px-4 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-[#1976D2]">
+                          {log.targetType || "System"}
+                        </span>
+                        <span className="text-[#64748B] text-[11px] font-mono truncate max-w-[120px]">
+                          {log.targetName || log.targetId || "—"}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Description */}
+                    <td className="py-3 px-4 text-[#111F33] max-w-xs truncate">
+                      {log.description || "—"}
+                    </td>
+
+                    {/* Outcome */}
+                    <td className="py-3 px-4 text-center whitespace-nowrap">
+                      {log.outcome === "SUCCESS" ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#16A34A]/10 px-2 py-0.5 text-[10px] font-semibold text-[#16A34A]">
+                          <CheckCircle2 className="h-3 w-3" /> OK
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-[#DC2626]/10 px-2 py-0.5 text-[10px] font-semibold text-[#DC2626]">
+                          <XCircle className="h-3 w-3" /> FAILED
+                        </span>
+                      )}
+                    </td>
+
+                    {/* View Details button */}
+                    <td className="py-3 px-4 text-right whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedLog(log)}
+                        className="rounded p-1 text-[#1976D2] hover:bg-blue-50 transition-colors inline-flex items-center gap-1 text-[11px] font-medium"
+                      >
+                        <Eye className="h-3.5 w-3.5" /> Inspect
+                      </button>
+                    </td>
+                  </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          {/* MOBILE */}
-          <div className="space-y-3 p-4 md:hidden">
-            {filteredLogs.map((log) => (
-              <AuditMobileCard
-                key={log.id}
-                log={log}
-                onView={() =>
-                  setViewTarget(log)
-                }
-              />
-            ))}
-          </div>
+          {/* Pagination Bar */}
+          <div className="flex items-center justify-between border-t border-[#E2E8F0] px-4 py-3 bg-white text-xs">
+            <span className="text-[#64748B]">
+              Page <span className="font-semibold text-[#111F33]">{page}</span> of{" "}
+              <span className="font-semibold text-[#111F33]">{totalPages}</span>
+            </span>
 
-          {/* EMPTY STATE */}
-          {filteredLogs.length === 0 && (
-            <div className="px-6 py-14 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-500 dark:bg-white/5 dark:text-slate-400">
-                <Activity size={22} />
-              </div>
-
-              <h3 className="mt-4 font-semibold text-slate-900 dark:text-white">
-                No audit events found
-              </h3>
-
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                Try changing your search or filters.
-              </p>
-
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="mt-4 rounded-lg bg-[#1976D2] px-4 py-2 text-sm font-medium text-white hover:bg-[#1565C0] transition-colors"
-              >
-                Clear Filters
-              </button>
-            </div>
-          )}
-        </section>
-
-        {/* ACTION INFORMATION */}
-        <section className="rounded-lg border border-[#E2E8F0] bg-white p-5 shadow-xs sm:p-6">
-          <div className="flex items-center gap-2">
-            <Shield
-              size={18}
-              className="text-[#1976D2]"
-            />
-
-            <h2 className="font-semibold text-[#111F33]">
-              Audited Operations
-            </h2>
-          </div>
-
-          <p className="mt-1 text-sm text-[#64748B]">
-            Important operations that should be recorded by
-            the production backend.
-          </p>
-
-          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            <OperationCard
-              icon={<LogIn size={17} />}
-              label="Authentication"
-            />
-
-            <OperationCard
-              icon={<Users size={17} />}
-              label="Candidate Decisions"
-            />
-
-            <OperationCard
-              icon={<CalendarDays size={17} />}
-              label="Interview Scheduling"
-            />
-
-            <OperationCard
-              icon={<UserPlus size={17} />}
-              label="Admin Management"
-            />
-
-            <OperationCard
-              icon={<FileText size={17} />}
-              label="Project Changes"
-            />
-
-            <OperationCard
-              icon={<Activity size={17} />}
-              label="Interview Reports"
-            />
-
-            <OperationCard
-              icon={<Settings size={17} />}
-              label="System Settings"
-            />
-
-            <OperationCard
-              icon={<Trash2 size={17} />}
-              label="Deletion Events"
-            />
-          </div>
-        </section>
-
-        {/* DEMO DATA CONTROL */}
-        <section className="rounded-lg border border-[#D97706]/20 bg-[#D97706]/5 p-5">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="font-semibold text-[#D97706]">
-                Frontend demo data
-              </h2>
-
-              <p className="mt-1 text-xs leading-5 text-[#D97706]/90">
-                These audit events are currently stored in
-                frontend state. A production implementation
-                should store immutable audit records in the
-                backend database.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={clearDemoLogs}
-              disabled={logs.length === 0}
-              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-[#D97706]/30 bg-white px-4 py-2.5 text-sm font-medium text-[#D97706] hover:bg-[#D97706]/10 disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
-            >
-              <Trash2 size={15} />
-              Clear Demo Logs
-            </button>
-          </div>
-        </section>
-      </div>
-
-      {/* DETAILS MODAL */}
-      {viewTarget && (
-        <AuditDetailsModal
-          log={viewTarget}
-          onClose={() => setViewTarget(null)}
-        />
-      )}
-    </main>
-  );
-}
-
-/* =========================================================
-   STAT CARD
-========================================================= */
-
-function StatCard({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: number;
-}) {
-  return (
-    <div className="rounded-lg border border-[#E2E8F0] bg-white p-4 shadow-xs">
-      <div className="flex items-center justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#F5F7FA] text-[#1976D2] border border-[#E2E8F0]">
-          {icon}
-        </div>
-
-        <span className="text-2xl font-semibold text-[#111F33]">
-          {value}
-        </span>
-      </div>
-
-      <p className="mt-4 text-sm font-medium text-[#64748B]">
-        {label}
-      </p>
-    </div>
-  );
-}
-
-/* =========================================================
-   FILTER SELECT
-========================================================= */
-
-function FilterSelect({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: string[];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div>
-      <label className="mb-1.5 block text-xs font-medium text-[#64748B]">
-        {label}
-      </label>
-
-      <select
-        value={value}
-        onChange={(event) =>
-          onChange(event.target.value)
-        }
-        className="w-full rounded-lg border border-[#E2E8F0] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#1976D2] text-[#111F33]"
-      >
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-/* =========================================================
-   TABLE ROW
-========================================================= */
-
-function AuditTableRow({
-  log,
-  onView,
-}: {
-  log: AuditLog;
-  onView: () => void;
-}) {
-  return (
-    <tr className="border-b border-slate-100 transition hover:bg-slate-50/70 dark:border-white/5 dark:hover:bg-white/[0.02]">
-      <td className="px-5 py-4">
-        <div className="flex items-center gap-3">
-          <ActionIcon action={log.action} />
-
-          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <ActionBadge action={log.action} />
-              <span className="text-[11px] text-slate-400">
-                {log.id}
-              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+                className="text-xs gap-1"
+              >
+                <ChevronLeft className="h-3.5 w-3.5" /> Previous
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page >= totalPages || loading}
+                className="text-xs gap-1"
+              >
+                Next <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
             </div>
-
-            <p className="mt-1 max-w-md truncate text-xs text-slate-500 dark:text-slate-400">
-              {log.description}
-            </p>
-
-            <p className="mt-1 text-[11px] text-slate-400">
-              {log.category}
-            </p>
           </div>
-        </div>
-      </td>
+        </Card>
+      )}
 
-      <td className="px-5 py-4">
-        <div>
-          <p className="text-sm font-medium text-slate-800 dark:text-white">
-            {log.performedBy}
-          </p>
-
-          <p className="mt-0.5 text-xs text-slate-400">
-            {log.email}
-          </p>
-        </div>
-      </td>
-
-      <td className="px-5 py-4">
-        <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
-          {log.target}
-        </p>
-
-        <p className="mt-0.5 text-xs text-slate-400">
-          {log.targetId}
-        </p>
-      </td>
-
-      <td className="px-5 py-4">
-        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-          <Clock3 size={13} />
-          {log.timestamp}
-        </div>
-
-        <p className="mt-1 text-[11px] text-slate-400">
-          IP: {log.ipAddress}
-        </p>
-      </td>
-
-      <td className="px-5 py-4">
-        <SeverityBadge severity={log.severity} />
-      </td>
-
-      <td className="px-5 py-4 text-right">
-        <button
-          type="button"
-          onClick={onView}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/5"
+      {/* 4. Event Inspection Modal */}
+      {selectedLog && (
+        <Modal
+          open={Boolean(selectedLog)}
+          onClose={() => setSelectedLog(null)}
+          title="Audit Event Inspection"
+          description={`Unique Event Record: ${selectedLog._id}`}
+          footer={
+            <div className="flex justify-end">
+              <Button size="sm" variant="outline" onClick={() => setSelectedLog(null)}>
+                Close
+              </Button>
+            </div>
+          }
         >
-          <Eye size={14} />
-          Details
-        </button>
-      </td>
-    </tr>
-  );
-}
-
-/* =========================================================
-   MOBILE CARD
-========================================================= */
-
-function AuditMobileCard({
-  log,
-  onView,
-}: {
-  log: AuditLog;
-  onView: () => void;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200 p-4 dark:border-white/10">
-      <div className="flex items-start gap-3">
-        <ActionIcon action={log.action} />
-
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <ActionBadge action={log.action} />
-            <SeverityBadge severity={log.severity} />
-          </div>
-
-          <p className="mt-2 text-sm font-medium text-slate-800 dark:text-white">
-            {log.description}
-          </p>
-
-          <p className="mt-2 text-xs text-slate-400">
-            {log.id} · {log.category}
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-3 border-t border-slate-100 pt-3 dark:border-white/5">
-        <MobileDetail
-          label="Administrator"
-          value={log.performedBy}
-        />
-
-        <MobileDetail
-          label="Target"
-          value={log.target}
-        />
-
-        <MobileDetail
-          label="Time"
-          value={log.timestamp}
-        />
-
-        <MobileDetail
-          label="IP Address"
-          value={log.ipAddress}
-        />
-      </div>
-
-      <button
-        type="button"
-        onClick={onView}
-        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 py-2 text-xs font-medium text-slate-600 dark:border-white/10 dark:text-slate-300"
-      >
-        <Eye size={14} />
-        View Full Details
-      </button>
-    </div>
-  );
-}
-
-/* =========================================================
-   ACTION ICON
-========================================================= */
-
-function ActionIcon({
-  action,
-}: {
-  action: AuditAction;
-}) {
-  const icon = getActionIcon(action);
-
-  return (
-    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-slate-300">
-      {icon}
-    </div>
-  );
-}
-
-/* =========================================================
-   ACTION BADGE
-========================================================= */
-
-function ActionBadge({
-  action,
-}: {
-  action: AuditAction;
-}) {
-  return (
-    <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-600 dark:bg-white/5 dark:text-slate-300">
-      {action}
-    </span>
-  );
-}
-
-/* =========================================================
-   SEVERITY BADGE
-========================================================= */
-
-function SeverityBadge({
-  severity,
-}: {
-  severity: AuditSeverity;
-}) {
-  const styles: Record<AuditSeverity, string> = {
-    Info:
-      "bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-slate-400",
-    Success:
-      "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400",
-    Warning:
-      "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400",
-    Critical:
-      "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400",
-  };
-
-  return (
-    <span
-      className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-medium ${styles[severity]}`}
-    >
-      {severity}
-    </span>
-  );
-}
-
-/* =========================================================
-   OPERATION CARD
-========================================================= */
-
-function OperationCard({
-  icon,
-  label,
-}: {
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <div className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] p-3 text-xs font-medium text-[#64748B] bg-white">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-[#F5F7FA] text-[#1976D2] border border-[#E2E8F0]">
-        {icon}
-      </div>
-
-      {label}
-    </div>
-  );
-}
-
-/* =========================================================
-   MOBILE DETAIL
-========================================================= */
-
-function MobileDetail({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
-  return (
-    <div>
-      <p className="text-[10px] uppercase tracking-wide text-slate-400">
-        {label}
-      </p>
-
-      <p className="mt-1 truncate text-xs font-medium text-slate-700 dark:text-slate-200">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-/* =========================================================
-   DETAILS MODAL
-========================================================= */
-
-function AuditDetailsModal({
-  log,
-  onClose,
-}: {
-  log: AuditLog;
-  onClose: () => void;
-}) {
-  return (
-    <ModalBackdrop onClose={onClose}>
-      <div className="w-full max-w-lg overflow-hidden rounded-lg border border-[#E2E8F0] bg-white shadow-xl">
-        <div className="flex items-start justify-between border-b border-slate-200 p-5 dark:border-white/10">
-          <div className="flex items-center gap-3">
-            <ActionIcon action={log.action} />
+          <div className="space-y-4 text-xs">
+            <div className="grid grid-cols-2 gap-3 rounded-lg border border-[#E2E8F0] bg-[#F5F7FA] p-3">
+              <div>
+                <span className="text-[10px] uppercase font-bold text-[#64748B]">Action Type</span>
+                <p className="font-mono font-semibold text-[#111F33]">{selectedLog.action}</p>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-[#64748B]">Outcome</span>
+                <p className={`font-semibold ${selectedLog.outcome === "SUCCESS" ? "text-[#16A34A]" : "text-[#DC2626]"}`}>
+                  {selectedLog.outcome}
+                </p>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-[#64748B]">Actor Identity</span>
+                <p className="text-[#111F33] font-medium">
+                  {selectedLog.actorName} ({selectedLog.actorRole})
+                </p>
+                {selectedLog.actorEmail && (
+                  <p className="text-[#64748B] text-[11px]">{selectedLog.actorEmail}</p>
+                )}
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-[#64748B]">Timestamp</span>
+                <p className="text-[#111F33]">
+                  {new Date(selectedLog.timestamp).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })} IST
+                </p>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-[#64748B]">Target Entity</span>
+                <p className="text-[#111F33]">
+                  {selectedLog.targetType}: {selectedLog.targetName || selectedLog.targetId || "—"}
+                </p>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold text-[#64748B]">Client IP</span>
+                <p className="font-mono text-[#64748B]">{selectedLog.ipAddress || "Internal Server / Loopback"}</p>
+              </div>
+            </div>
 
             <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-semibold text-slate-900 dark:text-white">
-                  Audit Event
-                </h2>
-
-                <ActionBadge action={log.action} />
-              </div>
-
-              <p className="mt-1 text-xs text-slate-400">
-                {log.id}
+              <span className="font-semibold text-[#111F33]">Event Description:</span>
+              <p className="mt-1 rounded-md border border-[#E2E8F0] bg-white p-2.5 text-[#111F33]">
+                {selectedLog.description}
               </p>
             </div>
+
+            {Boolean(selectedLog.details) && (
+              <div>
+                <span className="font-semibold text-[#111F33]">Safe Metadata & Context:</span>
+                <pre className="mt-1 max-h-48 overflow-y-auto rounded-md border border-[#E2E8F0] bg-[#111F33] p-3 text-[11px] font-mono text-emerald-400">
+                  {JSON.stringify(selectedLog.details, null, 2)}
+                </pre>
+              </div>
+            )}
           </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="p-5">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-white/10 dark:bg-white/[0.02]">
-            <p className="text-sm leading-6 text-slate-700 dark:text-slate-300">
-              {log.description}
-            </p>
-          </div>
-
-          <div className="mt-5 space-y-3">
-            <DetailRow
-              icon={<User size={15} />}
-              label="Performed By"
-              value={log.performedBy}
-            />
-
-            <DetailRow
-              icon={<MailIcon />}
-              label="Email"
-              value={log.email}
-            />
-
-            <DetailRow
-              icon={<Activity size={15} />}
-              label="Category"
-              value={log.category}
-            />
-
-            <DetailRow
-              icon={<FileText size={15} />}
-              label="Target"
-              value={log.target}
-            />
-
-            <DetailRow
-              icon={<Shield size={15} />}
-              label="Target ID"
-              value={log.targetId}
-            />
-
-            <DetailRow
-              icon={<Clock3 size={15} />}
-              label="Timestamp"
-              value={log.timestamp}
-            />
-
-            <DetailRow
-              icon={<Activity size={15} />}
-              label="IP Address"
-              value={log.ipAddress}
-            />
-
-            <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-100 p-3 dark:border-white/5">
-              <span className="text-xs text-slate-500">
-                Severity
-              </span>
-
-              <SeverityBadge severity={log.severity} />
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end border-t border-slate-200 p-5 dark:border-white/10">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 dark:border-white/10 dark:text-slate-300"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </ModalBackdrop>
-  );
-}
-
-/* =========================================================
-   DETAIL ROW
-========================================================= */
-
-function DetailRow({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-100 p-3 dark:border-white/5">
-      <div className="flex items-center gap-2 text-xs text-slate-500">
-        {icon}
-        {label}
-      </div>
-
-      <span className="max-w-[60%] break-words text-right text-sm font-medium text-slate-800 dark:text-slate-200">
-        {value}
-      </span>
+        </Modal>
+      )}
     </div>
-  );
-}
-
-/* =========================================================
-   MODAL BACKDROP
-========================================================= */
-
-function ModalBackdrop({
-  children,
-  onClose,
-}: {
-  children: React.ReactNode;
-  onClose: () => void;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/50 p-4 backdrop-blur-sm"
-      onMouseDown={(event) => {
-        if (event.target === event.currentTarget) {
-          onClose();
-        }
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-/* =========================================================
-   MAIL ICON
-========================================================= */
-
-function MailIcon() {
-  return (
-    <span className="text-[13px] font-bold">@</span>
-  );
-}
-
-/* =========================================================
-   HELPERS
-========================================================= */
-
-function getActionIcon(action: AuditAction) {
-  switch (action) {
-    case "Login":
-      return <LogIn size={17} />;
-
-    case "Logout":
-      return <LogOut size={17} />;
-
-    case "Create":
-      return <PlusIcon />;
-
-    case "Update":
-      return <Pencil size={17} />;
-
-    case "Delete":
-      return <Trash2 size={17} />;
-
-    case "Approve":
-      return <CheckCircle2 size={17} />;
-
-    case "Reject":
-      return <XCircle size={17} />;
-
-    case "Activate":
-      return <CheckCircle2 size={17} />;
-
-    case "Deactivate":
-      return <Ban size={17} />;
-
-    default:
-      return <Activity size={17} />;
-  }
-}
-
-function PlusIcon() {
-  return <span className="text-lg leading-none">+</span>;
-}
-
-function hasActiveFilters(
-  search: string,
-  action: string,
-  category: string,
-  severity: string,
-  admin: string
-) {
-  return (
-    search.trim() !== "" ||
-    action !== "All" ||
-    category !== "All" ||
-    severity !== "All" ||
-    admin !== "All"
   );
 }
