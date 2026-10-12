@@ -181,27 +181,28 @@ export function looksBinary(content) {
 // Higher score = included first when the budget is tight.
 const SCORE = {
   README: 1000,
-  EXPECTED: 900, // explicitly required by the assigned project
-  MANIFEST: 800, // package.json, requirements.txt, ...
-  ENTRY_POINT: 700, // server.js, main.py, index.ts, ...
-  API_SCHEMA: 600, // routes, controllers, models, schema, migrations
-  CONFIG: 500, // .env.example, docker-compose.yml, vite/webpack config
-  SOURCE: 400, // ordinary application source
-  TEST: 200, // tests, when relevant
+  EXPECTED: 950, // explicitly required by the assigned project
+  MANIFEST: 900, // package.json, requirements.txt, ...
+  ENTRY_POINT: 850, // server.js, main.py, index.ts, app.py ...
+  API_SCHEMA: 800, // routes, controllers, models, schema, tasks, crud, services
+  TEST: 700, // tests and fixtures (conftest.py, test_*.py)
+  CONFIG: 600, // .env.example, docker-compose.yml, vite/webpack config
+  SOURCE: 500, // ordinary application source
   OTHER: 100
 };
 
 const README_RE = /(?:^|\/)readme(?:\.[a-z0-9]+)?$/i;
 const EXPECTED_FILE_RE = /(?:^|\/)([\w.-]+\.[a-z0-9]+)$/i;
 const MANIFEST_RE =
-  /(?:^|\/)(?:package\.json|requirements\.txt|pom\.xml|build\.gradle(?:\.kts)?|cargo\.toml|go\.mod|composer\.json|pyproject\.toml|gemfile|pubspec\.yaml|mix\.exs)$/i;
+  /(?:^|\/)(?:package\.json|requirements\.txt|pom\.xml|build\.gradle(?:\.kts)?|cargo\.toml|go\.mod|composer\.json|pyproject\.toml|setup\.py|setup\.cfg|pipfile(?:\.lock)?|gemfile|pubspec\.yaml|mix\.exs)$/i;
 const ENTRY_POINT_RE =
-  /(?:^|\/)(?:server\.(?:js|ts|mjs|cjs)|app\.(?:js|ts|mjs|cjs)|index\.(?:js|ts|mjs|cjs|jsx|tsx)|main\.(?:js|ts|mjs|cjs|py)|app\.py|manage\.py|__main__\.py|main\.java|main\.go|main\.rs|Program\.cs|run\.py|wsgi\.py|asgi\.py)$/i;
+  /(?:^|\/)(?:server\.(?:js|ts|mjs|cjs|py)|app\.(?:js|ts|mjs|cjs|py)|index\.(?:js|ts|mjs|cjs|jsx|tsx)|main\.(?:js|ts|mjs|cjs|py)|manage\.py|__main__\.py|main\.java|main\.go|main\.rs|Program\.cs|run\.py|wsgi\.py|asgi\.py)$/i;
 const API_SCHEMA_RE =
-  /(?:^|\/)(?:routes?|controllers?|api|endpoints?|models?|entities|schemas?|repositories?|services?|migrations?|prisma)(?:\/|$)|(?:\.controller|\.service|\.model|\.route|\.entity|\.schema)\.[a-z0-9]+$|\.sql$/i;
+  /(?:^|\/)(?:routes?|routers?|controllers?|api|endpoints?|models?|entities|schemas?|repositories?|services?|tasks?|crud|views?|serializers?|migrations?|prisma)(?:\/|$)|(?:\.controller|\.service|\.model|\.route|\.router|\.schema|\.view|\.serializer)\.[a-z0-9]+$|\.sql$/i;
 const CONFIG_RE =
-  /(?:^|\/)(?:dockerfile|docker-compose\.ya?ml|\.env\.example|\.env\.sample|tsconfig\.json|vite\.config\.[a-z]+|webpack\.config\.[a-z]+|tailwind\.config\.[a-z]+|next\.config\.[a-z]+|nuxt\.config\.[a-z]+|angular\.json|jest\.config\.[a-z]+|pytest\.ini|tox\.ini)$/i;
-const TEST_RE = /(?:^|\/)(?:tests?|__tests__|spec|e2e|cypress)(?:\/|$)|\.(?:test|spec)\.[a-z0-9]+$|_test\.(?:js|ts|py|go|java)$/i;
+  /(?:^|\/)(?:dockerfile|docker-compose\.ya?ml|\.env\.example|\.env\.sample|tsconfig\.json|vite\.config\.[a-z]+|webpack\.config\.[a-z]+|tailwind\.config\.[a-z]+|next\.config\.[a-z]+|nuxt\.config\.[a-z]+|angular\.json|jest\.config\.[a-z]+|pytest\.ini|tox\.ini|(?:config|settings|database|db)\.(?:py|js|ts|json|ya?ml))$/i;
+const TEST_RE =
+  /(?:^|\/)(?:tests?|__tests__|spec|e2e|cypress)(?:\/|$)|(?:\.test|\.spec)\.[a-z0-9]+$|(?:test_.*|.*_test)\.(?:js|ts|py|go|java)$|conftest\.py$/i;
 const SOURCE_EXT =
   /\.(?:js|jsx|mjs|cjs|ts|tsx|mts|cts|py|java|kt|kts|cs|go|rs|rb|php|swift|dart|scala|vue|svelte|c|cpp|h|hpp|sql|graphql|gql|prisma|json|ya?ml|xml|toml|ini|md)$/i;
 
@@ -230,9 +231,12 @@ export function scoreFile(path, expectedFiles = []) {
   if (MANIFEST_RE.test(lower)) return SCORE.MANIFEST;
   if (ENTRY_POINT_RE.test(lower)) return SCORE.ENTRY_POINT;
   if (API_SCHEMA_RE.test(lower)) return SCORE.API_SCHEMA;
-  if (CONFIG_RE.test(lower)) return SCORE.CONFIG;
   if (TEST_RE.test(lower)) return SCORE.TEST;
-  if (SOURCE_EXT.test(lower)) return SCORE.SOURCE;
+  if (CONFIG_RE.test(lower)) return SCORE.CONFIG;
+  if (SOURCE_EXT.test(lower)) {
+    if (lower.endsWith('__init__.py')) return SCORE.OTHER + 50;
+    return SCORE.SOURCE;
+  }
 
   return SCORE.OTHER;
 }
@@ -364,14 +368,14 @@ export function buildCompactRepository(repoData, projectRequirements = {}, charB
 
   // --- Prioritised source files ---
   const candidates = Object.entries(keyFiles)
+    .filter(([_, data]) => typeof data?.content === "string")
     .map(([path, data]) => ({
       path,
-      content: typeof data?.content === "string" ? data.content : "",
+      content: data.content,
       score: scoreFile(path, expectedFiles)
     }))
     .filter((entry) => {
       stats.filesConsidered++;
-      if (!entry.content.trim()) return false;
       if (isExcludedPath(entry.path)) {
         stats.filesExcludedByRules++;
         return false;
@@ -386,30 +390,44 @@ export function buildCompactRepository(repoData, projectRequirements = {}, charB
 
   const entryOverhead = serialize({ p: { c: "" } }).length;
 
-  // Fair-share allocation: instead of letting the first (highest scored) file
-  // swallow the whole budget, spread the remaining space across the top
-  // candidates. This yields far more verification evidence.
-  const TARGET_FILES = 12;
-  const perFileShare = Math.max(
-    MIN_FILE_CHARS,
-    Math.floor(remaining / Math.max(1, Math.min(candidates.length, TARGET_FILES)))
-  );
+  for (let i = 0; i < candidates.length; i++) {
+    const entry = candidates[i];
 
-  for (const entry of candidates) {
+    // Zero-byte files (like __init__.py, .gitkeep) provide structure evidence without consuming character budget
+    if (entry.content.length === 0) {
+      base.keyFiles[entry.path] = { content: "", truncated: false, size: 0 };
+      base.structure.filesWithContent += 1;
+      stats.filesIncluded++;
+      continue;
+    }
+
     if (remaining <= 0 || remaining - entryOverhead < MIN_FILE_CHARS) {
       stats.filesDroppedByBudget++;
       continue;
     }
 
+    const remainingCandidateCount = candidates.length - i;
+    const dynamicShare = Math.max(
+      MIN_FILE_CHARS,
+      Math.floor(remaining / Math.max(1, remainingCandidateCount))
+    );
+
+    // High-priority files (manifests, entry points, API routes, models, schemas, tests)
+    // receive generous space (up to 3500 chars) so complete implementations are preserved.
+    const isPriorityFile = entry.score >= SCORE.TEST;
+    const targetCap = isPriorityFile
+      ? Math.max(dynamicShare, Math.min(3500, remaining - entryOverhead))
+      : dynamicShare;
+
     const cap = Math.min(
       MAX_FILE_CHARS,
       CSS_FILE.test(entry.path) ? MAX_CSS_CHARS : MAX_FILE_CHARS,
-      perFileShare,
+      targetCap,
       remaining - entryOverhead
     );
 
     const { content, truncated } = truncateText(entry.content, cap);
-    if (!content.trim()) {
+    if (!content.trim() && entry.content.trim()) {
       stats.filesDroppedByBudget++;
       continue;
     }

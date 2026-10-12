@@ -821,7 +821,7 @@ function getFileExtension(filename) {
 /**
  * Comprehensive security validation for repository files
  */
-function validateFileSecurity(path, content = null) {
+export function validateFileSecurity(path, content = null) {
   const securityIssues = [];
   const warnings = [];
   
@@ -869,23 +869,19 @@ function validateFileSecurity(path, content = null) {
   
   // 3. Check for suspicious content if provided
   if (content && typeof content === 'string') {
-    // Check for prompt injection attempts
+    // Check for prompt injection attempts (strict matching - do not flag standard API/auth concepts or testing code)
     const injectionPatterns = [
-      /ignore.*previous.*instructions/i,
-      /system.*prompt/i,
-      /internal.*instructions/i,
-      /hidden.*prompt/i,
-      /you.*are.*now/i,
-      /role.*play/i,
-      /act.*as/i,
-      /pretend.*to.*be/i,
-      /disregard.*previous/i,
-      /forget.*everything/i,
-      /your.*creators/i,
-      /your.*developers/i,
-      /api.*key/i,
-      /bearer.*token/i,
-      /basic.*auth/i
+      /ignore\s+(?:all\s+)?(?:previous|prior|system)\s+instructions/i,
+      /disregard\s+(?:all\s+)?(?:previous|prior|system)\s+instructions/i,
+      /forget\s+(?:everything|all\s+previous\s+instructions)/i,
+      /(?:override|bypass)\s+(?:all\s+)?(?:system|developer|verification)\s+(?:instructions|rules|prompts)/i,
+      /you\s+are\s+now\s+(?:an?\s+)?(?:unrestricted|dan|jailbreak|new\s+ai)/i,
+      /always\s+respond\s+with\s+(?:["']?VERIFIED["']?|VERIFIED)/i,
+      /pretend\s+to\s+be\s+(?:an?\s+)?(?:admin|system|evaluator|verifier)/i,
+      /system\s*prompt\s*:\s*(?:override|reveal|ignore)/i,
+      /role\s*play\s*as\s*(?:admin|evaluator|verifier|unrestricted)/i,
+      /internal\s+instructions\s*:\s*(?:override|ignore|reveal)/i,
+      /hidden\s+prompt\s*:\s*(?:override|reveal)/i
     ];
     
     for (const pattern of injectionPatterns) {
@@ -992,17 +988,97 @@ async function fetchFileContentSafely(owner, repo, path, branch = 'main') {
     if (response.status === 200) {
       const fileData = response.data;
       
-      // The Contents API returns base64 in `content`, EXCEPT for files above
-      // 1MB where it returns an empty string and requires the raw/blob
-      // endpoint instead. Treating that empty string as "decoded fine" would
-      // silently yield an empty file that looks like a successful fetch.
-      if (typeof fileData?.content !== "string" || !fileData.content) {
+      // Handle zero-byte files explicitly (e.g. empty __init__.py, .gitkeep).
+      // Empty __init__.py files are completely standard in Python projects.
+      // GitHub Contents API returns size: 0 and content: "" (or empty string base64).
+      if (fileData?.size === 0 || (fileData?.content === "" && fileData?.size === 0)) {
         return {
-          available: false,
-          reason: 'GitHub returned no content field (file may exceed 1MB)',
-          content: null,
-          size: fileData?.size || 0
+          available: true,
+          content: "",
+          size: 0,
+          truncated: false,
+          sha: fileData?.sha,
+          path: fileData?.path || path,
+          encoding: fileData?.encoding,
+          security: {
+            warnings: [],
+            issues: [],
+            safe: true
+          }
         };
+      }
+      
+      let rawBase64 = typeof fileData?.content === "string" ? fileData.content : null;
+
+      // When fileData.size > 0 but the Contents API returned no inline content
+      // (e.g. files > 1MB or certain git blob structures), attempt fallback retrieval
+      // via git_url (blobs API) or download_url if the file is within MAX_FILE_SIZE limit.
+      if (!rawBase64 || !rawBase64.trim()) {
+        if (fileData?.size > MAX_FILE_SIZE) {
+          return {
+            available: false,
+            reason: `File too large (${fileData.size} bytes > ${MAX_FILE_SIZE} limit)`,
+            content: null,
+            size: fileData.size
+          };
+        }
+
+        // Try git_url blob endpoint
+        if (fileData?.git_url) {
+          try {
+            const blobResponse = await githubGet(fileData.git_url);
+            if (blobResponse?.status === 200 && typeof blobResponse.data?.content === "string") {
+              rawBase64 = blobResponse.data.content;
+            }
+          } catch {
+            // Blob fetch failed, will try download_url next
+          }
+        }
+
+        // Try download_url raw content if still no base64
+        if (!rawBase64 && fileData?.download_url) {
+          try {
+            const rawResponse = await githubGet(fileData.download_url);
+            if (rawResponse?.status === 200 && typeof rawResponse.data === "string") {
+              let rawText = rawResponse.data;
+              const contentSecurityCheck = validateFileSecurity(path, rawText);
+              if (contentSecurityCheck.warnings.length > 0) {
+                console.warn(`Security warnings for ${path}:`, contentSecurityCheck.warnings);
+              }
+              const MAX_CONTENT_LENGTH = 50000;
+              const truncated = rawText.length > MAX_CONTENT_LENGTH;
+              if (truncated) {
+                rawText = rawText.substring(0, MAX_CONTENT_LENGTH) + '\n...[truncated]';
+              }
+              rawText = rawText.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+              return {
+                available: true,
+                content: rawText,
+                size: fileData.size || rawText.length,
+                truncated,
+                sha: fileData.sha,
+                path: fileData.path || path,
+                encoding: "utf-8",
+                security: {
+                  warnings: contentSecurityCheck.warnings,
+                  issues: contentSecurityCheck.securityIssues,
+                  safe: contentSecurityCheck.safe
+                }
+              };
+            }
+          } catch {
+            // Fallback raw fetch failed
+          }
+        }
+
+        if (!rawBase64) {
+          return {
+            available: false,
+            reason: 'GitHub returned no content field (file may exceed 1MB or blob unavailable)',
+            content: null,
+            size: fileData?.size || 0
+          };
+        }
       }
       
       // Check size
@@ -1018,7 +1094,7 @@ async function fetchFileContentSafely(owner, repo, path, branch = 'main') {
       // Decode base64 content
       let content = '';
       try {
-        content = Buffer.from(fileData.content, 'base64').toString('utf-8');
+        content = Buffer.from(rawBase64.replace(/\s/g, ''), 'base64').toString('utf-8');
       } catch (decodeError) {
         return {
           available: false,
@@ -1125,10 +1201,13 @@ export async function getKeyRepositoryFiles(url, preloadedStructure = null, expe
     }
     
     const keyFilePatterns = [
-      // Package management (HIGH PRIORITY - essential for analysis)
+      // Package management & manifests (HIGH PRIORITY - essential for analysis)
       /package\.json$/i,
       /requirements\.txt$/i,
-      /Pipfile$/i,
+      /Pipfile(?:\.lock)?$/i,
+      /pyproject\.toml$/i,
+      /setup\.py$/i,
+      /setup\.cfg$/i,
       /poetry\.lock$/i,
       /Gemfile$/i,
       /Cargo\.toml$/i,
@@ -1140,8 +1219,7 @@ export async function getKeyRepositoryFiles(url, preloadedStructure = null, expe
       
       // Configuration (HIGH PRIORITY)
       /dockerfile/i,
-      /docker-compose\.yml$/i,
-      /docker-compose\.yaml$/i,
+      /docker-compose\.ya?ml$/i,
       /\.config\./i,
       /webpack\.config\./i,
       /vite\.config\./i,
@@ -1169,20 +1247,22 @@ export async function getKeyRepositoryFiles(url, preloadedStructure = null, expe
       /\.(html|htm)$/i,
       /\.(css|scss|sass|less)$/i,
       
-      // Project documentation (LOW PRIORITY)
+      // Project documentation
       /README\./i,
       /CONTRIBUTING\./i,
       /LICENSE$/i,
       /\.gitignore$/i,
       /\.gitattributes$/i,
       
-      // Test files (MEDIUM PRIORITY)
+      // Test files and fixtures
+      /conftest\.py$/i,
       /test\./i,
       /spec\./i,
       /\.test\./i,
       /\.spec\./i,
+      /(?:test_.*|.*_test)\.py$/i,
       
-      // Build/CI files (MEDIUM PRIORITY)
+      // Build/CI files
       /\.github\/workflows\//i,
       /\.gitlab-ci\.yml$/i,
       /\.travis\.yml$/i,
@@ -1192,7 +1272,7 @@ export async function getKeyRepositoryFiles(url, preloadedStructure = null, expe
     ];
     
     const keyFiles = [];
-    const MAX_FILES_TO_FETCH = 30;
+    const MAX_FILES_TO_FETCH = 60; // Increased to 60 to prevent omitting nested application files
     const MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10MB total
     let totalSize = 0;
     
@@ -1259,7 +1339,7 @@ export async function getKeyRepositoryFiles(url, preloadedStructure = null, expe
     // end up with a structure but zero usable content.
     const filesToFetch = keyFiles.slice(0, MAX_FILES_TO_FETCH);
     const filesWithContent = [];
-    const MAX_CONCURRENT_CONTENT_FETCHES = 5;
+    const MAX_CONCURRENT_CONTENT_FETCHES = 10;
 
     const fetchOneFile = async (file) => {
       // Skip dangerous/sensitive files before making a GitHub request.
@@ -1420,6 +1500,9 @@ function getFilePriority(filepath, expectedFiles = []) {
   // Package files are priority 2
   if (filename.includes('package.json') || 
       filename.includes('requirements.txt') ||
+      filename.includes('pyproject.toml') ||
+      filename.includes('pipfile') ||
+      filename.includes('setup.py') ||
       filename.includes('pom.xml') ||
       filename.includes('build.gradle') ||
       filename.includes('cargo.toml') ||
@@ -1427,24 +1510,54 @@ function getFilePriority(filepath, expectedFiles = []) {
     return 2;
   }
   
-  // Configuration files
-  if (filename.includes('dockerfile') ||
-      filename.includes('webpack.config') ||
-      filename.includes('tsconfig.json') ||
-      filename.includes('.config.')) {
+  // Main application entry points (Priority 3)
+  if (filename.endsWith('app.py') ||
+      filename.endsWith('main.py') ||
+      filename.endsWith('server.py') ||
+      filename.endsWith('run.py') ||
+      filename.endsWith('manage.py') ||
+      filename.endsWith('asgi.py') ||
+      filename.endsWith('wsgi.py') ||
+      filename.includes('index.') ||
+      filename.includes('src/index.')) {
     return 3;
   }
   
-  // Main source files (likely entry points)
-  if (filename.includes('index.') ||
-      filename.includes('app.') ||
-      filename.includes('main.') ||
-      filename.includes('server.') ||
-      filename.includes('src/index.')) {
+  // Core API Domain Logic: routers, endpoints, controllers, models, schemas, services, tasks, views (Priority 4)
+  if (/(?:^|\/)(?:routers?|routes?|endpoints?|controllers?|models?|schemas?|services?|tasks?|crud|views?|serializers?)(?:\/|$)/i.test(filename) ||
+      /(?:\.controller|\.service|\.model|\.route|\.router|\.schema|\.view|\.serializer)\.[a-z0-9]+$/i.test(filename)) {
     return 4;
   }
+
+  // Configuration & Database files (Priority 5)
+  if (filename.includes('dockerfile') ||
+      filename.includes('docker-compose') ||
+      filename.includes('webpack.config') ||
+      filename.includes('tsconfig.json') ||
+      filename.includes('.config.') ||
+      filename.endsWith('database.py') ||
+      filename.endsWith('db.py') ||
+      filename.endsWith('config.py') ||
+      filename.endsWith('settings.py')) {
+    return 5;
+  }
   
-  // Other source files
+  // Documentation (README is high value context, Priority 6)
+  if (filename.includes('readme')) {
+    return 6;
+  }
+  
+  // Test files & fixtures (Priority 7)
+  if (filename.includes('test') || filename.includes('spec') || filename.includes('conftest')) {
+    return 7;
+  }
+
+  // Python __init__.py files - low priority so real implementation code is fetched first (Priority 9)
+  if (filename.endsWith('__init__.py')) {
+    return 9;
+  }
+  
+  // Other source files (Priority 8)
   const sourceExtensions = [
     '.js', '.ts', '.jsx', '.tsx', '.py', '.java', '.cpp', '.c', '.cc',
     '.cs', '.php', '.rb', '.go', '.rs', '.swift', '.kt', '.kts', '.scala',
@@ -1453,22 +1566,12 @@ function getFilePriority(filepath, expectedFiles = []) {
   
   for (const ext of sourceExtensions) {
     if (filename.endsWith(ext)) {
-      return 5;
+      return 8;
     }
   }
   
-  // Documentation
-  if (filename.includes('readme')) {
-    return 6;
-  }
-  
-  // Test files
-  if (filename.includes('test') || filename.includes('spec')) {
-    return 7;
-  }
-  
   // Other files
-  return 8;
+  return 10;
 }
 
 /**
@@ -1828,7 +1931,7 @@ export async function fetchRepositoryContent(url, options = {}) {
       const keyFilesWithContent = {};
       if (keyFilesResult.available && keyFilesResult.files) {
         keyFilesResult.files.forEach(file => {
-          if (file.content && file.fetchStatus === 'fetched') {
+          if (typeof file.content === 'string' && file.fetchStatus === 'fetched') {
             keyFilesWithContent[file.path] = {
               content: file.content,
               size: file.size,

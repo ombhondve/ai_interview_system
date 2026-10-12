@@ -1182,14 +1182,13 @@ export function processVerificationForStorage(verificationResult, candidateId, p
   const evidenceSummary = {};
   if (requirementsAssessment && Array.isArray(requirementsAssessment)) {
     requirementsAssessment.forEach(req => {
-      if (req.evidence) {
-        evidenceSummary[req.requirementId] = {
-          status: req.status,
-          evidence: req.evidence,
-          relevantFiles: req.relevantFiles || [],
-          notes: req.notes || ""
-        };
-      }
+      evidenceSummary[req.requirementId] = {
+        description: req.description || "",
+        status: req.status || "MISSING",
+        evidence: req.evidence || "",
+        relevantFiles: Array.isArray(req.relevantFiles) ? req.relevantFiles : [],
+        notes: req.notes || ""
+      };
     });
   }
   
@@ -1206,11 +1205,13 @@ export function processVerificationForStorage(verificationResult, candidateId, p
   const compressedEvidence = {};
   Object.entries(evidenceSummary).forEach(([reqId, evidence]) => {
     compressedEvidence[reqId] = {
+      description: evidence.description,
       status: evidence.status,
       evidence: evidence.evidence ? evidence.evidence.substring(0, 500) : "", // Limit evidence length
       evidenceTruncated: evidence.evidence && evidence.evidence.length > 500,
       fileCount: evidence.relevantFiles ? evidence.relevantFiles.length : 0,
-      hasNotes: !!evidence.notes
+      hasNotes: !!evidence.notes,
+      notes: evidence.notes ? evidence.notes.substring(0, 500) : ""
     };
   });
   
@@ -1221,23 +1222,29 @@ export function processVerificationForStorage(verificationResult, candidateId, p
   );
   
   criticalRequirements.forEach(req => {
-    if (req.evidence || req.relevantFiles) {
-      criticalEvidence[req.requirementId] = {
-        description: req.description || "",
-        status: req.status,
-        evidence: req.evidence ? req.evidence.substring(0, 1000) : "",
-        relevantFiles: req.relevantFiles || [],
-        notes: req.notes || ""
-      };
-    }
+    criticalEvidence[req.requirementId] = {
+      description: req.description || "",
+      status: req.status || "MISSING",
+      evidence: req.evidence ? req.evidence.substring(0, 1000) : "No implementation evidence found in analyzed repository files.",
+      relevantFiles: Array.isArray(req.relevantFiles) ? req.relevantFiles : [],
+      notes: req.notes || "Requirement not satisfied in submitted files"
+    };
   });
   
+  const rejectionReason = verificationStatus === VERIFICATION_STATUS.REJECTED
+    ? (summary ||
+       (Object.keys(criticalEvidence).length > 0
+         ? Object.values(criticalEvidence).map(c => `${c.description}: ${c.notes}`).join("; ")
+         : "Critical project requirements were not satisfied."))
+    : null;
+
   return {
     candidateId,
     projectId,
     status: verificationStatus,
     confidence,
     summary,
+    rejectionReason,
     
     // Key metrics
     requirementsTotal,

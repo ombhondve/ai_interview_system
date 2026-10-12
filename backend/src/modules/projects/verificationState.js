@@ -67,13 +67,34 @@ export function isInterviewEligible(candidate) {
  * The persisted reason a student is not eligible (for REJECTED).
  */
 export function getPersistedRejectionReason(candidate) {
-  return (
-    candidate?.rejectionReason ||
-    candidate?.projectSubmission?.aiVerificationResult?.detailedAnalysis
-      ?.reviewReasons?.[0] ||
-    candidate?.projectSubmission?.aiVerificationResult?.summary ||
-    null
-  );
+  if (candidate?.rejectionReason) return candidate.rejectionReason;
+  if (candidate?.projectSubmission?.rejectionReason) return candidate.projectSubmission.rejectionReason;
+
+  const resultStatus = (
+    candidate?.projectSubmission?.aiVerificationResult?.verificationStatus || ""
+  ).toUpperCase();
+  const submissionStatus = (
+    candidate?.projectSubmissionStatus || ""
+  ).toLowerCase();
+  const aiStatus = (
+    candidate?.projectSubmission?.aiVerificationStatus || ""
+  ).toLowerCase();
+
+  const isRejected =
+    resultStatus === "REJECTED" ||
+    submissionStatus === "rejected" ||
+    aiStatus === "rejected";
+
+  if (isRejected) {
+    return (
+      candidate?.projectSubmission?.aiVerificationResult?.detailedAnalysis
+        ?.reviewReasons?.[0] ||
+      candidate?.projectSubmission?.aiVerificationResult?.summary ||
+      null
+    );
+  }
+
+  return null;
 }
 
 /**

@@ -92,6 +92,14 @@ export async function storeVerificationResult(candidateId, verificationResult, s
       }
     };
     
+    if (nextAiVerificationStatus === "rejected") {
+      const rejectionReason = processedData.rejectionReason || 
+        verificationResult.summary || 
+        "Project did not satisfy required specifications";
+      updateData["rejectionReason"] = rejectionReason;
+      updateData["projectSubmission.rejectionReason"] = rejectionReason;
+    }
+    
     const updatedCandidate = await Candidate.findByIdAndUpdate(
       query,
       {
