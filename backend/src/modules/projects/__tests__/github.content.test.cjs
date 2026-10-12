@@ -145,13 +145,13 @@ describe("evidence budget", () => {
   const { projectVerificationPrompt } = require("../../ai/ai.prompt.js");
 
   test("the system prompt must not starve the repository section", () => {
-    // Regression guard: a ~16.5k char system prompt previously left the
-    // repository only the 1200-char floor.
-    expect(getRepositoryBudgetChars(2000, 120)).toBeGreaterThanOrEqual(12000);
+    // With the condensed prompt (~4.3k chars), user budget is ~21k chars, leaving plenty for repository.
+    expect(getRepositoryBudgetChars(2000, 120, projectVerificationPrompt.length)).toBeGreaterThanOrEqual(12000);
   });
 
-  test("the repository is not starved even by a huge requirement list", () => {
-    expect(getRepositoryBudgetChars(500000, 500)).toBeGreaterThanOrEqual(12000);
+  test("the repository budget never exceeds actual available characters", () => {
+    // When requirements exceed the user budget, getRepositoryBudgetChars returns 0 rather than exceeding limits
+    expect(getRepositoryBudgetChars(500000, 500, projectVerificationPrompt.length)).toBe(0);
   });
 
   test("user budget accounts for the real system prompt size", () => {
@@ -159,7 +159,9 @@ describe("evidence budget", () => {
 
     expect(budget).toBeGreaterThan(0);
     expect(Number.isFinite(budget)).toBe(true);
+    expect(budget + projectVerificationPrompt.length).toBeLessThanOrEqual(26000);
   });
+
 
   const repoData = {
     structure: {
@@ -186,7 +188,7 @@ describe("evidence budget", () => {
     const { content, stats } = buildCompactRepository(
       repoData,
       {},
-      getRepositoryBudgetChars(2000, 120)
+      getRepositoryBudgetChars(2000, 120, projectVerificationPrompt.length)
     );
 
     expect(stats.filesIncluded).toBe(4);
@@ -207,7 +209,7 @@ describe("evidence budget", () => {
     const { content, stats } = buildCompactRepository(
       withNullContent,
       {},
-      getRepositoryBudgetChars(2000, 120)
+      getRepositoryBudgetChars(2000, 120, projectVerificationPrompt.length)
     );
 
     expect(stats.filesIncluded).toBe(0);
@@ -232,8 +234,9 @@ describe("evidence budget", () => {
     const { content, stats } = buildCompactRepository(
       bigRepo,
       {},
-      getRepositoryBudgetChars(2000, 120)
+      getRepositoryBudgetChars(2000, 120, projectVerificationPrompt.length)
     );
+
 
     expect(stats.filesIncluded).toBe(4);
     expect(content.structure.filesWithContent).toBe(4);

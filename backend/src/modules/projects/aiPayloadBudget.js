@@ -93,7 +93,7 @@ export function getMaxInputChars() {
 export function getUserPayloadBudgetChars(systemPromptChars = 0) {
   const reserve = Math.max(0, Number(systemPromptChars) || 0) + SAFETY_MARGIN_CHARS;
   const remaining = getMaxInputChars() - reserve;
-  return Math.max(1200, remaining);
+  return Math.max(0, remaining);
 }
 
 /**
@@ -103,23 +103,16 @@ export function getUserPayloadBudgetChars(systemPromptChars = 0) {
  * their size is measured and subtracted FIRST. What remains belongs to the
  * repository - because a verification request with no source code cannot
  * produce an evidence-based decision at all.
- *
- * MIN_REPOSITORY_BUDGET_CHARS guarantees the repository always receives real
- * context, even when a large requirement list would otherwise consume
- * everything.
  */
 export function getRepositoryBudgetChars(requirementsChars = 0, wrapperOverhead = 0, systemPromptChars = 0) {
   const userBudget = getUserPayloadBudgetChars(systemPromptChars);
   const requirements = Math.max(0, Number(requirementsChars) || 0);
   const wrapper = Math.max(0, Number(wrapperOverhead) || 0);
 
-  // If systemPromptChars was not supplied (e.g. unit tests passing 0), guarantee at least MIN_REPOSITORY_BUDGET_CHARS
-  const calculated = userBudget - requirements - wrapper - 200;
-  if (!systemPromptChars) {
-    return Math.max(MIN_REPOSITORY_BUDGET_CHARS, calculated);
-  }
-  return Math.max(MIN_FILE_CHARS, calculated);
+  const remaining = userBudget - requirements - wrapper - 200;
+  return Math.max(0, remaining);
 }
+
 
 
 // ---------------------------------------------------------------------------

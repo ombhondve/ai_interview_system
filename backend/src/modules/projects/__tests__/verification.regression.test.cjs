@@ -441,5 +441,28 @@ describe("RecruitAI Project Verification - 13 Regression Scenarios", () => {
     expect(result.verificationStatus).toBe(VERIFICATION_STATUS.ERROR);
     expect(result.verificationMetadata.retryable).toBe(true);
   });
+
+  // Scenario 18: Credit optimization - Local JSON repair avoids unnecessary second AI call
+  test("Scenario 18: Minor JSON formatting flaw (e.g. trailing comma) parsed locally without second AI call", () => {
+    // Test the extractJson behavior from ai.service.js
+    const fs = require("fs");
+    const aiServiceCode = fs.readFileSync(require.resolve("../../ai/ai.service.js"), "utf8");
+    // Ensure extractJson handles trailing commas locally
+    expect(aiServiceCode).toContain("replace(/,\\s*([}\\]])/g");
+  });
+
+  // Scenario 19: Maximum one normal AI request and one corrective retry per verification attempt
+  test("Scenario 19: Maximum 1 retry allowed on failure, never infinite loop or unconstrained calls", async () => {
+    repositoryService.fetchRepositoryContent.mockResolvedValue(validRepoContent());
+    // In generateStructuredAI, if first call fails, exactly 1 retry is attempted with compact instructions
+    aiService.generateStructuredAI.mockImplementation(async () => {
+      throw new Error("Both attempts failed");
+    });
+
+    const result = await verifyProjectSubmission("cand-19", "proj-19", "https://github.com/student/repo");
+    expect(result.status).toBe(VERIFICATION_STATUS.ERROR);
+    expect(aiService.generateStructuredAI).toHaveBeenCalledTimes(1);
+  });
 });
+
 

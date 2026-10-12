@@ -141,8 +141,10 @@ describe("1. Important source files prioritization and payload budgeting", () =>
       readme: null
     };
 
-    const repoBudget = getRepositoryBudgetChars(1500, 200);
+    const { projectVerificationPrompt } = require("../../ai/ai.prompt.js");
+    const repoBudget = getRepositoryBudgetChars(1500, 200, projectVerificationPrompt.length);
     const { content, stats } = buildCompactRepository(repoData, {}, repoBudget);
+
 
     // All implementation files and empty package files are included
     expect(stats.filesConsidered).toBe(15);

@@ -370,12 +370,13 @@ function prepareVerificationMessages(projectRequirements, repositoryContent) {
     2
   ).length;
   const requirementsChars = JSON.stringify(projectRequirements, null, 2).length;
-  const repoBudget = getRepositoryBudgetChars(requirementsChars, wrapperOverhead);
+  const repoBudget = getRepositoryBudgetChars(requirementsChars, wrapperOverhead, systemPrompt.length);
 
   logger.info(
-    `Verification evidence budget: user=${getUserPayloadBudgetChars(systemPrompt.length)} ` +
+    `Verification evidence budget: user=${userBudget} ` +
       `requirements=${requirementsChars} repository=${repoBudget} chars`
   );
+
 
   // Compact evidence only - never the whole repository.
   const compact = buildCompactRepository(

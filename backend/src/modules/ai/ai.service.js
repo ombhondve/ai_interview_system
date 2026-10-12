@@ -110,6 +110,17 @@ function extractJson(content) {
 
     return parsed;
   } catch (error) {
+    // 5.5 Try parsing after stripping trailing commas locally to save AI credits
+    const sanitized = jsonText.replace(/,\s*([}\]])/g, "$1");
+    try {
+      const parsed = JSON.parse(sanitized);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch (sanitizeError) {
+      // Continue to error throw below
+    }
+
     // -------------------------------------------------------
     // 6. Provide useful debugging information
     // -------------------------------------------------------
@@ -125,6 +136,8 @@ function extractJson(content) {
     );
   }
 }
+
+
 
 /**
  * Generate a normal conversational response.
