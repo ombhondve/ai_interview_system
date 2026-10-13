@@ -209,7 +209,7 @@ jest.mock("../interviewConfig.model.js", () => ({
       interviewDurationMinutes: 30,
       workingHours: { startHour: 9, endHour: 18 },
       allowedWeekdays: [0, 1, 2, 3, 4, 5, 6],
-      schedulingHorizonDays: 3650,
+      schedulingHorizonDays: 14,
       minLeadHours: 0,
       mode: "online",
       location: "Online",

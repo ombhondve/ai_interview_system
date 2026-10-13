@@ -216,12 +216,10 @@ router.post("/:interviewId/end", requireVerifiedSession, validInterviewId, async
   try { return res.json({ success: true, interview: await answerService.endInterview(req.params.interviewId, req.candidate._id) }); }
   catch (error) { return handleError(res, error); }
 });
-router.get("/:interviewId/transcript", requireVerifiedSession, validInterviewId, async (req, res) => {
+router.get("/:interviewId/transcript", requireAuth, requireRole("superadmin", "recruiter", "admin"), validInterviewId, async (req, res) => {
   try {
     const doc = await AiInterview.findById(req.params.interviewId).select("candidateId transcript status");
     if (!doc) return res.status(404).json({ success: false, message: "Interview not found." });
-    if (String(doc.candidateId) !== String(req.candidate._id)) return res.status(403).json({ success: false, message: "You cannot access this transcript." });
-    if (!isProjectVerified(req.candidate)) return res.status(403).json({ success: false, message: "The assigned project must be verified before transcript access." });
     return res.json({ success: true, transcript: doc.transcript, status: doc.status });
   } catch (error) { return handleError(res, error); }
 });

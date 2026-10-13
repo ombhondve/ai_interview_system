@@ -4,6 +4,8 @@ import bcrypt from "bcrypt";
 import app from "./app.js";
 import connectDatabase from "./config/database.js";
 import Admin from "./modules/admin/admin.model.js";
+import { validateEnvironment } from "./config/env.js";
+import logger from "./utils/logger.js";
 import {
   isGitHubTokenConfigured,
   getGitHubTimeoutMs,
@@ -70,9 +72,11 @@ async function initializeDefaultAdmin() {
 
 async function startServer() {
   try {
+    validateEnvironment();
+
     // Connect to database
     await connectDatabase();
-    console.log("✅ MongoDB connected successfully");
+    logger.info("MongoDB connected successfully");
 
     logGitHubConfiguration();
 

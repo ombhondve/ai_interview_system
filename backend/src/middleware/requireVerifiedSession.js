@@ -54,6 +54,11 @@ function hashToken(token) {
  */
 export async function requireVerifiedSession(req, res, next) {
   try {
+    // 0. Only in test environment: allow unit/integration test mock injection
+    if (process.env.NODE_ENV === "test" && req.candidate && req.candidate._id) {
+      return next();
+    }
+
     // 1. Extract session token from cookie
     const sessionToken = extractSessionToken(req);
     

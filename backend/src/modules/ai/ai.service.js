@@ -236,16 +236,15 @@ export async function generateStructuredAI(messages, options = {}) {
       `[ai-provider] First AI generation failed correlationId=${correlationId} error="${firstError.message}". Retrying with compact schema instructions...`
     );
 
-    // On retry, adjust system prompt instructions rather than appending a bloated instruction
-    // to the large user prompt, avoiding exceeding request budget.
     const retryMessages = messages.map((message) => {
-      if (message.role === "system") {
-        return {
-          ...message,
-          content: `${message.content}\n\nIMPORTANT RETRY INSTRUCTION: Keep JSON concise. Summarize evidence briefly (<100 chars per item). Output ONLY valid, complete JSON matching the required schema.`
-        };
+      if (message.role !== "user") {
+        return message;
       }
-      return message;
+
+      return {
+        ...message,
+        content: `${message.content}\n\nRETRY INSTRUCTION:\nThe previous response was incomplete or invalid JSON. Keep the JSON compact and concise. Summarize evidence briefly (<100 chars per item). Output ONLY valid, complete JSON matching the required schema.`
+      };
     });
 
     const content = await generateAIResponse(retryMessages, {

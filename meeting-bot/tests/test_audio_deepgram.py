@@ -367,4 +367,34 @@ def test_device_resolution_fails_clearly_when_not_found():
         assert service._capture_device_info is None
 
 
+def test_unicode_safe_print_preserves_multilingual_transcript():
+    """Regression test: verify safe_print handles English, Devanagari, and Unicode without throwing UnicodeEncodeError."""
+    from app.main import safe_print
 
+    # Test cases: English, Devanagari (Hindi/Marathi), Chinese, accented characters, emojis
+    transcripts = [
+        "Hello, my name is Candidate and I implemented the full-stack system.",
+        "नमस्ते, मी पूर्ण स्टॅक सिस्टम तयार केली आहे आणि डेटाबेस जोडला आहे.",
+        "हाँ, मैंने प्रमाणीकरण और डेटाबेस आर्किटेक्चर पूरा कर लिया है।",
+        "你好，我完成了项目的前后端架构与数据库连接。",
+        "Café, résumé, façade, über, and 🚀 rocket emojis."
+    ]
+
+    for transcript in transcripts:
+        # safe_print must execute cleanly without throwing UnicodeEncodeError
+        safe_print(f"TEST TRANSCRIPT: '{transcript}'")
+        assert len(transcript) > 0
+
+
+def test_unicode_safe_print_recovers_on_cp1252_encoding_error():
+    """Regression test: simulate CP1252 stdout that throws UnicodeEncodeError on Devanagari."""
+    from app.main import safe_print
+
+    devanagari_text = "माझा प्रकल्प यशस्वीरीत्या पूर्ण झाला आहे."
+
+    # Simulate a stream that raises UnicodeEncodeError when attempting to print characters outside CP1252
+    with patch("builtins.print") as mock_print:
+        mock_print.side_effect = UnicodeEncodeError("charmap", "\u092e", 0, 1, "character maps to <undefined>")
+        # safe_print must catch the error and fallback to byte buffer write without raising
+        safe_print(f"CANDIDATE TRANSCRIPT: '{devanagari_text}'")
+        assert mock_print.called
