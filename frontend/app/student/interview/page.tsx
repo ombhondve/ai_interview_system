@@ -36,12 +36,12 @@ function getStatusBadge(session: Session) {
     return { text: "Completed", subtext: "Concluded", colorClass: "text-[#1B4332]" };
   }
   if (session.status === "FAILED") {
-    return { text: "Session Error", subtext: session.analysisError || "Interview failed", colorClass: "text-[#DC2626]" };
+    return { text: "Session Interrupted", subtext: "Your interview was interrupted due to a technical issue. Please contact the administrator for assistance.", colorClass: "text-[#DC2626]" };
   }
 
   const botJob = typeof session.botJobId === "object" && session.botJobId ? session.botJobId : null;
   if (botJob && botJob.status === "FAILED") {
-    return { text: "Bot Error", subtext: botJob.failureReason || "Worker reported failure", colorClass: "text-[#DC2626]" };
+    return { text: "Session Interrupted", subtext: "Your interview was interrupted due to a technical issue. Please contact the administrator for assistance.", colorClass: "text-[#DC2626]" };
   }
 
   if (session.status === "IN_PROGRESS") {
@@ -384,8 +384,10 @@ export default function InterviewPage() {
               ? "The scheduled interview window elapsed without candidate attendance."
               : "Your interview has concluded. The conversational transcript has been recorded for recruiter review."}
           </p>
-          {session.analysisError && (
-            <p className="text-xs text-[#B45309]">{session.analysisError}</p>
+          {session.status === "FAILED" && (
+            <p className="text-xs text-[#DC2626]">
+              Your interview was interrupted due to a technical issue. Please contact the administrator for assistance.
+            </p>
           )}
         </CardContent>
       </Card>
@@ -433,32 +435,6 @@ export default function InterviewPage() {
           ) : (
             <p className="text-sm text-[#B45309]">Google Meet link is generating. Please refresh in a moment.</p>
           )}
-        </CardContent>
-      </Card>
-    )}
-
-    {session.transcript && session.transcript.length > 0 && (
-      <Card className="border-[#D6D3C8] bg-white shadow-sm">
-        <CardHeader
-          title="Interview Transcript"
-          subtitle="Transcript captured during your Google Meet interview session."
-        />
-        <CardContent>
-          <div className="max-h-80 space-y-3 overflow-y-auto">
-            {session.transcript.map((turn, index) => (
-              <div
-                key={`${turn.questionId || "turn"}-${index}`}
-                className="rounded-xl border border-[#D8CDBB] bg-[#F5F1E8] p-3.5 space-y-1"
-              >
-                <p className="text-[11px] font-bold uppercase tracking-wider text-[#40916C]">
-                  {turn.speaker === "AI" ? "RecruitAI Interviewer" : "Candidate"}
-                </p>
-                <p className="whitespace-pre-wrap text-sm text-[#1F2937] leading-relaxed">
-                  {turn.text}
-                </p>
-              </div>
-            ))}
-          </div>
         </CardContent>
       </Card>
     )}

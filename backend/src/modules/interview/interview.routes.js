@@ -81,6 +81,22 @@ router.all("/cron/sync", async (_req, res) => {
   } catch (error) { return handleError(res, error); }
 });
 
+function sanitizeInterviewForStudent(interviewDoc) {
+  if (!interviewDoc) return null;
+  const obj = typeof interviewDoc.toObject === "function" ? interviewDoc.toObject() : { ...interviewDoc };
+  // Never expose transcript array or raw dialogue logs to students
+  delete obj.transcript;
+
+  // Sanitize any internal model warnings, python traces, or raw exceptions in analysisError or bot failureReason
+  if (obj.analysisError) {
+    obj.analysisError = "Your interview was interrupted due to a technical issue. Please contact the administrator for assistance.";
+  }
+  if (obj.botJobId && typeof obj.botJobId === "object" && obj.botJobId.failureReason) {
+    obj.botJobId.failureReason = "Your interview was interrupted due to a technical issue. Please contact the administrator for assistance.";
+  }
+  return obj;
+}
+
 router.get("/mine", requireVerifiedSession, async (req, res) => {
   try {
     await syncInterviewLifecycles();
@@ -90,7 +106,7 @@ router.get("/mine", requireVerifiedSession, async (req, res) => {
     if (!doc) return res.json({ success: true, interview: null });
     if (!isProjectVerified(req.candidate)) return res.status(403).json({ success: false, message: "The assigned project must be verified before interview access." });
     const context = await buildInterviewContext({ candidateId: doc.candidateId, projectId: doc.projectId, bookingId: doc.bookingId });
-    return res.json({ success: true, interview: doc, context: publicSessionContext(context) });
+    return res.json({ success: true, interview: sanitizeInterviewForStudent(doc), context: publicSessionContext(context) });
   } catch (error) { return handleError(res, error); }
 });
 
@@ -174,7 +190,7 @@ router.get("/:interviewId", requireVerifiedSession, validInterviewId, async (req
     if (!doc) return res.status(404).json({ success: false, message: "Interview not found." });
     if (String(doc.candidateId) !== String(req.candidate._id)) return res.status(403).json({ success: false, message: "You cannot access this interview." });
     if (!isProjectVerified(req.candidate)) return res.status(403).json({ success: false, message: "The assigned project must be verified before interview access." });
-    return res.json({ success: true, interview: doc });
+    return res.json({ success: true, interview: sanitizeInterviewForStudent(doc) });
   } catch (error) { return handleError(res, error); }
 });
 router.post("/:interviewId/presence", requireVerifiedSession, validInterviewId, async (req, res) => {

@@ -18,6 +18,32 @@ import argparse
 import re
 from typing import Optional
 
+# Ensure standard output and standard error handles UTF-8 safely on Windows
+for stream_name in ("stdout", "stderr"):
+    stream = getattr(sys, stream_name, None)
+    if stream is not None and hasattr(stream, "reconfigure"):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
+
+def safe_print(*args, **kwargs):
+    """Print to stdout safely on any platform and encoding without throwing UnicodeEncodeError."""
+    try:
+        print(*args, **kwargs)
+    except UnicodeEncodeError:
+        try:
+            sep = kwargs.get("sep", " ")
+            end = kwargs.get("end", "\n")
+            text = sep.join(str(a) for a in args) + end
+            sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))
+            sys.stdout.buffer.flush()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
 from fastapi import FastAPI, Depends, HTTPException, Header, status
 from pydantic import BaseModel
 import uvicorn
@@ -311,11 +337,11 @@ async def run_cli():
         logger.info(f"[MeetingBot] Transcribing file with Deepgram: {args.transcribe_file}")
         try:
             res = deepgram_client.transcribe_file(args.transcribe_file)
-            print("\n" + "=" * 50)
-            print(f"DEEPGRAM TRANSCRIPT ({res['model']}):")
-            print(f"'{res['transcript']}'")
-            print(f"Confidence: {round(res['confidence'], 3)} | Duration: {round(res['durationSeconds'], 2)}s")
-            print("=" * 50 + "\n")
+            safe_print("\n" + "=" * 50)
+            safe_print(f"DEEPGRAM TRANSCRIPT ({res['model']}):")
+            safe_print(f"'{res['transcript']}'")
+            safe_print(f"Confidence: {round(res['confidence'], 3)} | Duration: {round(res['durationSeconds'], 2)}s")
+            safe_print("=" * 50 + "\n")
         except Exception as e:
             logger.error(f"[MeetingBot] Transcription failed: {e}")
             sys.exit(1)
@@ -336,16 +362,16 @@ async def run_cli():
                 transcript=args.text,
                 candidate_id=args.candidate_id,
             )
-            print("\n" + "=" * 60)
-            print("RECRUITAI BACKEND RESPONSE:")
-            print(f"Accepted: {res.get('accepted')}")
-            print(f"Duplicate: {res.get('duplicate')}")
-            print(f"Interview Status: {res.get('interviewStatus')}")
-            print(f"Phase: {res.get('phase')}")
-            print(f"Question Index: {res.get('currentQuestionIndex')}")
+            safe_print("\n" + "=" * 60)
+            safe_print("RECRUITAI BACKEND RESPONSE:")
+            safe_print(f"Accepted: {res.get('accepted')}")
+            safe_print(f"Duplicate: {res.get('duplicate')}")
+            safe_print(f"Interview Status: {res.get('interviewStatus')}")
+            safe_print(f"Phase: {res.get('phase')}")
+            safe_print(f"Question Index: {res.get('currentQuestionIndex')}")
             if res.get("nextQuestion"):
-                print(f"NEXT QUESTION:\n{res.get('nextQuestion')}")
-            print("=" * 60 + "\n")
+                safe_print(f"NEXT QUESTION:\n{res.get('nextQuestion')}")
+            safe_print("=" * 60 + "\n")
         except Exception as e:
             logger.error(f"[MeetingBot] Failed to submit transcript: {e}")
             sys.exit(1)
@@ -974,9 +1000,9 @@ async def run_cli():
                         conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="ai_speaking_race")
                         continue
 
-                    print("\n" + "=" * 50)
-                    print(f"CANDIDATE TRANSCRIPT: '{transcript}'")
-                    print("=" * 50 + "\n")
+                    safe_print("\n" + "=" * 50)
+                    safe_print(f"CANDIDATE TRANSCRIPT: '{transcript}'")
+                    safe_print("=" * 50 + "\n")
                     logger.info(f"[STT] Transcript: {transcript}")
 
                     if not args.interview_id:
@@ -1227,9 +1253,9 @@ async def run_cli():
                             if spoken_payload:
                                 conv_mgr.current_question = spoken_payload
                                 logger.info(f"[AI] Next spoken utterance: '{spoken_payload[:60]}...'")
-                                print("\n" + "*" * 50)
-                                print(f"AI RESPONSE: {spoken_payload}")
-                                print("*" * 50 + "\n")
+                                safe_print("\n" + "*" * 50)
+                                safe_print(f"AI RESPONSE: {spoken_payload}")
+                                safe_print("*" * 50 + "\n")
 
                                 conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="speaking_response")
                                 tts_start = time.monotonic()

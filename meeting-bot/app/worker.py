@@ -597,6 +597,8 @@ class BotWorkerAgent:
             env["MEETING_BOT_API_SECRET"] = internal_secret
         if self.config.api_secret:
             env["BOT_CONTROL_API_SECRET"] = self.config.api_secret
+        env["PYTHONIOENCODING"] = "utf-8"
+        env["PYTHONUTF8"] = "1"
 
         try:
             self.current_process = subprocess.Popen(
@@ -606,6 +608,8 @@ class BotWorkerAgent:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,
             )
 
