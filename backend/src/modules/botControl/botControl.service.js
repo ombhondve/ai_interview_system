@@ -308,7 +308,7 @@ export async function syncEligibleInterviewJobs() {
       }
     } else {
       // Existing job detected
-      const durationMs = (interview.durationMinutes || 30) * 60 * 1000;
+      const durationMs = Math.min(15, interview.durationMinutes || 15) * 60 * 1000;
       const graceMs = DEFAULT_NO_SHOW_GRACE_MINUTES * 60 * 1000;
       const isSlotActive = nowMs <= new Date(interview.scheduledAt).getTime() + durationMs + graceMs;
 
@@ -442,7 +442,7 @@ export async function claimNextJob(workerId, { currentTime } = {}) {
       };
     }
 
-    const durationMs = (interview.durationMinutes || 30) * 60 * 1000;
+    const durationMs = Math.min(15, interview.durationMinutes || 15) * 60 * 1000;
     const graceMs = DEFAULT_NO_SHOW_GRACE_MINUTES * 60 * 1000;
     if (now.getTime() > new Date(interview.scheduledAt).getTime() + durationMs + graceMs) {
       claimedJob.status = "FAILED";
@@ -510,7 +510,7 @@ export async function claimNextJob(workerId, { currentTime } = {}) {
       meetUrl: authoritativeMeetUrl,
       meetLink: authoritativeMeetUrl,
       scheduledAt: claimedJob.scheduledAt,
-      durationMinutes: interview?.durationMinutes || 30,
+      durationMinutes: Math.min(15, interview?.durationMinutes || 15),
       leaseDurationMs: leaseMs,
       leaseExpiresAt: claimedJob.leaseExpiresAt,
       attemptCount: claimedJob.attemptCount,
@@ -581,7 +581,7 @@ export async function validateJobPreflight(jobId, workerId, { currentTime } = {}
     meetUrl: authoritativeMeetUrl,
     meetLink: authoritativeMeetUrl,
     scheduledAt: job.scheduledAt,
-    durationMinutes: interview?.durationMinutes || 30,
+    durationMinutes: Math.min(15, interview?.durationMinutes || 15),
     backendTime: now.toISOString(),
     message: "Preflight checks passed. Job is eligible for launch.",
   };

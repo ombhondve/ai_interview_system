@@ -451,13 +451,15 @@ class MeetingBot:
 
                 # Run blocking audio playback in thread pool with bounded timeout to prevent indefinite hangs
                 loop = asyncio.get_running_loop()
+                words_count = len(text.strip().split())
+                tts_timeout = max(25.0, min(45.0, (words_count * 0.5) + 12.0))
                 try:
                     result = await asyncio.wait_for(
                         loop.run_in_executor(None, kokoro_tts.speak, text.strip()),
-                        timeout=25.0,
+                        timeout=tts_timeout,
                     )
                 except asyncio.TimeoutError:
-                    logger.error("[VOICE] Kokoro TTS speak timed out after 25s; continuing without stalling interview loop.")
+                    logger.error(f"[VOICE] Kokoro TTS speak timed out after {tts_timeout}s; continuing without stalling interview loop.")
                     result = {"success": False, "error": "TTS_TIMEOUT"}
 
                 # Result is a dict with status and duration

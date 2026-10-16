@@ -282,7 +282,7 @@ router.get("/internal/:interviewId/session", validInterviewId, async (req, res) 
     const scheduledTime = new Date(interview.scheduledAt).getTime();
     // Allow bot to join up to 15 minutes before scheduled start through end of slot
     const earlyWindowMs = 15 * 60 * 1000;
-    const durationMs = (interview.durationMinutes || 30) * 60 * 1000;
+    const durationMs = Math.min(15, interview.durationMinutes || 15) * 60 * 1000;
     const isDue = now >= (scheduledTime - earlyWindowMs) && now <= (scheduledTime + durationMs);
 
     let readinessStatus = "READY_TO_JOIN";
@@ -302,7 +302,7 @@ router.get("/internal/:interviewId/session", validInterviewId, async (req, res) 
       readinessStatus,
       isDue,
       scheduledAt: interview.scheduledAt,
-      durationMinutes: interview.durationMinutes || 30,
+      durationMinutes: Math.min(15, interview.durationMinutes || 15),
       meetLink: interview.meetLink || null,
       currentQuestionIndex: interview.currentQuestionIndex,
       totalQuestions: interview.questions.length,
@@ -333,7 +333,7 @@ router.post("/internal/:interviewId/candidate-joined", validInterviewId, async (
       candidateId: String(updated.candidateId),
       status: updated.status,
       phase: updated.phase,
-      durationMinutes: updated.durationMinutes || 30,
+      durationMinutes: Math.min(15, updated.durationMinutes || 15),
       currentQuestionIndex: updated.currentQuestionIndex,
       firstQuestion: resolvedQuestion,
       started: Boolean(result.started),

@@ -336,4 +336,148 @@ describe("RecruitAI 15-Minute Engine, Authoritative Timer, and Early Completion"
       expect(doc2.status).toBe("COMPLETED");
     });
   });
+
+  describe("5. Regression: 25-Minute and 30-Minute Sessions Capped at 15-Minute Policy", () => {
+    test("A legacy session saved in DB with durationMinutes: 25 is strictly capped at 15 minutes", async () => {
+      const mockSession25 = {
+        _id: "int-25m-1",
+        candidateId: "cand-25m-1",
+        projectId: "proj-25m-1",
+        bookingId: "book-25m-1",
+        status: "IN_PROGRESS",
+        phase: "QUESTIONING",
+        currentQuestionIndex: 5,
+        durationMinutes: 25, // Legacy 25 minutes saved in database
+        startedAt: new Date(Date.now() - 14 * 60 * 1000), // 14 mins elapsed!
+        scheduledAt: new Date(Date.now() - 30 * 60 * 1000),
+        candidateStrengths: ["ARCHITECTURE"],
+        candidateWeaknesses: [],
+        knowledgeGaps: [],
+        technicalAreas: ["ARCHITECTURE"],
+        questions: [
+          { questionId: "0", category: "PRECHECK", question: "Audio test" },
+          { questionId: "1", category: "ARCHITECTURE", question: "System design?" },
+        ],
+        transcript: [
+          { sequence: 0, speaker: "AI", text: "System design?", questionId: "1", category: "ARCHITECTURE", section: "QUESTIONING" },
+        ],
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      jest.spyOn(AiInterview, "findById").mockImplementation(async () => mockSession25);
+      jest.spyOn(Candidate, "findById").mockImplementation(async () => ({
+        _id: "cand-25m-1",
+        projectSubmissionStatus: "verified",
+        projectSubmission: { aiVerificationStatus: "verified" },
+      }));
+      jest.spyOn(contextService, "loadInterviewContext").mockImplementation(async () => ({
+        candidate: { name: "Test Candidate" },
+        project: { title: "Test Project" },
+      }));
+
+      // At 14 minutes elapsed with 15m effective cap, closing window (15 - 1.8 = 13.2m) is active!
+      // If it erroneously used 25m, 14m would NOT trigger closing (25 - 3 = 22m).
+      const res = await submitAnswer("int-25m-1", "cand-25m-1", "We used Kafka for distributed messaging.");
+      expect(mockSession25.phase).toBe("CLOSING");
+      expect(res.phase).toBe("CLOSING");
+    });
+  });
+
+  describe("6. Regression: Candidate Answer Text Cannot Leak Into Generated Questions", () => {
+    const { sanitizeAiQuestion } = require("../interview.question.service.js");
+
+    test("sanitizeAiQuestion rejects AI questions that echo previous candidate answers", () => {
+      const candidatePreviousAnswer = "We keep the JWT secret in an env variable and verify the signature on each request.";
+      const candidateAnswers = [candidatePreviousAnswer];
+
+      // Exact candidate answer regurgitation from log
+      const leakedOutput = {
+        category: "AUTHENTICATION",
+        question: "We keep the JWT secret in an env variable and verify the signature on each request.",
+        difficulty: "MEDIUM",
+        reason: "Checking authentication implementation",
+      };
+
+      const result = sanitizeAiQuestion(leakedOutput, [], candidateAnswers);
+      expect(result).toBeNull();
+    });
+
+    test("sanitizeAiQuestion rejects declarative answer statements masquerading as questions", () => {
+      const declarativeOutput = {
+        category: "AUTHENTICATION",
+        question: "We keep the JWT secret in an env variable.",
+        difficulty: "MEDIUM",
+      };
+
+      const result = sanitizeAiQuestion(declarativeOutput, [], []);
+      expect(result).toBeNull();
+    });
+
+    test("sanitizeAiQuestion allows valid technical questions with question form", () => {
+      const validOutput = {
+        category: "AUTHENTICATION",
+        question: "How do you protect your JWT secret in your deployment environment?",
+        difficulty: "MEDIUM",
+      };
+
+      const result = sanitizeAiQuestion(validOutput, [], ["We keep the JWT secret in an env variable."]);
+      expect(result).not.toBeNull();
+      expect(result.question).toContain("How do you protect your JWT secret");
+    });
+  });
+
+  describe("7. Regression: Repeat-Question Index Advancement and Question Count Preservation", () => {
+    test("Hello? Can you repeat the question? preserves currentQuestionIndex and question count", async () => {
+      const mockRepeatSession = {
+        _id: "int-repeat-1",
+        candidateId: "cand-repeat-1",
+        projectId: "proj-repeat-1",
+        bookingId: "book-repeat-1",
+        status: "IN_PROGRESS",
+        phase: "QUESTIONING",
+        currentQuestionIndex: 3,
+        durationMinutes: 15,
+        startedAt: new Date(Date.now() - 4 * 60 * 1000),
+        questions: [
+          { questionId: "0", category: "PRECHECK", question: "Audio test" },
+          { questionId: "1", category: "INTRODUCTION", question: "Intro" },
+          { questionId: "2", category: "PROJECT_CONFIRMATION", question: "Project" },
+          { questionId: "3", category: "AUTHENTICATION", question: "How do you securely store JWT tokens in your React application?" },
+        ],
+        transcript: [
+          { sequence: 0, speaker: "AI", text: "How do you securely store JWT tokens in your React application?", questionId: "3", category: "AUTHENTICATION", section: "QUESTIONING" },
+        ],
+        save: jest.fn().mockResolvedValue(true),
+      };
+
+      jest.spyOn(AiInterview, "findById").mockImplementation(async () => mockRepeatSession);
+      jest.spyOn(Candidate, "findById").mockImplementation(async () => ({
+        _id: "cand-repeat-1",
+        projectSubmissionStatus: "verified",
+        projectSubmission: { aiVerificationStatus: "verified" },
+      }));
+      jest.spyOn(contextService, "loadInterviewContext").mockImplementation(async () => ({
+        candidate: { name: "Test Candidate" },
+        project: { title: "Test Project" },
+      }));
+
+      const initialQIndex = mockRepeatSession.currentQuestionIndex;
+      const initialQuestionCount = mockRepeatSession.questions.length;
+
+      // Candidate asks to repeat: "Hello? Can you repeat the question?"
+      const res = await submitAnswer("int-repeat-1", "cand-repeat-1", "Hello? Can you repeat the question?");
+
+      // Requirements:
+      // 1. Must recognize REPEAT action
+      expect(res.action).toBe("REPEAT");
+      // 2. Question index must NOT advance
+      expect(mockRepeatSession.currentQuestionIndex).toBe(initialQIndex);
+      // 3. Question array must NOT increment
+      expect(mockRepeatSession.questions.length).toBe(initialQuestionCount);
+      // 4. Must replay the current question
+      expect(res.nextQuestion.question).toContain("How do you securely store JWT tokens");
+      // 5. Returns natural acknowledgment
+      expect(res.acknowledgment).toBe("Sure.");
+    });
+  });
 });

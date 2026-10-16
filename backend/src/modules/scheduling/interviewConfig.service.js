@@ -33,6 +33,8 @@ export async function getInterviewConfig() {
   }
 
   // Ensure un-restricted schedule rules (no 2-hour minimum lead, no 9-18 business hours restriction, allow all days)
+  // and enforce 15-minute maximum interview duration policy.
+  let configChanged = false;
   if (
     config &&
     (config.minLeadHours !== 0 ||
@@ -44,9 +46,16 @@ export async function getInterviewConfig() {
     config.minLeadHours = 0;
     config.workingHours = { startHour: 0, endHour: 24 };
     config.allowedWeekdays = [0, 1, 2, 3, 4, 5, 6];
-    if (typeof config.save === "function") {
-      await config.save().catch(() => {});
-    }
+    configChanged = true;
+  }
+
+  if (config && (config.interviewDurationMinutes !== 15)) {
+    config.interviewDurationMinutes = 15;
+    configChanged = true;
+  }
+
+  if (configChanged && typeof config.save === "function") {
+    await config.save().catch(() => {});
   }
 
   return config;

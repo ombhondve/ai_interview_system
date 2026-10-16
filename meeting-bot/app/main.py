@@ -137,7 +137,7 @@ class ConversationManager:
         self.current_question: Optional[str] = None
         self.last_speech_time: float = time.monotonic()
         self.interview_start_time: float = time.monotonic()
-        self.duration_minutes: float = float(duration_minutes)
+        self.duration_minutes: float = min(15.0, float(duration_minutes or 15.0))
         self.closing_invited: bool = False
         self.farewell_delivered: bool = False
         self.no_response_step: int = 0  # 0: waiting, 1: reminded ("Take your time"), 2: offered repeat/audio check
@@ -967,10 +967,10 @@ async def run_cli():
                     logger.info("[STT] Sending utterance to Deepgram")
                     deepgram_start = time.monotonic()
                     try:
-                        res = deepgram_client.transcribe_file(seg_file)
+                        res = deepgram_client.transcribe_audio_bytes(wav_bytes)
                         deepgram_end = time.monotonic()
                         deepgram_duration = round(deepgram_end - deepgram_start, 2)
-                        logger.info(f"[PERF] deepgram_end duration={deepgram_duration}s")
+                        logger.info(f"[PERF] deepgram_end duration={deepgram_duration}s (speech_dur={speech_dur:.2f}s)")
                     except Exception as stt_err:
                         logger.error(f"[MeetingBot] STT error: {stt_err}")
                         conv_mgr.set_state(ConversationState.RECOVERING, decision="stt_error_recovery")
@@ -1281,15 +1281,19 @@ async def run_cli():
                                     )
                                     conv_mgr.current_phase = "QUESTIONING"
 
-                            # Compose spoken payload
-                            spoken_payload = ""
-                            if ack and ack.strip():
-                                if next_q and next_q.strip() and not next_q.startswith(ack):
-                                    spoken_payload = f"{ack} {next_q}"
+                            # Compose spoken payload cleanly without redundant conversational preambles
+                            clean_ack = (ack or "").strip()
+                            clean_q = (next_q or "").strip()
+                            if clean_ack and clean_q:
+                                ack_lower = clean_ack.lower()
+                                if clean_q.lower().startswith(ack_lower) or clean_q.lower().startswith(f"that's a {ack_lower}"):
+                                    spoken_payload = clean_q
+                                elif clean_q.lower().startswith("that's a good question") and "good question" in ack_lower:
+                                    spoken_payload = clean_q
                                 else:
-                                    spoken_payload = next_q or ack
+                                    spoken_payload = f"{clean_ack} {clean_q}"
                             else:
-                                spoken_payload = next_q
+                                spoken_payload = clean_q or clean_ack
 
                             if spoken_payload:
                                 if conv_mgr.is_hard_deadline_reached():
@@ -1309,7 +1313,12 @@ async def run_cli():
                                     await bot_instance.speak_text(spoken_payload)
 
                                 tts_end = time.monotonic()
-                                logger.info(f"[PERF] tts_end duration={round(tts_end - tts_start, 2)}s")
+                                tts_dur = round(tts_end - tts_start, 2)
+                                logger.info(
+                                    f"[PERF] turn_metrics: speech_sec={speech_dur:.2f} "
+                                    f"stt_sec={deepgram_duration:.2f} backend_sec={backend_duration:.2f} "
+                                    f"tts_sec={tts_dur:.2f}"
+                                )
                                 audio_capture.reset_buffer()
                                 await asyncio.sleep(0.4)
                                 conv_mgr.last_speech_time = time.monotonic()

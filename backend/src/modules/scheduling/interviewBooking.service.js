@@ -198,7 +198,7 @@ export async function bookInterview({ config, candidate, startAt }) {
       startAt,
       endAt: validation.endAt,
       timezone: config.timezone,
-      durationMinutes: config.interviewDurationMinutes,
+      durationMinutes: Math.min(15, config.interviewDurationMinutes || 15),
       status: "scheduled",
       mode: config.mode,
       bookedAt: new Date(),

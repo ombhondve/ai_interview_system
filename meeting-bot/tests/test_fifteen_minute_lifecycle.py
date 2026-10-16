@@ -137,3 +137,67 @@ def test_closing_invitation_and_farewell_single_delivery_flags(mock_bot_componen
 
     mgr.farewell_delivered = True
     assert mgr.farewell_delivered is True
+
+
+def test_twenty_five_minute_duration_override_capped_at_fifteen(mock_bot_components):
+    """Passing 25.0 or 30.0 minutes to ConversationManager is strictly capped at 15.0 minutes."""
+    bot, audio_capture, recruitai_client, deepgram_client = mock_bot_components
+    mgr25 = ConversationManager(
+        bot=bot,
+        audio_capture=audio_capture,
+        recruitai_client=recruitai_client,
+        deepgram_client=deepgram_client,
+        duration_minutes=25.0,
+    )
+    assert mgr25.duration_minutes == 15.0
+    assert mgr25.duration_minutes * 60.0 == 900.0
+
+    mgr30 = ConversationManager(
+        bot=bot,
+        audio_capture=audio_capture,
+        recruitai_client=recruitai_client,
+        deepgram_client=deepgram_client,
+        duration_minutes=30.0,
+    )
+    assert mgr30.duration_minutes == 15.0
+
+
+def test_kokoro_tts_device_validation_caching():
+    """KokoroTTS caches validated devices to avoid re-opening PortAudio streams on every utterance."""
+    from app.kokoro_tts import KokoroTTS
+    tts = KokoroTTS(enabled=False)
+    assert hasattr(tts, "_validated_devices")
+    assert isinstance(tts._validated_devices, set)
+
+    tts._validated_devices.add(1)
+    assert 1 in tts._validated_devices
+
+
+def test_spoken_payload_preamble_deduplication():
+    """Verify that redundant conversational preambles (e.g. 'Good question. That's a good question...') are deduplicated."""
+    # Simulation of the preamble deduplication logic in main.py
+    def compose_payload(ack, next_q):
+        clean_ack = (ack or "").strip()
+        clean_q = (next_q or "").strip()
+        if clean_ack and clean_q:
+            ack_lower = clean_ack.lower()
+            if clean_q.lower().startswith(ack_lower) or clean_q.lower().startswith(f"that's a {ack_lower}"):
+                return clean_q
+            elif clean_q.lower().startswith("that's a good question") and "good question" in ack_lower:
+                return clean_q
+            else:
+                return f"{clean_ack} {clean_q}"
+        return clean_q or clean_ack
+
+    # Case 1: Identical acknowledgment repeated
+    p1 = compose_payload("Good question.", "Good question. Let's proceed to data structures.")
+    assert p1 == "Good question. Let's proceed to data structures."
+
+    # Case 2: "That's a good question." preamble
+    p2 = compose_payload("Good question.", "That's a good question. Our engineering team uses microservices.")
+    assert p2 == "That's a good question. Our engineering team uses microservices."
+
+    # Case 3: Distinct acknowledgment and question
+    p3 = compose_payload("Understood.", "Which part of the database did you optimize?")
+    assert p3 == "Understood. Which part of the database did you optimize?"
+

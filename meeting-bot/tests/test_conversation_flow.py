@@ -428,20 +428,20 @@ def test_closing_answer_does_not_repeat_closing_prompt_if_already_present():
 
 
 def test_duration_guard_prevents_early_closing():
-    """Verify that a 30-minute interview with 10 minutes elapsed is NOT in closing window."""
+    """Verify that a 15-minute interview with 5 minutes elapsed is NOT in closing window."""
     bot = MeetingBot()
     audio = MagicMock()
     client = MagicMock()
     deepgram = MagicMock()
-    mgr = ConversationManager(bot, audio, client, deepgram, duration_minutes=30.0)
+    mgr = ConversationManager(bot, audio, client, deepgram, duration_minutes=15.0)
 
-    # 10 minutes elapsed (600s elapsed -> 1200s remaining)
-    mgr.interview_start_time = time.monotonic() - (10 * 60)
+    # 5 minutes elapsed (300s elapsed -> 600s remaining)
+    mgr.interview_start_time = time.monotonic() - (5 * 60)
     assert mgr.is_in_closing_window() is False
-    assert mgr.get_remaining_time_sec() > 1000
+    assert mgr.get_remaining_time_sec() > 500
 
-    # Closing window threshold is only reached near the end (e.g. 27 minutes elapsed -> 180s remaining)
-    mgr.interview_start_time = time.monotonic() - (27 * 60)
+    # Closing window threshold is only reached near the end (e.g. 14 minutes elapsed -> 60s remaining)
+    mgr.interview_start_time = time.monotonic() - (14 * 60)
     assert mgr.is_in_closing_window() is True
 
 

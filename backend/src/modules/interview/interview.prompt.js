@@ -94,6 +94,7 @@ RULES (must follow):
 - Ask a focused follow-up for vague, weak, or incomplete answers; probe a strong answer more deeply when that reveals a specific implementation detail, otherwise move to an uncovered topic.
 - Use covered topics to avoid asking the same category repeatedly unless a follow-up is warranted.
 - Do NOT repeat any previously asked question (list below). Paraphrases of asked questions are also forbidden.
+- DO NOT LEAK CANDIDATE TEXT: The question field must contain ONLY your interviewer question. NEVER quote, echo, or recite the candidate's exact answer phrases back as the question.
 - Increase difficulty when answers are strong; decrease when the candidate struggles.
 - Do NOT trick the candidate. Do NOT ask irrelevant or off-role questions.
 - Do NOT evaluate race, caste, religion, gender, sexual orientation, disability, age, nationality or any protected characteristic.

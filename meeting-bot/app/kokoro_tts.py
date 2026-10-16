@@ -8,9 +8,13 @@ Responsibilities:
 - Expose speak(text), stop(), and device query methods
 """
 
+import time
 import logging
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, Set
 import numpy as np
+
+# Suppress harmless phonemizer word-count mismatch warnings
+logging.getLogger("phonemizer").setLevel(logging.ERROR)
 
 from app.config import settings
 
@@ -43,6 +47,7 @@ class KokoroTTS:
         self._selected_device_index: Optional[int] = None
         self._selected_device_name: Optional[str] = None
         self._selected_host_api: Optional[str] = None
+        self._validated_devices: Set[int] = set()
 
         if self.enabled and auto_init_pipeline:
             self.initialize()
@@ -297,11 +302,13 @@ class KokoroTTS:
 
         logger.info(f"[VOICE] Text: {text.strip()}")
         logger.info("[VOICE] Generating speech...")
+        synth_start = time.monotonic()
         audio_data = self.generate_audio(text, voice=voice)
+        synth_duration = time.monotonic() - synth_start
 
         if len(audio_data) == 0:
             logger.warning("[KokoroTTS] No audio generated for text.")
-            return {"success": False, "duration": 0.0, "error": "NO_AUDIO_GENERATED"}
+            return {"success": False, "duration": 0.0, "synthesis_sec": round(synth_duration, 2), "playback_sec": 0.0, "error": "NO_AUDIO_GENERATED"}
 
         duration = len(audio_data) / self.sample_rate
 
@@ -316,14 +323,18 @@ class KokoroTTS:
         last_error = None
 
         for cand_idx, cand_name, cand_api in candidates:
-            logger.info(f"[VOICE] CABLE stream opening: {cand_name} (index {cand_idx}, API: {cand_api})")
-            val = self.validate_output_device(cand_idx)
-            if not val.get("valid"):
-                logger.warning(f"[VOICE] Device validation note for index {cand_idx}: {val.get('error')}. Trying next or proceeding...")
+            # Cache device validation to avoid PortAudio stream open/close on every utterance
+            if cand_idx not in self._validated_devices:
+                val = self.validate_output_device(cand_idx)
+                if val.get("valid"):
+                    self._validated_devices.add(cand_idx)
+                else:
+                    logger.warning(f"[VOICE] Device validation note for index {cand_idx}: {val.get('error')}.")
 
             self._is_speaking = True
+            play_start = time.monotonic()
             try:
-                logger.info(f"[VOICE] Playback started (duration: {duration:.2f}s, samples: {len(audio_data)}, API: {cand_api})")
+                logger.info(f"[VOICE] Playback started (audio_len: {duration:.2f}s, synth_time: {synth_duration:.2f}s, API: {cand_api})")
                 sd.play(
                     playback_audio,
                     samplerate=self.sample_rate,
@@ -332,13 +343,21 @@ class KokoroTTS:
                 )
                 if blocking:
                     sd.stop()
-                logger.info(f"[VOICE] Playback completed successfully on {cand_name} ({cand_api})")
+                play_duration = time.monotonic() - play_start
+                total_duration = synth_duration + play_duration
+                logger.info(
+                    f"[VOICE] Playback completed on {cand_name} ({cand_api}) - "
+                    f"synth={synth_duration:.2f}s, play={play_duration:.2f}s, total={total_duration:.2f}s, audio_len={duration:.2f}s"
+                )
                 self._selected_device_index = cand_idx
                 self._selected_device_name = cand_name
                 self._selected_host_api = cand_api
                 return {
                     "success": True,
                     "duration": round(duration, 2),
+                    "synthesis_sec": round(synth_duration, 2),
+                    "playback_sec": round(play_duration, 2),
+                    "total_sec": round(total_duration, 2),
                     "deviceIndex": cand_idx,
                     "hostApi": cand_api,
                 }
@@ -352,6 +371,8 @@ class KokoroTTS:
         return {
             "success": False,
             "duration": round(duration, 2),
+            "synthesis_sec": round(synth_duration, 2),
+            "playback_sec": 0.0,
             "error": f"PORTAUDIO_PLAYBACK_FAILED: {last_error}",
         }
 

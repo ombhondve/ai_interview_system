@@ -159,28 +159,29 @@ def test_media_monitor_reminder_cooldown_and_quotas():
 # ==============================================================================
 
 def test_conversation_manager_duration_and_closing_window():
-    """Verify closing window calculation for a scheduled 30-minute interview."""
+    """Verify closing window calculation for a scheduled 15-minute interview."""
     mgr = ConversationManager(
         bot=MagicMock(),
         audio_capture=MagicMock(),
         recruitai_client=MagicMock(),
         deepgram_client=MagicMock(),
-        duration_minutes=30.0,
+        duration_minutes=15.0,
     )
 
     # At start (elapsed = 0s)
-    assert mgr.get_remaining_time_sec() > 1700
+    assert mgr.get_remaining_time_sec() > 800
+    assert mgr.get_remaining_time_sec() <= 900.0
     assert mgr.is_in_closing_window() is False
     assert mgr.is_hard_deadline_reached() is False
 
-    # Simulate elapsed time reaching 27 minutes (1620s elapsed -> 180s remaining)
-    # Threshold for 30m: 1800 * 0.12 = 216s
-    mgr.interview_start_time = time.monotonic() - (27 * 60)
+    # Simulate elapsed time reaching 14 minutes (840s elapsed -> 60s remaining)
+    # Threshold for 15m: 900 * 0.12 = 108s
+    mgr.interview_start_time = time.monotonic() - (14 * 60)
     assert mgr.is_in_closing_window() is True
     assert mgr.is_hard_deadline_reached() is False
 
-    # Simulate hard deadline reached (31 minutes elapsed)
-    mgr.interview_start_time = time.monotonic() - (31 * 60)
+    # Simulate hard deadline reached (16 minutes elapsed)
+    mgr.interview_start_time = time.monotonic() - (16 * 60)
     assert mgr.get_remaining_time_sec() == 0.0
     assert mgr.is_hard_deadline_reached() is True
 

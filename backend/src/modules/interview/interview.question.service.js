@@ -117,7 +117,7 @@ export function shortenForVoice(rawText) {
  * Normalize raw LLM output into a safe question object.
  * NEVER throws for bad AI output — falls back to deterministic pool.
  */
-function sanitizeAiQuestion(raw, askedQuestions) {
+function sanitizeAiQuestion(raw, askedQuestions = [], candidateAnswers = []) {
   if (!raw || typeof raw.question !== "string" || !raw.question.trim()) {
     return null;
   }
@@ -131,6 +131,33 @@ function sanitizeAiQuestion(raw, askedQuestions) {
   // Enforce voice brevity and conciseness
   const text = shortenForVoice(raw.question);
   if (!text) return null;
+
+  // 1. Guard against candidate answer leakage:
+  // Reject questions that regurgitate candidate answers as spoken interviewer questions.
+  if (Array.isArray(candidateAnswers) && candidateAnswers.length > 0) {
+    const textLower = text.toLowerCase().trim();
+    const candidateAnswerMatch = candidateAnswers.some((ans) => {
+      const cleanAns = String(ans || "").toLowerCase().trim();
+      if (!cleanAns || cleanAns.length < 8) return false;
+      if (textLower === cleanAns) return true;
+      if (cleanAns.length >= 15 && textLower.includes(cleanAns)) return true;
+      if (textLower.length >= 15 && cleanAns.includes(textLower)) return true;
+      return false;
+    });
+
+    if (candidateAnswerMatch) {
+      logger.warn(`[AI_QUESTION_SAFEGUARD] Rejected question that leaked candidate answer text: "${text}"`);
+      return null;
+    }
+  }
+
+  // 2. Reject declarative answer statements (e.g. "We keep the JWT secret in an env variable...")
+  // A question must ask something, not recite candidate implementation as a statement.
+  const isDeclarativeStatement = /^(we|i|my|our)\b/i.test(text) && !/\b(can|could|would|how|what|why|where|when|tell|explain|describe)\b/i.test(text) && !text.endsWith("?");
+  if (isDeclarativeStatement) {
+    logger.warn(`[AI_QUESTION_SAFEGUARD] Rejected declarative answer statement masquerading as question: "${text}"`);
+    return null;
+  }
 
   // Normalize punctuation and stop words so common paraphrases do not repeat
   // the same underlying wording. This remains deliberately provider-free.
@@ -192,7 +219,7 @@ export async function generateNextQuestion({ context, askedQuestions = [], trans
         { role: "system", content: "You are a professional technical interviewer. Return JSON only." },
         { role: "user", content: prompt },
       ]);
-      const clean = sanitizeAiQuestion(raw, askedQuestions);
+      const clean = sanitizeAiQuestion(raw, askedQuestions, answersSoFar);
       if (clean) {
         logger.info(`Question generated (AI, phase=${phase}, category=${clean.category})`);
         return { ...clean, source: "ai" };
@@ -216,7 +243,7 @@ export async function generateNextQuestion({ context, askedQuestions = [], trans
       { role: "system", content: "You are a professional technical interviewer. Return JSON only." },
       { role: "user", content: prompt },
     ]);
-    const clean = sanitizeAiQuestion(raw, askedQuestions);
+    const clean = sanitizeAiQuestion(raw, askedQuestions, answersSoFar);
     if (clean) {
       logger.info(`Question generated (AI, category=${clean.category}, difficulty=${clean.difficulty})`);
       return { ...clean, source: "ai" };

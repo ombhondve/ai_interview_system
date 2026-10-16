@@ -52,8 +52,8 @@ export function classifyCandidateIntent(text) {
 
   // 4. Clarification / repeat request (English, Hindi, Marathi)
   if (
-    /^(can you (please )?repeat|could you repeat|repeat the question|can you rephrase|pardon|could you clarify|can you clarify)\b/i.test(clean) ||
-    /\b(repeat (the )?question|say that again|ekda parat sanga|phir se bolo|dobara boliye|could you say that again)\b/i.test(clean)
+    /\b(repeat (the |this )?question|say that again|could you repeat|can you repeat|can you say that again|what was the question|repeat please|once again please|ekda parat sanga|phir se bolo|dobara boliye|could you say that again)\b/i.test(clean) ||
+    /^(hello\??\s*)?(can you (please )?repeat|could you (please )?repeat|repeat the question|can you rephrase|pardon|could you clarify|can you clarify)\b/i.test(clean)
   ) {
     return { intent: "REPEAT_REQUEST", text: clean };
   }
@@ -150,6 +150,14 @@ export function classifyClosingIntent(text) {
     /^(can you see me|is my camera working|am i visible)\b/i.test(clean)
   ) {
     return { intent: "CAMERA_CHECK", text: clean };
+  }
+
+  // Repeat request during closing
+  if (
+    /\b(repeat (the |this )?question|say that again|could you repeat|can you repeat|can you say that again|what was the question|repeat please|once again please|ekda parat sanga|phir se bolo|dobara boliye)\b/i.test(clean) ||
+    /^(hello\??\s*)?(can you (please )?repeat|could you (please )?repeat|repeat the question|can you rephrase|pardon|could you clarify|can you clarify)\b/i.test(clean)
+  ) {
+    return { intent: "REPEAT_REQUEST", text: clean };
   }
 
   // Explicit negative / no questions (English, Hindi, Marathi)
@@ -418,6 +426,30 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
           nextQuestion: promptObj,
           acknowledgment: closingIntent.intent === "CAMERA_CHECK" ? "Yes, I can see you clearly." : "Yes, I can hear you clearly.",
           action: "FOLLOW_UP",
+          phase: "CLOSING",
+          closing: false,
+        };
+      } else if (closingIntent.intent === "REPEAT_REQUEST") {
+        actionType = "REPEAT";
+        const repeatPrompt = "We are now approaching the end of our interview. Do you have any questions for me before we finish?";
+        answer.answerProcessed = true;
+        answer.category = "REPEAT_REQUEST";
+        doc.transcript.push({
+          sequence: doc.transcript.length,
+          speaker: "AI",
+          text: repeatPrompt,
+          timestamp: new Date(),
+          questionId: String(doc.currentQuestionIndex ?? 0),
+          category: "CLOSING",
+          section: "CLOSING",
+        });
+        await doc.save();
+        return {
+          interview: doc,
+          duplicate: false,
+          nextQuestion: { question: repeatPrompt, category: "CLOSING" },
+          acknowledgment: null,
+          action: "REPEAT",
           phase: "CLOSING",
           closing: false,
         };
@@ -694,14 +726,26 @@ Return JSON ONLY:
         };
       }
 
-      // 1b. REPEAT question handling
+      // 1b. REPEAT question handling (Do NOT advance question index, do NOT score as weak)
       if (intentInfo.intent === "REPEAT_REQUEST" || intentInfo.intent === "CLARIFY_REPEAT") {
         actionType = "REPEAT";
-        const repeatedText = `Sure. Let me repeat: ${lastQ?.question || "can you explain how your project works?"}`;
+        answer.answerProcessed = true;
+        answer.category = "REPEAT_REQUEST";
+        const repeatedText = `Let me repeat: ${lastQ?.question || "can you explain how your project works?"}`;
+        doc.transcript.push({
+          sequence: doc.transcript.length,
+          speaker: "AI",
+          text: `Sure. ${repeatedText}`,
+          timestamp: new Date(),
+          questionId: String(doc.currentQuestionIndex ?? 0),
+          category: "REPEAT_REQUEST",
+          section: doc.phase,
+        });
+        await doc.save();
         return {
           interview: doc,
           duplicate: false,
-          nextQuestion: { ...lastQ, question: repeatedText, reason: "Candidate requested question repeat" },
+          nextQuestion: { ...(lastQ || {}), question: repeatedText, reason: "Candidate requested question repeat" },
           acknowledgment: "Sure.",
           action: "REPEAT",
           phase: doc.phase,
@@ -731,10 +775,32 @@ Return JSON ONLY:
         }
 
         if (!candidateAnswerText) {
-          candidateAnswerText = "That's a good question. Our engineering team works with modern cloud and full-stack technologies, and our recruitment team will share more details with you in the next steps.";
+          candidateAnswerText = "Our engineering team works with modern cloud and full-stack technologies, and our recruitment team will share more details with you in the next steps.";
         }
 
-        const combinedText = `${candidateAnswerText} Now, coming back to our question: ${lastQ?.question || "can you tell me more about your project?"}`;
+        // Clean redundant filler
+        candidateAnswerText = candidateAnswerText.replace(/^(that's a good question\.?\s*|good question\.?\s*)/i, "");
+
+        // Guard: ensure resumed question does not echo candidate answers
+        const candidatePhrases = doc.transcript
+          .filter((t) => t.speaker === "CANDIDATE")
+          .map((t) => String(t.text || "").toLowerCase().trim());
+
+        const isLeakedAnswer = (qText) => {
+          if (!qText) return true;
+          const lower = qText.toLowerCase().trim();
+          return candidatePhrases.some((cp) => cp && cp.length >= 10 && (lower.includes(cp) || cp.includes(lower)));
+        };
+
+        let resumedQuestion = lastQ?.question;
+        if (!resumedQuestion || isLeakedAnswer(resumedQuestion)) {
+          const cleanLastQ = [...(doc.questions || [])].reverse().find(
+            (q) => q && q.question && !["PRECHECK", "CLOSING"].includes(q.category) && !isLeakedAnswer(q.question)
+          );
+          resumedQuestion = cleanLastQ?.question || "Can you explain how your project is structured?";
+        }
+
+        const combinedText = `${candidateAnswerText.trim()} Now, coming back to our question: ${resumedQuestion}`;
         answer.answerProcessed = true;
         answer.answerQuality = "POTENTIALLY_DETAILED";
         doc.transcript.push({
@@ -752,7 +818,7 @@ Return JSON ONLY:
           interview: doc,
           duplicate: false,
           nextQuestion: { ...(lastQ || {}), question: combinedText, reason: "Answered candidate question and resumed current question." },
-          acknowledgment: "Good question.",
+          acknowledgment: null,
           action: "CANDIDATE_QUESTION",
           phase: doc.phase,
           closing: false,
@@ -824,7 +890,7 @@ Return JSON ONLY:
         elapsedMinutes = Math.max(0, (Date.now() - new Date(actualStart).getTime()) / (60 * 1000));
       }
 
-      const totalDurationMinutes = doc.durationMinutes || 15;
+      const totalDurationMinutes = Math.min(15, doc.durationMinutes || 15);
       const closingWindowDuration = Math.min(5, Math.max(1.5, totalDurationMinutes * 0.12));
       const closingThresholdMinutes = Math.max(5, totalDurationMinutes - closingWindowDuration);
 
