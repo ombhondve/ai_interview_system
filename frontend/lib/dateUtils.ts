@@ -121,3 +121,20 @@ export function formatIndianDateTime(
   if (datePart === fallback) return fallback;
   return `${datePart}, ${timePart}`;
 }
+
+/**
+ * Format interview schedule in Indian format: e.g. "15 October 2026 · 7:00 PM IST"
+ */
+export function formatInterviewSchedule(
+  dateOrTimestamp: Date | string | number | null | undefined,
+  timeString?: string | null
+): string {
+  if (!dateOrTimestamp && !timeString) return "—";
+  const timestamp = dateOrTimestamp || timeString;
+  const datePart = formatIndianDate(timestamp);
+  const timePart = formatIndianTime(timeString || timestamp, { includeTimezone: true });
+  if (datePart === "—" && timePart === "—") return "—";
+  if (datePart === "—") return timePart;
+  if (timePart === "—") return datePart;
+  return `${datePart} · ${timePart}`;
+}

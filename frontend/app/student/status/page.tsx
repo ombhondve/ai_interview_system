@@ -22,6 +22,7 @@ import {
   formatIndianDate,
   formatIndianTime,
   formatIndianDateTime,
+  formatInterviewSchedule,
 } from "@/lib/dateUtils";
 
 interface Candidate {
@@ -159,8 +160,15 @@ export default function StudentDashboardPage() {
     }
 
     if (candidate.interview?.date || candidate.interviewDate) {
+      const interviewTimestamp = candidate.interview?.date || candidate.interviewDate;
+      const scheduleString = formatInterviewSchedule(
+        interviewTimestamp,
+        candidate.interview?.time
+      );
+
       return {
         title: "Technical Interview",
+        schedule: scheduleString,
         actionLabel: "Join Interview",
         actionHref: "/student/interview",
         badge: "Scheduled",
@@ -226,13 +234,13 @@ export default function StudentDashboardPage() {
       <StudentShell>
         <div className="space-y-6 animate-pulse">
           <div className="h-28 rounded-2xl bg-[#E9E4D8]" />
+          <div className="h-24 rounded-2xl bg-white border border-[#D6D3C8]" />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="h-32 rounded-xl bg-white border border-[#D6D3C8]" />
-            <div className="h-32 rounded-xl bg-white border border-[#D6D3C8]" />
-            <div className="h-32 rounded-xl bg-white border border-[#D6D3C8]" />
-            <div className="h-32 rounded-xl bg-white border border-[#D6D3C8]" />
+            <div className="h-28 rounded-xl bg-white border border-[#D6D3C8]" />
+            <div className="h-28 rounded-xl bg-white border border-[#D6D3C8]" />
+            <div className="h-28 rounded-xl bg-white border border-[#D6D3C8]" />
+            <div className="h-28 rounded-xl bg-white border border-[#D6D3C8]" />
           </div>
-          <div className="h-64 rounded-xl bg-white border border-[#D6D3C8]" />
         </div>
       </StudentShell>
     );
@@ -325,6 +333,11 @@ export default function StudentDashboardPage() {
                 <h2 className="text-lg font-bold text-[#1F2937]">
                   {nextAction.title}
                 </h2>
+                {nextAction.schedule && (
+                  <p className="text-sm font-medium text-[#4B5563]">
+                    {nextAction.schedule}
+                  </p>
+                )}
                 {nextAction.description && (
                   <p className="text-sm text-[#64748B] leading-relaxed max-w-2xl">
                     {nextAction.description}
@@ -422,11 +435,9 @@ export default function StudentDashboardPage() {
               </span>
               <CalendarDays className="h-4 w-4 text-[#40916C]" />
             </div>
-            <div className="text-base font-bold text-[#1F2937] truncate">
+            <div className="text-base font-bold text-[#1F2937]">
               {candidate.interview?.date || candidate.interviewDate ? (
-                <span>
-                  {formatIndianDate(candidate.interview?.date || candidate.interviewDate)}
-                </span>
+                <span className="text-[#15803D]">Scheduled</span>
               ) : candidate.interviewEligible ? (
                 <span className="text-[#15803D]">Slot Ready to Book</span>
               ) : (
@@ -435,7 +446,7 @@ export default function StudentDashboardPage() {
             </div>
             <p className="text-xs text-[#64748B] truncate">
               {candidate.interview?.date || candidate.interviewDate
-                ? formatIndianTime(candidate.interview?.time || candidate.interview?.date || candidate.interviewDate, { includeTimezone: true })
+                ? "Google Meet Video"
                 : candidate.interviewEligible
                 ? "Pick available slot"
                 : "Unlocks after verification"}
