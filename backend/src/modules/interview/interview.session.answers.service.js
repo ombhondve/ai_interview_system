@@ -28,6 +28,14 @@ export function classifyCandidateIntent(text) {
     return { intent: "AUDIO_CHECK", text: clean };
   }
 
+  // 1b. Camera / Video check detection
+  if (
+    /\b(is (my )?camera (on|working|visible)|can you see me|can you see my (face|video)|is (my )?video (on|working|visible)|am i visible|video visible|camera visible|check my camera|test my camera|mera video dikh raha hai|video dikh raha hai|mi distoy ka|camera chalu ahe ka)\b/i.test(clean) ||
+    /^(can you see me|is my camera working|am i visible|can you see my video)\b/i.test(clean)
+  ) {
+    return { intent: "CAMERA_CHECK", text: clean };
+  }
+
   // 2. Explicit request to end / terminate interview early
   if (
     /\b(i (want|would like) to end the interview|can we (please )?(end|finish|stop|wrap up) the interview|stop the interview|end the interview (here|now)?|i want to (stop|leave|exit)|i cannot continue (the interview)?|can we stop here|i would like to stop here)\b/i.test(clean)
@@ -136,6 +144,14 @@ export function classifyClosingIntent(text) {
     return { intent: "AUDIO_CHECK", text: clean };
   }
 
+  // Camera check during closing
+  if (
+    /\b(is (my )?camera (on|working|visible)|can you see me|can you see my (face|video)|is (my )?video (on|working|visible)|am i visible|video visible|camera visible)\b/i.test(clean) ||
+    /^(can you see me|is my camera working|am i visible)\b/i.test(clean)
+  ) {
+    return { intent: "CAMERA_CHECK", text: clean };
+  }
+
   // Explicit negative / no questions (English, Hindi, Marathi)
   if (
     /^(no|nope|nah|not really|no questions?|no questions from my side|nothing|nothing else|nothing from my side|i don't have any (more )?questions?|i have no (more )?questions?|don't have any (more )?questions?|no thank you|no thanks|all good|everything is clear|all clear|i'm good|im good|that's all|that's all from my side|that is all|nahi|nahi hai|kahi nahi|kahi nahiye)\b/i.test(clean) ||
@@ -173,13 +189,85 @@ function assessAnswer(text) {
   if (intentInfo.intent === "THINKING") {
     return { quality: "INCOMPLETE", intent: "THINKING", reason: "Candidate asked for a moment to think." };
   }
-  if (intentInfo.intent === "AUDIO_CHECK" || intentInfo.intent === "CANDIDATE_QUESTION") {
-    return { quality: "POTENTIALLY_DETAILED", intent: intentInfo.intent, reason: "Conversational question / audio check; not penalized." };
+  if (intentInfo.intent === "AUDIO_CHECK" || intentInfo.intent === "CAMERA_CHECK" || intentInfo.intent === "CANDIDATE_QUESTION") {
+    return { quality: "POTENTIALLY_DETAILED", intent: intentInfo.intent, reason: "Conversational question / audio or camera check; not penalized." };
   }
   const hasImplementationDetail = /\b(I (used|built|implemented|chose|designed|handled)|because|for example|specifically|the reason)\b/i.test(answer);
   if (words.length < 8) return { quality: "WEAK", intent: intentInfo.intent, reason: "The response is very brief; ask for a clearer explanation." };
   if (words.length < 24 || !hasImplementationDetail) return { quality: "INCOMPLETE", intent: intentInfo.intent, reason: "The response needs more implementation detail or rationale." };
-  return { quality: "POTENTIALLY_DETAILED", intent: "VALID_ANSWER", reason: "Probe a concrete detail or continue to an uncovered topic." };
+  return { quality: "POTENTIALLY_DETAILED", intent: intentInfo.intent, reason: "Probe a concrete detail or continue to an uncovered topic." };
+}
+
+/**
+ * Evaluates whether an interview is eligible for performance-based early completion.
+ *
+ * Requirements:
+ * 1. Minimum technical questions answered (default 8, configurable via INTERVIEW_MIN_TECH_QUESTIONS).
+ *    Warmup questions (PRECHECK, INTRODUCTION, PROJECT_CONFIRMATION) and CLOSING do not count.
+ * 2. Topic/skill diversity: at least 4 distinct technical categories covered.
+ * 3. Assessment quality & evidence:
+ *    - Proficient completion: >= 60% of technical answers are detailed/substantive AND at least 3 distinct candidate strengths identified.
+ *    - OR Comprehensive completion: >= 10 technical questions answered across diverse topics.
+ * 4. Safe early completion reason returned for audit logging.
+ */
+export function evaluateEarlyCompletionEligibility(doc) {
+  if (!doc) return { eligible: false, reason: "No session document provided", completedTechnicalQuestions: 0, coveredSkillsCount: 0 };
+
+  const minTechQuestions = Number(process.env.INTERVIEW_MIN_TECH_QUESTIONS) || 8;
+  const techQuestions = (doc.questions || []).filter(
+    (q) => !["PRECHECK", "INTRODUCTION", "PROJECT_CONFIRMATION", "CLOSING"].includes(q.category)
+  );
+  const techCount = techQuestions.length;
+
+  if (techCount < minTechQuestions) {
+    return {
+      eligible: false,
+      reason: `Minimum question threshold not reached (${techCount}/${minTechQuestions})`,
+      completedTechnicalQuestions: techCount,
+      coveredSkillsCount: 0,
+    };
+  }
+
+  const coveredTechCategories = new Set(techQuestions.map((q) => q.category));
+  const minCategories = Math.min(4, Math.max(2, minTechQuestions - 3));
+  if (coveredTechCategories.size < minCategories) {
+    return {
+      eligible: false,
+      reason: `Insufficient skill coverage breadth (${coveredTechCategories.size}/${minCategories})`,
+      completedTechnicalQuestions: techCount,
+      coveredSkillsCount: coveredTechCategories.size,
+    };
+  }
+
+  const candidateTurns = (doc.transcript || []).filter(
+    (t) => t.speaker === "CANDIDATE" && typeof t.text === "string" && t.text.trim().length > 0
+  );
+  const detailedTurns = candidateTurns.filter(
+    (t) => t.answerQuality === "POTENTIALLY_DETAILED" || (t.text && t.text.split(/\s+/).length >= 15)
+  );
+
+  const strengthsCount = (doc.candidateStrengths || []).length;
+  const isProficientComplete = detailedTurns.length >= Math.ceil(minTechQuestions * 0.6) && strengthsCount >= 3;
+  const isComprehensiveComplete = techCount >= Math.max(minTechQuestions, 10);
+
+  if (isProficientComplete || isComprehensiveComplete) {
+    const reason = isProficientComplete
+      ? "SUFFICIENT_COMPETENCY_DEMONSTRATED"
+      : "COMPREHENSIVE_OBJECTIVES_SATISFIED";
+    return {
+      eligible: true,
+      reason,
+      completedTechnicalQuestions: techCount,
+      coveredSkillsCount: coveredTechCategories.size,
+    };
+  }
+
+  return {
+    eligible: false,
+    reason: "Additional technical probing required for conclusive evaluation",
+    completedTechnicalQuestions: techCount,
+    coveredSkillsCount: coveredTechCategories.size,
+  };
 }
 
 export async function submitAnswer(interviewId, candidateId, text, requestId = null, options = {}) {
@@ -295,16 +383,18 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
       const closingIntent = classifyClosingIntent(clean);
       logger.info(`Candidate closing turn received ${doc._id}: intent=${closingIntent.intent}`);
 
-      if (closingIntent.intent === "AUDIO_CHECK") {
+      if (closingIntent.intent === "AUDIO_CHECK" || closingIntent.intent === "CAMERA_CHECK") {
         actionType = "FOLLOW_UP";
-        const audioPrompt = "Yes, I can hear you clearly. Your audio is coming through well. Do you have any questions for me before we finish?";
+        const checkPrompt = closingIntent.intent === "CAMERA_CHECK"
+          ? "Yes, I can see you clearly. Your video is coming through well. Do you have any questions for me before we finish?"
+          : "Yes, I can hear you clearly. Your audio is coming through well. Do you have any questions for me before we finish?";
         answer.answerProcessed = true;
         const nextQuestionId = String(doc.questions.length);
         const promptObj = {
           category: "CLOSING",
-          question: audioPrompt,
+          question: checkPrompt,
           difficulty: "EASY",
-          reason: "Candidate checked audio during closing; confirmed audio and re-invited questions.",
+          reason: `Candidate checked ${closingIntent.intent === "CAMERA_CHECK" ? "camera" : "audio"} during closing; confirmed and re-invited questions.`,
           source: "fallback",
           followUpExpected: true,
           questionId: nextQuestionId,
@@ -315,7 +405,7 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
         doc.transcript.push({
           sequence: doc.transcript.length,
           speaker: "AI",
-          text: audioPrompt,
+          text: checkPrompt,
           timestamp: new Date(),
           questionId: nextQuestionId,
           category: "CLOSING",
@@ -326,7 +416,7 @@ export async function submitAnswer(interviewId, candidateId, text, requestId = n
           interview: doc,
           duplicate: false,
           nextQuestion: promptObj,
-          acknowledgment: "Yes, I can hear you clearly.",
+          acknowledgment: closingIntent.intent === "CAMERA_CHECK" ? "Yes, I can see you clearly." : "Yes, I can hear you clearly.",
           action: "FOLLOW_UP",
           phase: "CLOSING",
           closing: false,
@@ -491,6 +581,34 @@ Return JSON ONLY:
           nextQuestion: { ...(lastQ || {}), question: audioMsg, reason: "Candidate audio check verification." },
           acknowledgment: "Yes, I can hear you clearly.",
           action: "AUDIO_CHECK",
+          phase: doc.phase,
+          closing: false,
+        };
+      }
+
+      // 0a. CAMERA_CHECK handling (Do NOT advance question, do NOT score as incorrect, confirm video)
+      if (intentInfo.intent === "CAMERA_CHECK") {
+        actionType = "CAMERA_CHECK";
+        const cameraMsg = `Yes, I can see you clearly. Your video is coming through fine.${lastQ?.question ? ` Whenever you're ready, let's return to our question: ${lastQ.question}` : " Whenever you're ready, let's continue."}`;
+        answer.answerProcessed = true;
+        answer.answerQuality = "POTENTIALLY_DETAILED";
+        doc.transcript.push({
+          sequence: doc.transcript.length,
+          speaker: "AI",
+          text: cameraMsg,
+          timestamp: new Date(),
+          questionId: String(doc.currentQuestionIndex ?? 0),
+          category: "FOLLOW_UP",
+          section: doc.phase,
+        });
+        await doc.save();
+        logger.info(`[INTENT_CAMERA_CHECK] Candidate verified camera ${doc._id} q=${doc.currentQuestionIndex}`);
+        return {
+          interview: doc,
+          duplicate: false,
+          nextQuestion: { ...(lastQ || {}), question: cameraMsg, reason: "Candidate camera check verification." },
+          acknowledgment: "Yes, I can see you clearly.",
+          action: "CAMERA_CHECK",
           phase: doc.phase,
           closing: false,
         };
@@ -696,21 +814,46 @@ Return JSON ONLY:
         }
       }
 
-      // Duration-Aware Adaptive Phase Progression:
-      // Computes elapsed time against configured scheduled duration (authoritative doc.durationMinutes)
-      const interviewStart = doc.startedAt || doc.candidateJoinedAt || doc.scheduledAt || doc.createdAt || new Date();
-      const elapsedMinutes = Math.max(0, (Date.now() - new Date(interviewStart).getTime()) / (60 * 1000));
-      const totalDurationMinutes = doc.durationMinutes || 30;
-      const closingWindowDuration = Math.min(5, Math.max(2.5, totalDurationMinutes * 0.12));
+      // Authoritative timer calculation:
+      // Must use actual start (startedAt or candidateJoinedAt). Never use scheduledAt or createdAt!
+      const actualStart = doc.startedAt || doc.candidateJoinedAt;
+      let elapsedMinutes = 0;
+      if (!actualStart) {
+        logger.warn(`[TIMER_SAFEGUARD] Missing actual start timestamp for interview ${doc._id}. Elapsed time treated as 0 for deadline calculation.`);
+      } else {
+        elapsedMinutes = Math.max(0, (Date.now() - new Date(actualStart).getTime()) / (60 * 1000));
+      }
+
+      const totalDurationMinutes = doc.durationMinutes || 15;
+      const closingWindowDuration = Math.min(5, Math.max(1.5, totalDurationMinutes * 0.12));
       const closingThresholdMinutes = Math.max(5, totalDurationMinutes - closingWindowDuration);
-      const inClosingWindow = opts?.closing === true || elapsedMinutes >= closingThresholdMinutes;
+
+      // Evaluate performance-based early completion eligibility
+      const earlyEval = evaluateEarlyCompletionEligibility(doc);
+      if (earlyEval.eligible && !doc.earlyCompletion?.isEligible) {
+        doc.earlyCompletion = {
+          isEligible: true,
+          evaluatedAt: new Date(),
+          reason: earlyEval.reason,
+          completedTechnicalQuestions: earlyEval.completedTechnicalQuestions,
+          coveredSkillsCount: earlyEval.coveredSkillsCount,
+        };
+        logger.info(`[EARLY_COMPLETION] Interview ${doc._id} achieved performance-based early completion: ${earlyEval.reason}`);
+      }
+
+      const isEarlyEligible = Boolean(doc.earlyCompletion?.isEligible);
+      // Valid closing window: time exceeded threshold OR performance early-completion criteria satisfied
+      const inClosingWindow = (opts?.closing === true && isEarlyEligible) || elapsedMinutes >= closingThresholdMinutes || isEarlyEligible;
 
       const techQuestionCount = doc.questions.filter((q) =>
-        !["PRECHECK", "INTRODUCTION", "PROJECT_CONFIRMATION"].includes(q.category)
+        !["PRECHECK", "INTRODUCTION", "PROJECT_CONFIRMATION", "CLOSING"].includes(q.category)
       ).length;
 
       if (inClosingWindow) {
         phase = "CLOSING";
+        if (isEarlyEligible && !doc.completionReason) {
+          doc.completionReason = doc.earlyCompletion?.reason || "PERFORMANCE_EARLY_COMPLETION";
+        }
       } else if (techQuestionCount >= 3 && phase === "QUESTIONING") {
         phase = doc.candidateStrengths.length > 0 ? "STRENGTH_DEPTH" : "WEAKNESS_GAP";
       } else if (techQuestionCount >= 6 && ["STRENGTH_DEPTH", "WEAKNESS_GAP"].includes(phase)) {
@@ -738,7 +881,14 @@ Return JSON ONLY:
     }
 
     answer.answerProcessed = true;
-    if (next.category === "CLOSING") phase = "CLOSING";
+    if (next.category === "CLOSING") {
+      if (phase === "CLOSING" || inClosingWindow) {
+        phase = "CLOSING";
+      } else {
+        logger.warn(`[CLOSING_SAFEGUARD] LLM returned category 'CLOSING' before closing threshold or early completion criteria met in interview ${doc._id}. Overriding to 'FOLLOW_UP'.`);
+        next.category = "FOLLOW_UP";
+      }
+    }
     doc.phase = phase;
     const nextQuestionId = String(doc.questions.length);
     doc.questions.push({ ...next, questionId: nextQuestionId, askedAt: new Date() });
@@ -782,7 +932,12 @@ export async function endInterview(interviewId, candidateId = null, options = {}
   doc.endedAt = doc.endedAt || new Date();
   if (options?.reason) {
     doc.completionReason = String(options.reason).slice(0, 500);
+  } else if (doc.earlyCompletion?.isEligible && !doc.completionReason) {
+    doc.completionReason = doc.earlyCompletion.reason || "PERFORMANCE_EARLY_COMPLETION";
   }
+  doc.timingMetrics = doc.timingMetrics || {};
+  if (!doc.timingMetrics.botDisconnectAt) doc.timingMetrics.botDisconnectAt = new Date();
+  if (!doc.timingMetrics.totalTurnCount) doc.timingMetrics.totalTurnCount = doc.transcript.length;
   doc.analysisError = null;
   doc.transcript.forEach((entry, index) => { if (entry.sequence == null) entry.sequence = index; });
   await doc.save();

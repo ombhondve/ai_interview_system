@@ -123,7 +123,7 @@ class ConversationManager:
         audio_capture,
         recruitai_client,
         deepgram_client,
-        duration_minutes: float = 30.0,
+        duration_minutes: float = 15.0,
     ):
         self.bot = bot
         self.audio_capture = audio_capture
@@ -138,6 +138,8 @@ class ConversationManager:
         self.last_speech_time: float = time.monotonic()
         self.interview_start_time: float = time.monotonic()
         self.duration_minutes: float = float(duration_minutes)
+        self.closing_invited: bool = False
+        self.farewell_delivered: bool = False
         self.no_response_step: int = 0  # 0: waiting, 1: reminded ("Take your time"), 2: offered repeat/audio check
         self.empty_transcript_count: int = 0
         self.student_question_count: int = 0
@@ -275,7 +277,7 @@ async def run_cli():
     # Phase 3 CLI commands
     parser.add_argument("--interview-id", type=str, help="AiInterviewSession ID to associate with the meeting bot")
     parser.add_argument("--candidate-id", type=str, help="Candidate ID to verify with the interview session")
-    parser.add_argument("--duration-minutes", type=float, default=30.0, help="Scheduled interview duration in minutes (default: 30.0)")
+    parser.add_argument("--duration-minutes", type=float, default=15.0, help="Scheduled interview duration in minutes (default: 15.0)")
     parser.add_argument("--submit-test-transcript", action="store_true", help="Submit test transcript to RecruitAI backend internal API")
     parser.add_argument("--text", type=str, default="Hello, I am ready for the interview.", help="Text content for --submit-test-transcript")
     # Phase 4 CLI commands
@@ -750,10 +752,12 @@ async def run_cli():
                     if conv_mgr.is_hard_deadline_reached() and not bot_instance.is_ai_speaking():
                         logger.info("[TIMER] Scheduled hard deadline reached. Concluding interview safely.")
                         conv_mgr.set_state(ConversationState.CLOSING_INTERVIEW, decision="hard_deadline_reached")
-                        try:
-                            await bot_instance.speak_text("We have reached the end of our scheduled time. Thank you so much for your time today. Goodbye!")
-                        except Exception:
-                            pass
+                        if not conv_mgr.farewell_delivered:
+                            conv_mgr.farewell_delivered = True
+                            try:
+                                await bot_instance.speak_text("We have reached the end of our scheduled time. Thank you so much for your time today. Goodbye!")
+                            except Exception:
+                                pass
                         conv_mgr.set_state(ConversationState.COMPLETED, decision="hard_deadline_completed")
                         dur = audio_capture.stop_master_recording()
                         if args.interview_id:
@@ -787,14 +791,16 @@ async def run_cli():
                         conv_mgr.current_phase = "CLOSING"
                         conv_mgr.no_response_step = 0
                         conv_mgr.set_state(ConversationState.INVITING_STUDENT_QUESTIONS, decision="closing_window_reached")
-                        closing_invitation = (
-                            "Thank you for sharing your experience and answers today. "
-                            "We are approaching the end of our scheduled interview time. "
-                            "Before we conclude, do you have any questions for me?"
-                        )
-                        conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="speaking_closing_invitation")
-                        await bot_instance.speak_text(closing_invitation)
-                        audio_capture.reset_buffer()
+                        if not conv_mgr.closing_invited:
+                            conv_mgr.closing_invited = True
+                            closing_invitation = (
+                                "Thank you for sharing your experience and answers today. "
+                                "We are approaching the end of our scheduled interview time. "
+                                "Before we conclude, do you have any questions for me?"
+                            )
+                            conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="speaking_closing_invitation")
+                            await bot_instance.speak_text(closing_invitation)
+                            audio_capture.reset_buffer()
                         conv_mgr.last_speech_time = time.monotonic()
                         conv_mgr.set_state(ConversationState.LISTENING_TO_STUDENT, decision="waiting_for_student_questions")
                         continue
@@ -951,6 +957,11 @@ async def run_cli():
                         conv_mgr.set_state(ConversationState.WAITING_FOR_ANSWER, decision="deepgram_not_configured")
                         continue
 
+                    # Check deadline before Deepgram call
+                    if conv_mgr.is_hard_deadline_reached() and not bot_instance.is_ai_speaking():
+                        logger.info("[TIMER] Scheduled hard deadline reached before STT. Ending interview.")
+                        break
+
                     # 1. Deepgram STT
                     conv_mgr.set_state(ConversationState.PROCESSING_ANSWER, decision="transcribing_utterance")
                     logger.info("[STT] Sending utterance to Deepgram")
@@ -1041,6 +1052,24 @@ async def run_cli():
                                 conv_mgr.set_state(ConversationState.LISTENING_TO_STUDENT, decision="waiting_after_audio_check")
                                 continue
 
+                            # 1b. Camera Check during CLOSING phase
+                            is_camera_check = bool(
+                                re.search(
+                                    r"\b(can you see me|is my camera working|is my video working|am i visible|can you see my video|can you see my camera|camera working|video working|video test|camera test)\b",
+                                    lower_trans,
+                                    re.IGNORECASE,
+                                )
+                            )
+                            if is_camera_check:
+                                logger.info("[CLOSING][CAMERA_CHECK] Candidate checked camera during closing.")
+                                conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="camera_check_confirmed_closing")
+                                cam_ack = "Yes, I can see you clearly. Your video is coming through well. Do you have any questions for me before we finish?"
+                                await bot_instance.speak_text(cam_ack)
+                                audio_capture.reset_buffer()
+                                conv_mgr.last_speech_time = time.monotonic()
+                                conv_mgr.set_state(ConversationState.LISTENING_TO_STUDENT, decision="waiting_after_camera_check")
+                                continue
+
                             # 2. Candidate declining further questions (NO_MORE_QUESTIONS)
                             clean_trans = re.sub(r"[^\w\s]", "", lower_trans).strip()
                             is_no_question = (
@@ -1086,8 +1115,10 @@ async def run_cli():
                                 except Exception as f_err:
                                     logger.warning(f"[MeetingBot] Failed to submit closing 'No questions': {f_err}")
 
-                                conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="speaking_farewell")
-                                await bot_instance.speak_text(farewell_text)
+                                if not conv_mgr.farewell_delivered:
+                                    conv_mgr.farewell_delivered = True
+                                    conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="speaking_farewell")
+                                    await bot_instance.speak_text(farewell_text)
                                 conv_mgr.set_state(ConversationState.COMPLETED, decision="closing_completed_normal")
 
                                 dur = audio_capture.stop_master_recording()
@@ -1148,7 +1179,8 @@ async def run_cli():
 
                                 rem_time = conv_mgr.get_remaining_time_sec()
                                 if rem_time > 45.0 and conv_mgr.student_question_count < 4:
-                                    if not already_invited_more:
+                                    if not already_invited_more and not conv_mgr.closing_invited:
+                                        conv_mgr.closing_invited = True
                                         conv_mgr.set_state(ConversationState.CHECKING_FOR_MORE_QUESTIONS, decision="checking_additional_q")
                                         await bot_instance.speak_text("Do you have any other questions for me?")
                                         audio_capture.reset_buffer()
@@ -1157,7 +1189,9 @@ async def run_cli():
                                     continue
                                 else:
                                     conv_mgr.set_state(ConversationState.CLOSING_INTERVIEW, decision="closing_after_student_q")
-                                    await bot_instance.speak_text("Thank you for those great questions. That brings us to the end of our scheduled time. Have a wonderful day!")
+                                    if not conv_mgr.farewell_delivered:
+                                        conv_mgr.farewell_delivered = True
+                                        await bot_instance.speak_text("Thank you for those great questions. That brings us to the end of our scheduled time. Have a wonderful day!")
                                     conv_mgr.set_state(ConversationState.COMPLETED, decision="completed_normal")
                                     dur = audio_capture.stop_master_recording()
                                     try:
@@ -1183,6 +1217,11 @@ async def run_cli():
                                         logger.error(f"[MeetingBot] Failed to complete interview: {comp_err}")
                                     await asyncio.sleep(1.5)
                                     break
+
+                        # Check deadline before backend call
+                        if conv_mgr.is_hard_deadline_reached() and not bot_instance.is_ai_speaking():
+                            logger.info("[TIMER] Scheduled hard deadline reached before backend call. Ending interview.")
+                            break
 
                         # 2. Normal Questioning Phase: Backend Submission
                         conv_mgr.set_state(ConversationState.GENERATING_NEXT_QUESTION, decision="submitting_answer_to_backend")
@@ -1226,10 +1265,12 @@ async def run_cli():
                                 if is_closing or conv_mgr.is_in_closing_window():
                                     conv_mgr.current_phase = "CLOSING"
                                     conv_mgr.set_state(ConversationState.INVITING_STUDENT_QUESTIONS, decision="closing_phase_initiated")
-                                    closing_prompt = next_q or "We are now approaching the end of our interview. Do you have any questions for me?"
-                                    conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="speaking_closing_invitation")
-                                    await bot_instance.speak_text(closing_prompt)
-                                    audio_capture.reset_buffer()
+                                    if not conv_mgr.closing_invited:
+                                        conv_mgr.closing_invited = True
+                                        closing_prompt = next_q or "We are now approaching the end of our interview. Do you have any questions for me?"
+                                        conv_mgr.set_state(ConversationState.PLAYING_RESPONSE, decision="speaking_closing_invitation")
+                                        await bot_instance.speak_text(closing_prompt)
+                                        audio_capture.reset_buffer()
                                     conv_mgr.last_speech_time = time.monotonic()
                                     conv_mgr.set_state(ConversationState.LISTENING_TO_STUDENT, decision="waiting_for_student_questions")
                                     continue
@@ -1251,6 +1292,9 @@ async def run_cli():
                                 spoken_payload = next_q
 
                             if spoken_payload:
+                                if conv_mgr.is_hard_deadline_reached():
+                                    logger.info("[TIMER] Hard deadline reached before speaking next question. Exiting interview loop.")
+                                    break
                                 conv_mgr.current_question = spoken_payload
                                 logger.info(f"[AI] Next spoken utterance: '{spoken_payload[:60]}...'")
                                 safe_print("\n" + "*" * 50)

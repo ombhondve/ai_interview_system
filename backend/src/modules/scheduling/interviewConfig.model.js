@@ -33,8 +33,8 @@ const interviewConfigSchema = new mongoose.Schema(
     interviewDurationMinutes: {
       type: Number,
       required: true,
-      default: 30,
-      min: 15,
+      default: 15,
+      min: 10,
       max: 480,
       comment: "Duration of a single interview, in minutes.",
     },

@@ -608,7 +608,15 @@ class AudioCaptureService:
                         break
 
                     # Condition B: Continuous silence confirmed after confirmation window
-                    if silence_gap >= confirm_limit:
+                    effective_confirm = confirm_limit
+                    if silence_duration_sec is None:
+                        actual_so_far = (last_speech_time or now) - (speech_start_time or now)
+                        if actual_so_far >= 4.0:
+                            effective_confirm = 1.3
+                        else:
+                            effective_confirm = max(1.7, confirm_limit)
+
+                    if silence_gap >= effective_confirm:
                         actual_speech_duration = (last_speech_time or now) - (speech_start_time or now)
                         if actual_speech_duration >= min_speech_limit:
                             logger.info(
@@ -624,7 +632,7 @@ class AudioCaptureService:
                             speech_start_time = None
                             last_speech_time = None
 
-            if in_speech and silence_gap >= confirm_limit:
+            if in_speech and silence_gap >= (effective_confirm if 'effective_confirm' in locals() else confirm_limit):
                 break
             if in_speech and curr_speech_duration >= max_utterance_limit:
                 break

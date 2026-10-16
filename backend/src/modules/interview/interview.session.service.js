@@ -33,7 +33,7 @@ export async function ensureSessionForBooking({ candidateId, projectId, bookingI
       projectId: projectId || booking.projectId || null,
       bookingId,
       scheduledAt,
-      durationMinutes: booking.durationMinutes || 30,
+      durationMinutes: booking.durationMinutes || 15,
       meetLink: meetLink || booking.meetLink || null,
       calendarEventId: calendarEventId || booking.calendarEventId || null,
       status: "SCHEDULED",
@@ -104,6 +104,9 @@ export async function startInterview(interviewId, candidateId) {
     doc.status = "IN_PROGRESS";
     doc.startedAt = doc.startedAt || new Date();
     doc.candidateJoinedAt = doc.candidateJoinedAt || new Date();
+    if (!doc.timingMetrics) doc.timingMetrics = {};
+    doc.timingMetrics.actualJoinedAt = doc.timingMetrics.actualJoinedAt || doc.candidateJoinedAt;
+    doc.timingMetrics.firstQuestionSpokenAt = doc.timingMetrics.firstQuestionSpokenAt || new Date();
   }
   doc.transcript.forEach((entry, index) => { if (entry.sequence == null) entry.sequence = index; });
   await doc.save();

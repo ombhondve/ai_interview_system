@@ -6,11 +6,13 @@ const questionSchema = new mongoose.Schema({
   question: { type: String, required: true, trim: true }, difficulty: { type: String, enum: ["EASY", "MEDIUM", "HARD"], default: "MEDIUM" },
   reason: { type: String, trim: true, default: "" }, source: { type: String, enum: ["ai", "fallback"], default: "ai" },
   followUpExpected: { type: Boolean, default: false }, askedAt: { type: Date, default: Date.now },
+  generationLatencyMs: { type: Number, default: 0 },
 }, { _id: false });
 const transcriptSchema = new mongoose.Schema({
   sequence: { type: Number, min: 0, default: 0 }, speaker: { type: String, enum: ["AI", "CANDIDATE", "SYSTEM"], required: true }, text: { type: String, required: true, trim: true, maxlength: 8000 },
   timestamp: { type: Date, default: Date.now }, questionId: { type: String, default: null }, requestId: { type: String, trim: true, default: null },
   answerProcessed: { type: Boolean, default: false }, answerQuality: { type: String, enum: ["WEAK", "INCOMPLETE", "POTENTIALLY_DETAILED"], default: null }, category: { type: String, enum: INTERVIEW_CATEGORIES, default: null },
+  vadSpeechDurationSec: { type: Number, default: 0 }, sttLatencyMs: { type: Number, default: 0 }, backendLatencyMs: { type: Number, default: 0 }, ttsLatencyMs: { type: Number, default: 0 },
   section: {
     type: String,
     enum: [
@@ -46,7 +48,7 @@ const aiInterviewSchema = new mongoose.Schema({
   assignedWorkerId: { type: String, trim: true, default: null },
   aiSessionId: { type: String, trim: true, default: null },
   candidateJoinedAt: { type: Date, default: null },
-  durationMinutes: { type: Number, default: 30 },
+  durationMinutes: { type: Number, default: 15 },
   noShowAt: { type: Date, default: null },
   noShowReason: { type: String, trim: true, default: null },
   completionReason: { type: String, trim: true, default: null },
@@ -80,6 +82,27 @@ const aiInterviewSchema = new mongoose.Schema({
   technicalAreas: { type: [String], default: [] },
   knowledgeGaps: { type: [String], default: [] },
   projectOwnershipAssessment: { type: String, trim: true, default: "" },
+
+  // Performance telemetry & timing metrics
+  timingMetrics: {
+    actualJoinedAt: { type: Date, default: null },
+    firstQuestionSpokenAt: { type: Date, default: null },
+    closingInitiatedAt: { type: Date, default: null },
+    botDisconnectAt: { type: Date, default: null },
+    totalActiveSpeechSeconds: { type: Number, default: 0 },
+    totalAiSpeakingSeconds: { type: Number, default: 0 },
+    totalTurnCount: { type: Number, default: 0 },
+    averageTurnaroundMs: { type: Number, default: 0 },
+  },
+
+  // Performance-based early completion evaluation
+  earlyCompletion: {
+    eligible: { type: Boolean, default: false },
+    reason: { type: String, trim: true, default: null },
+    completedTechnicalQuestions: { type: Number, default: 0 },
+    coveredSkillsCount: { type: Number, default: 0 },
+    evaluatedAt: { type: Date, default: null },
+  },
 
   // Cloudinary recording tracking
   recordingStatus: {
