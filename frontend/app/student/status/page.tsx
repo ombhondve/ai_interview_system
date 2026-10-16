@@ -130,15 +130,42 @@ export default function StudentDashboardPage() {
   const getNextAction = () => {
     if (!candidate) return null;
 
+    // Check if interview is completed/finished
+    const isInterviewFinished =
+      candidate.interviewStatus === "completed" ||
+      candidate.interviewStatus === "ANALYZED" ||
+      candidate.status === "selected" ||
+      candidate.status === "rejected";
+
+    if (isInterviewFinished) {
+      // If final results are available
+      if (candidate.status === "selected" || candidate.status === "rejected") {
+        return {
+          title: "Application Results",
+          description: "Your interview outcome is available.",
+          actionLabel: "View Results",
+          actionHref: "/student/result",
+          badge: "Completed",
+          badgeColor: "bg-[#15803D] text-white",
+          icon: CheckCircle2,
+        };
+      }
+      return null;
+    }
+
     if (candidate.interview?.date || candidate.interviewDate) {
+      const interviewDateText =
+        candidate.interview?.date || candidate.interviewDate;
+      const interviewTimeText = candidate.interview?.time
+        ? ` at ${candidate.interview.time}`
+        : "";
+
       return {
-        title: "Attend Technical Interview",
-        description: `Your interview is scheduled for ${
-          candidate.interview?.date || candidate.interviewDate
-        }${candidate.interview?.time ? ` at ${candidate.interview.time}` : ""}. Review your project and join the session on time.`,
-        actionLabel: "View Interview Details",
+        title: "Technical Interview",
+        description: `Scheduled for ${interviewDateText}${interviewTimeText}.`,
+        actionLabel: "Join Interview",
         actionHref: "/student/interview",
-        badge: "Interview Ready",
+        badge: "Scheduled",
         badgeColor: "bg-[#40916C] text-white",
         icon: Video,
       };
@@ -146,10 +173,9 @@ export default function StudentDashboardPage() {
 
     if (candidate.interviewEligible) {
       return {
-        title: "Schedule Your Technical Interview",
-        description:
-          "Your project has been accepted and verified. Select your preferred date and time slot to complete the interview.",
-        actionLabel: "Choose Interview Slot",
+        title: "Technical Interview",
+        description: "Project verified. Select your interview time slot.",
+        actionLabel: "Schedule Interview",
         actionHref: "/student/interview-scheduling",
         badge: "Action Required",
         badgeColor: "bg-[#15803D] text-white",
@@ -159,10 +185,10 @@ export default function StudentDashboardPage() {
 
     if (candidate.rejectionReason) {
       return {
-        title: "Project Verification Feedback",
+        title: "Project Feedback",
         description:
-          "Your recent project submission requires review or updates. Check the automated verification notes on the Projects page.",
-        actionLabel: "Review Project Status",
+          candidate.rejectionReason || "Updates required for your project submission.",
+        actionLabel: "View Project",
         actionHref: "/student/project",
         badge: "Update Needed",
         badgeColor: "bg-[#B91C1C] text-white",
@@ -172,25 +198,24 @@ export default function StudentDashboardPage() {
 
     if (candidate.projectSubmissionStatus === "submitted") {
       return {
-        title: "Project Under Verification",
-        description:
-          "Your repository submission is currently undergoing automated code analysis and AI requirement verification.",
-        actionLabel: "View Live Progress",
+        title: "Project Under Review",
+        description: "Your submission is undergoing automated verification.",
+        actionLabel: "View Project",
         actionHref: "/student/project",
-        badge: "In Progress",
+        badge: "Under Review",
         badgeColor: "bg-[#B45309] text-white",
         icon: Clock,
       };
     }
 
     return {
-      title: "Complete Assigned Project",
-      description: projectData?.title
-        ? `Your assigned project is "${projectData.title}". Read the requirements and submit your GitHub repository.`
-        : "View your assigned recruitment project, review the technical requirements, and submit your work.",
-      actionLabel: "Go to Projects",
+      title: projectData?.title || "Assigned Project",
+      description: projectData?.deadline
+        ? `Due: ${projectData.deadline}`
+        : "Review project requirements and submit.",
+      actionLabel: "View Project",
       actionHref: "/student/project",
-      badge: "In Progress",
+      badge: "Pending",
       badgeColor: "bg-[#40916C] text-white",
       icon: FolderKanban,
     };
@@ -248,7 +273,7 @@ export default function StudentDashboardPage() {
         {/* ======================================================== */}
         <div className="rounded-2xl bg-[#1B4332] text-white p-6 sm:p-8 shadow-sm border border-[#255A44] relative overflow-hidden">
           <div className="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-            <div className="max-w-xl space-y-2">
+            <div className="max-w-xl space-y-1.5">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#255A44] text-[#F5F1E8] text-xs font-medium">
                 <Sparkles className="h-3.5 w-3.5 text-[#40916C]" />
                 <span>Candidate Portal</span>
@@ -256,14 +281,6 @@ export default function StudentDashboardPage() {
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
                 Welcome, {candidate.name}
               </h1>
-              <p className="text-sm text-[#D8CDBB] leading-relaxed">
-                Applying for{" "}
-                <span className="font-semibold text-white">
-                  {candidate.role || "Software Engineer"}
-                </span>
-                . Track your recruitment milestones, submit your project, and
-                prepare for your interview below.
-              </p>
             </div>
 
             <div className="shrink-0 flex items-center gap-3">
@@ -421,80 +438,6 @@ export default function StudentDashboardPage() {
                 ? "Pick available slot"
                 : "Unlocks after verification"}
             </p>
-          </div>
-        </div>
-
-        {/* ======================================================== */}
-        {/* DETAILED WORKFLOW GUIDANCE CARDS */}
-        {/* ======================================================== */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Card 1: Projects Link */}
-          <div className="bg-white border border-[#D6D3C8] rounded-2xl p-6 shadow-sm space-y-4 flex flex-col justify-between">
-            <div className="space-y-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF4EE] text-[#1B4332]">
-                <FileCode className="h-5 w-5 text-[#40916C]" />
-              </div>
-              <h3 className="text-base font-bold text-[#1F2937]">
-                Project Implementation
-              </h3>
-              <p className="text-sm text-[#64748B] leading-relaxed">
-                Review assigned requirements, clone resources, and submit your
-                public GitHub repository before the deadline.
-              </p>
-            </div>
-            <Link
-              href="/student/project"
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#1B4332] hover:text-[#40916C] transition-colors"
-            >
-              <span>View Projects</span>
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-
-          {/* Card 2: Schedule Link */}
-          <div className="bg-white border border-[#D6D3C8] rounded-2xl p-6 shadow-sm space-y-4 flex flex-col justify-between">
-            <div className="space-y-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF4EE] text-[#1B4332]">
-                <CalendarDays className="h-5 w-5 text-[#40916C]" />
-              </div>
-              <h3 className="text-base font-bold text-[#1F2937]">
-                Interview Schedule
-              </h3>
-              <p className="text-sm text-[#64748B] leading-relaxed">
-                Once your project is verified, select a convenient date and time
-                slot with synchronized calendar invites.
-              </p>
-            </div>
-            <Link
-              href="/student/interview-scheduling"
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#1B4332] hover:text-[#40916C] transition-colors"
-            >
-              <span>Check Scheduling</span>
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-
-          {/* Card 3: Interviews Link */}
-          <div className="bg-white border border-[#D6D3C8] rounded-2xl p-6 shadow-sm space-y-4 flex flex-col justify-between">
-            <div className="space-y-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#EAF4EE] text-[#1B4332]">
-                <Video className="h-5 w-5 text-[#40916C]" />
-              </div>
-              <h3 className="text-base font-bold text-[#1F2937]">
-                AI Technical Interview
-              </h3>
-              <p className="text-sm text-[#64748B] leading-relaxed">
-                Join the interactive interview console with voice responses,
-                question evaluation, and real-time transcripts.
-              </p>
-            </div>
-            <Link
-              href="/student/interview"
-              className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#1B4332] hover:text-[#40916C] transition-colors"
-            >
-              <span>Enter Interview Console</span>
-              <ArrowRight className="h-4 w-4" />
-            </Link>
           </div>
         </div>
       </div>

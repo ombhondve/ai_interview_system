@@ -164,7 +164,7 @@ function VerificationResultView({
                 onClick={onScheduleInterview}
                 className="bg-[#40916C] hover:bg-[#347959] text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#40916C] cursor-pointer"
               >
-                Schedule Interview →
+                Schedule Interview
               </button>
             </div>
           </div>
@@ -207,7 +207,7 @@ function VerificationResultView({
                   onClick={onRetry}
                   className="bg-[#1B4332] hover:bg-[#143326] text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#1B4332] cursor-pointer"
                 >
-                  Submit Revised Repository →
+                  Submit Project
                 </button>
               </div>
             )}
@@ -251,7 +251,7 @@ function VerificationResultView({
                   onClick={onRetry}
                   className="bg-[#1B4332] hover:bg-[#143326] text-white px-6 py-2.5 rounded-xl text-sm font-semibold shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#1B4332] cursor-pointer"
                 >
-                  Try Verification Again
+                  Retry
                 </button>
               </div>
             )}
@@ -1023,15 +1023,15 @@ export default function Project() {
 
         <div className="space-y-1">
           <p className="text-xs font-bold uppercase tracking-wider text-[#40916C]">
-            Technical Assessment
+            Project
           </p>
 
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#1B4332]">
-            Assigned Project Submission
+            Project Submission
           </h1>
 
           <p className="max-w-2xl text-sm leading-6 text-[#64748B]">
-            Complete the assigned recruitment challenge and submit your public GitHub or repository URL for automated AI evaluation.
+            Review technical requirements and submit your project repository URL.
           </p>
         </div>
 
@@ -1144,8 +1144,8 @@ export default function Project() {
             {/* Assigned project briefing */}
             <Card className="border-[#D6D3C8] bg-white shadow-sm">
               <CardHeader
-                title="Project Specification"
-                subtitle="Review technical requirements before starting implementation."
+                title="Project Details"
+                subtitle="Technical requirements and guidelines."
               />
               <CardContent>
                 <div className="rounded-xl border border-[#D8CDBB] bg-[#F5F1E8] p-5 sm:p-6 space-y-5">
@@ -1183,7 +1183,7 @@ export default function Project() {
                         onClick={downloadProject}
                         className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#40916C] hover:bg-[#347959] text-white font-semibold text-sm transition-all shadow-sm disabled:opacity-50 cursor-pointer"
                       >
-                        {downloading ? "Preparing download..." : "Download Project Resources (PDF)"}
+                        {downloading ? "Preparing download..." : "Download Project PDF"}
                       </button>
                     ) : (
                       <div className="rounded-xl border border-[#B45309]/30 bg-[#FFFBEB] p-4">
@@ -1200,13 +1200,13 @@ export default function Project() {
             {(candidate?.projectSubmissionStatus === "downloaded" || candidate?.projectDownloadedAt) && (
               <Card className="border-[#D6D3C8] bg-white shadow-sm">
                 <CardHeader
-                  title="Submit Your Solution"
-                  subtitle="Provide a public GitHub, GitLab, or hosted repository URL."
+                  title="Submit Solution"
+                  subtitle="Provide a public repository URL."
                 />
                 <CardContent>
                   <div className="max-w-2xl space-y-4">
                     <Input
-                      label="GitHub / Repository URL"
+                      label="Repository URL"
                       type="url"
                       placeholder="https://github.com/username/project"
                       value={url}
@@ -1217,7 +1217,7 @@ export default function Project() {
                       disabled={submitting}
                     />
                     <p className="text-xs text-[#64748B] leading-relaxed">
-                      Make sure your repository is public so our automated verification engine can inspect your commits, dependencies, and test coverage.
+                      Ensure repository is public for automated verification.
                     </p>
                     <div className="pt-2">
                       <button
@@ -1226,7 +1226,7 @@ export default function Project() {
                         onClick={submitProject}
                         className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-[#1B4332] hover:bg-[#143326] text-white font-semibold text-sm transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                       >
-                        {submitting ? "Analyzing & Submitting..." : "Submit Project for Verification"}
+                        {submitting ? "Submitting..." : "Submit Project"}
                       </button>
                     </div>
                   </div>

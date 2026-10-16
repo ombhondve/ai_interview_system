@@ -469,15 +469,11 @@ function VerifyInner() {
       >
         {/* Brand / Logo Topmark */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1B4332] text-white text-xs font-semibold shadow-sm">
-            <ShieldCheck className="h-4 w-4 text-[#40916C]" />
-            <span>RecruitAI Security Gateway</span>
-          </div>
-          <h1 className="mt-3 text-2xl sm:text-3xl font-extrabold tracking-tight text-[#1B4332]">
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#1B4332]">
             Student Verification
           </h1>
           <p className="mt-1 text-sm text-[#64748B]">
-            Identity verification for your recruitment journey
+            Verify your email to access the portal.
           </p>
         </div>
 
@@ -487,19 +483,11 @@ function VerifyInner() {
           transition={{ duration: 0.4 }}
           className="bg-white border border-[#D6D3C8] rounded-2xl shadow-sm overflow-hidden"
         >
-          {/* Top Progress / Stage Bar */}
-          <div className="bg-[#1B4332] px-6 py-4 text-white flex items-center justify-between border-b border-[#255A44]">
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#40916C] text-xs font-bold">
-                1
-              </div>
-              <span className="text-xs sm:text-sm font-semibold tracking-wide">
-                Identity Authentication
-              </span>
-            </div>
-            <div className="text-xs text-[#D8CDBB] font-mono">
-              60s One-Time Security Code
-            </div>
+          {/* Top Stage Bar */}
+          <div className="bg-[#1B4332] px-6 py-3.5 text-white flex items-center justify-between border-b border-[#255A44]">
+            <span className="text-sm font-semibold tracking-wide">
+              Identity Verification
+            </span>
           </div>
 
           <div className="p-6 sm:p-8 space-y-6">
@@ -569,11 +557,11 @@ function VerifyInner() {
                   {sending ? (
                     <>
                       <RefreshCw className="h-4 w-4 animate-spin" />
-                      <span>Dispatching Security OTP...</span>
+                      <span>Sending...</span>
                     </>
                   ) : (
                     <>
-                      <span>Send 60-Second Security OTP</span>
+                      <span>Send OTP</span>
                       <ArrowRight className="h-4 w-4" />
                     </>
                   )}
@@ -686,17 +674,17 @@ function VerifyInner() {
                   {verifying ? (
                     <>
                       <RefreshCw className="h-4 w-4 animate-spin" />
-                      <span>Authenticating Session...</span>
+                      <span>Verifying...</span>
                     </>
                   ) : verifiedSuccess ? (
                     <>
                       <CheckCircle2 className="h-4 w-4 text-emerald-300" />
-                      <span>Identity Verified!</span>
+                      <span>Verified</span>
                     </>
                   ) : (
                     <>
                       <Lock className="h-4 w-4" />
-                      <span>Verify and Continue to Dashboard</span>
+                      <span>Verify OTP</span>
                     </>
                   )}
                 </button>

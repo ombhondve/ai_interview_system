@@ -9,35 +9,52 @@ export default function Result() {
   const [c, setC] = useState<any>(null);
 
   useEffect(() => {
-    fetch("/api/student/me").then(async (r) => {
-      const d = await r.json();
-      if (!r.ok) {
+    const backendUrl =
+      process.env.NEXT_PUBLIC_BACKEND_URL ||
+      "https://ai-interview-system-eewl.vercel.app";
+
+    fetch(`${backendUrl}/api/student/me`, {
+      method: "GET",
+      cache: "no-store",
+      credentials: "include",
+    })
+      .then(async (r) => {
+        if (!r.ok) {
+          router.replace("/student/verify");
+          return;
+        }
+        const d = await r.json();
+        setC(d.candidate);
+      })
+      .catch(() => {
         router.replace("/student/verify");
-        return;
-      }
-      setC(d.candidate);
-    });
+      });
   }, [router]);
 
   return (
     <StudentShell>
-      <Card>
-        <CardHeader title="Result" subtitle="Your final application outcome." />
-        <CardContent>
-          {c ? (
-            <>
-              <p className="text-2xl font-semibold capitalize">
-                {c.finalDecision ? c.finalDecision : c.status.replace("_", " ")}
-              </p>
-              <p className="mt-3 text-sm text-slate-500">
-                Final results become visible after the administrator records the interview decision.
-              </p>
-            </>
-          ) : (
-            <p>Loading…</p>
-          )}
-        </CardContent>
-      </Card>
+      <div className="mx-auto max-w-2xl">
+        <Card className="border-[#D6D3C8] bg-white shadow-sm">
+          <CardHeader title="Application Result" subtitle="Your recruitment application status." />
+          <CardContent className="space-y-4">
+            {c ? (
+              <>
+                <div className="p-4 rounded-xl bg-[#F5F1E8] border border-[#D8CDBB]">
+                  <p className="text-xs font-bold uppercase tracking-wider text-[#64748B]">Status</p>
+                  <p className="text-xl font-bold text-[#1B4332] mt-1 capitalize">
+                    {c.finalDecision ? c.finalDecision : c.status.replace("_", " ")}
+                  </p>
+                </div>
+                <p className="text-xs text-[#64748B]">
+                  Decisions are finalized following interview review.
+                </p>
+              </>
+            ) : (
+              <p className="text-sm text-[#64748B]">Loading result...</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </StudentShell>
   );
 }

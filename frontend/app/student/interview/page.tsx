@@ -312,7 +312,7 @@ export default function InterviewPage() {
   const end = () => performEndInterview(true);
 
   if (loading) return <StudentShell><p className="p-6 text-sm text-slate-500">Loading interview…</p></StudentShell>;
-  if (!session) return <StudentShell><div className="mx-auto max-w-2xl"><Card><CardHeader title="AI Interview" subtitle="A verified project and scheduled booking are required."/><CardContent><p className="text-sm text-slate-600">{notice || "No interview is currently scheduled."}</p><Button className="mt-4" onClick={() => router.push("/student/interview-scheduling")}>View interview schedule</Button></CardContent></Card></div></StudentShell>;
+  if (!session) return <StudentShell><div className="mx-auto max-w-2xl"><Card><CardHeader title="Technical Interview" subtitle="Schedule an interview slot once your project is verified."/><CardContent><p className="text-sm text-slate-600">{notice || "No interview is currently scheduled."}</p><Button className="mt-4" onClick={() => router.push("/student/interview-scheduling")}>Schedule Interview</Button></CardContent></Card></div></StudentShell>;
 
   const isFinished = ["COMPLETING", "COMPLETED", "ANALYSIS_PENDING", "ANALYZED", "FAILED"].includes(session.status);
   const scheduledTime = new Date(session.scheduledAt).getTime();
@@ -328,8 +328,8 @@ export default function InterviewPage() {
   return <StudentShell><div className="mx-auto max-w-3xl space-y-5">
     <Card className="border-[#D6D3C8] bg-white shadow-sm">
       <CardHeader
-        title="AI Interview Session Console"
-        subtitle="Real-time voice interview conducted inside Google Meet with RecruitAI AI Interviewer."
+        title="Technical Interview"
+        subtitle="Voice interview via Google Meet."
       />
       <CardContent>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 rounded-xl bg-[#F5F1E8] border border-[#D8CDBB]">
@@ -367,46 +367,22 @@ export default function InterviewPage() {
       </p>
     )}
 
-    {isFinished ? (
-      <Card className="border-[#D6D3C8] bg-white shadow-sm">
-        <CardContent className="p-6 text-center space-y-2">
-          <h2 className="text-lg font-bold text-[#1B4332]">
-            {session.status === "FAILED"
-              ? "Analysis Needs Attention"
-              : session.status === "ANALYZED"
-              ? "Interview Completed & Analyzed"
-              : session.status === "CANDIDATE_NO_SHOW"
-              ? "Candidate No-Show"
-              : "Interview Completed — Generating Evaluation"}
-          </h2>
-          <p className="text-sm text-[#64748B] max-w-md mx-auto">
-            {session.status === "CANDIDATE_NO_SHOW"
-              ? "The scheduled interview window elapsed without candidate attendance."
-              : "Your interview has concluded. The conversational transcript has been recorded for recruiter review."}
-          </p>
-          {session.status === "FAILED" && (
-            <p className="text-xs text-[#DC2626]">
-              Your interview was interrupted due to a technical issue. Please contact the administrator for assistance.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-    ) : (
+    {!isFinished && (
       <Card className="border-[#40916C]/40 bg-[#EAF4EE] shadow-sm">
         <CardContent className="space-y-4 p-6 sm:p-7">
-          <h2 className="text-xl font-bold text-[#1B4332]">Google Meet AI Voice Interview</h2>
+          <h2 className="text-xl font-bold text-[#1B4332]">Google Meet Voice Interview</h2>
           <p className="text-sm leading-relaxed text-[#1F2937]">
-            This technical interview is conducted in real time with the RecruitAI Voice Bot inside Google Meet.
+            This technical interview is conducted in real time inside Google Meet.
           </p>
 
           <div className="rounded-xl border border-[#D6D3C8] bg-white p-5 space-y-3">
             <p className="text-xs font-bold uppercase tracking-wider text-[#15803D]">
-              Interview Instructions
+              Instructions
             </p>
             <ol className="list-decimal pl-5 text-sm space-y-2 text-[#1F2937]">
-              <li>Click <strong>Join Google Meet</strong> when your scheduled interview time arrives.</li>
-              <li>Ensure your microphone and audio output are enabled in browser settings.</li>
-              <li>Answer the interviewer&apos;s technical questions verbally. Answers are transcribed automatically.</li>
+              <li>Click <strong>Join Interview</strong> when your scheduled interview time arrives.</li>
+              <li>Ensure your microphone and audio are enabled.</li>
+              <li>Answer the interviewer&apos;s questions verbally.</li>
             </ol>
           </div>
 
@@ -418,19 +394,13 @@ export default function InterviewPage() {
                 onClick={openGoogleMeet}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 text-sm font-semibold py-3 px-6 rounded-xl bg-[#40916C] hover:bg-[#347959] text-white shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
               >
-                {isDueOrPast ? "Join Google Meet Room Now →" : "Join Button Unlocks at Scheduled Time"}
+                Join Interview
               </button>
-              <p className="text-xs text-[#64748B]">
-                Meeting Link:{" "}
-                <a
-                  href={session.meetLink}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline text-[#1B4332] font-semibold break-all"
-                >
-                  {session.meetLink}
-                </a>
-              </p>
+              {!isDueOrPast && (
+                <p className="text-xs text-[#64748B]">
+                  Join button unlocks at your scheduled interview time.
+                </p>
+              )}
             </div>
           ) : (
             <p className="text-sm text-[#B45309]">Google Meet link is generating. Please refresh in a moment.</p>

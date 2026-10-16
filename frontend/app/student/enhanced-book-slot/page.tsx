@@ -309,37 +309,6 @@ export default function EnhancedBookSlotPage() {
             </div>
           </>
         )}
-
-        {/* Information Card */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <p className="text-sm font-medium text-slate-800">Enhanced Booking Features</p>
-          <ul className="mt-2 space-y-1.5 text-sm text-slate-500">
-            <li className="flex items-start gap-2">
-              <svg className="h-4 w-4 mt-0.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>Multi-step preparation workflow with readiness scoring</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <svg className="h-4 w-4 mt-0.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-              <span>Calendar integration with automatic reminders</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <svg className="h-4 w-4 mt-0.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>Real-time status tracking and next-step guidance</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <svg className="h-4 w-4 mt-0.5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-              <span>Secure booking with eligibility validation</span>
-            </li>
-          </ul>
-        </div>
       </div>
     </StudentShell>
   );

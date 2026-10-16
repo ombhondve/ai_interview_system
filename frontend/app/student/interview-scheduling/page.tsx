@@ -246,7 +246,7 @@ export default function InterviewSchedulingPage() {
                   onClick={() => router.push(alreadyBooked ? "/student/interview" : "/student/status")}
                   className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#1B4332] text-white text-sm font-semibold hover:bg-[#143326] cursor-pointer"
                 >
-                  {alreadyBooked ? "Go to Interview Details" : "Back to Application Status"}
+                  {alreadyBooked ? "View Interview" : "Back to Dashboard"}
                 </button>
               </div>
             </CardContent>
@@ -270,10 +270,10 @@ export default function InterviewSchedulingPage() {
               </div>
               <div>
                 <h1 className="text-xl sm:text-2xl font-bold text-[#1B4332]">
-                  Interview Scheduled Successfully
+                  Interview Scheduled
                 </h1>
                 <p className="text-sm text-[#1F2937] mt-1">
-                  Your interview slot has been confirmed with our team and synchronized with Google Calendar.
+                  Your interview slot has been confirmed.
                 </p>
               </div>
             </div>
@@ -311,7 +311,7 @@ export default function InterviewSchedulingPage() {
                 className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-[#40916C] hover:bg-[#347959] text-white text-sm font-semibold shadow-sm transition-all cursor-pointer"
               >
                 <Video className="h-4 w-4" />
-                <span>Go to Interview Room</span>
+                <span>View Interview</span>
               </button>
               <button
                 type="button"
@@ -336,13 +336,13 @@ export default function InterviewSchedulingPage() {
         {/* Page Header */}
         <div className="space-y-1">
           <p className="text-xs font-bold uppercase tracking-wider text-[#40916C]">
-            Phase 3 Milestone
+            Interview
           </p>
           <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#1B4332]">
-            Schedule Your Technical Interview
+            Schedule Interview
           </h1>
           <p className="max-w-2xl text-sm leading-6 text-[#64748B]">
-            Your project passed automated verification. Choose an available date and time slot to complete your recruiter discussion.
+            Select an available date and time slot.
           </p>
         </div>
 
@@ -354,10 +354,10 @@ export default function InterviewSchedulingPage() {
             </div>
             <div>
               <p className="text-sm font-bold text-[#1B4332]">
-                Project Verified & Eligible
+                Project Verified
               </p>
               <p className="text-xs text-[#1F2937]">
-                Live Google Meet room invite will be automatically dispatched upon slot selection.
+                Eligible for technical interview.
               </p>
             </div>
           </div>
@@ -388,8 +388,8 @@ export default function InterviewSchedulingPage() {
         {/* Date Selection Card */}
         <Card className="border-[#D6D3C8] bg-white shadow-sm">
           <CardHeader
-            title="1. Select Interview Date"
-            subtitle="Available interview dates based on recruiter schedule."
+            title="Select Date"
+            subtitle="Available interview dates."
           />
           <CardContent>
             <div className="flex flex-wrap gap-2.5">
@@ -425,8 +425,8 @@ export default function InterviewSchedulingPage() {
         {/* Time Selection Card */}
         <Card className="border-[#D6D3C8] bg-white shadow-sm">
           <CardHeader
-            title="2. Select Time Slot"
-            subtitle="Real-time availability with collision protection."
+            title="Select Time"
+            subtitle="Available interview times."
           />
           <CardContent>
             {loadingSlots ? (
@@ -524,7 +524,7 @@ export default function InterviewSchedulingPage() {
                   disabled={booking}
                   className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-[#1B4332] hover:bg-[#143326] text-white font-semibold text-sm transition-all shadow-sm disabled:opacity-50 cursor-pointer"
                 >
-                  {booking ? "Confirming Booking..." : "Confirm & Book Slot →"}
+                  {booking ? "Scheduling..." : "Schedule Interview"}
                 </button>
               </div>
             </CardContent>
