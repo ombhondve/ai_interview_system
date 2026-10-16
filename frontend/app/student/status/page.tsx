@@ -12,18 +12,9 @@ import {
   Clock,
   AlertCircle,
   ArrowRight,
-  User,
-  ShieldCheck,
-  FileCode,
   Sparkles,
-  ExternalLink,
 } from "lucide-react";
-import {
-  formatIndianDate,
-  formatIndianTime,
-  formatIndianDateTime,
-  formatInterviewSchedule,
-} from "@/lib/dateUtils";
+import { formatInterviewSchedule } from "@/lib/dateUtils";
 
 interface Candidate {
   id: string;
@@ -232,15 +223,9 @@ export default function StudentDashboardPage() {
   if (loading) {
     return (
       <StudentShell>
-        <div className="space-y-6 animate-pulse">
+        <div className="space-y-6 sm:space-y-8 animate-pulse">
           <div className="h-28 rounded-2xl bg-[#E9E4D8]" />
-          <div className="h-24 rounded-2xl bg-white border border-[#D6D3C8]" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="h-28 rounded-xl bg-white border border-[#D6D3C8]" />
-            <div className="h-28 rounded-xl bg-white border border-[#D6D3C8]" />
-            <div className="h-28 rounded-xl bg-white border border-[#D6D3C8]" />
-            <div className="h-28 rounded-xl bg-white border border-[#D6D3C8]" />
-          </div>
+          <div className="h-28 rounded-2xl bg-white border border-[#D6D3C8]" />
         </div>
       </StudentShell>
     );
@@ -357,102 +342,6 @@ export default function StudentDashboardPage() {
             </div>
           </div>
         )}
-
-        {/* ======================================================== */}
-        {/* 4 CORE OVERVIEW METRICS / STATUS PANELS */}
-        {/* ======================================================== */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
-          {/* 1. Application Milestone */}
-          <div className="bg-white border border-[#D6D3C8] rounded-xl p-5 shadow-sm space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#64748B]">
-                Application
-              </span>
-              <User className="h-4 w-4 text-[#40916C]" />
-            </div>
-            <div className="text-base font-bold text-[#1F2937] truncate">
-              {candidate.role || "Software Engineer"}
-            </div>
-            <p className="text-xs text-[#64748B]">
-              Status:{" "}
-              <span className="font-semibold text-[#15803D] capitalize">
-                {candidate.status || "Approved"}
-              </span>
-            </p>
-          </div>
-
-          {/* 2. Assigned Project */}
-          <div className="bg-white border border-[#D6D3C8] rounded-xl p-5 shadow-sm space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#64748B]">
-                Assigned Project
-              </span>
-              <FolderKanban className="h-4 w-4 text-[#40916C]" />
-            </div>
-            <div className="text-base font-bold text-[#1F2937] truncate">
-              {projectData?.title || "Project Assignment"}
-            </div>
-            <p className="text-xs text-[#64748B] truncate">
-              {projectData?.deadline
-                ? (projectData.deadline.startsWith("Due:")
-                    ? projectData.deadline
-                    : `Due: ${formatIndianDateTime(projectData.deadline, { includeTimezone: true })}`)
-                : "Requirements available"}
-            </p>
-          </div>
-
-          {/* 3. Verification State */}
-          <div className="bg-white border border-[#D6D3C8] rounded-xl p-5 shadow-sm space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#64748B]">
-                AI Verification
-              </span>
-              <ShieldCheck className="h-4 w-4 text-[#40916C]" />
-            </div>
-            <div className="text-base font-bold text-[#1F2937]">
-              {candidate.interviewEligible ? (
-                <span className="text-[#15803D]">Verified & Accepted</span>
-              ) : candidate.rejectionReason ? (
-                <span className="text-[#B91C1C]">Changes Required</span>
-              ) : candidate.projectSubmissionStatus === "submitted" ? (
-                <span className="text-[#B45309]">Under Review</span>
-              ) : (
-                <span className="text-[#64748B]">Pending Submission</span>
-              )}
-            </div>
-            <p className="text-xs text-[#64748B]">
-              {candidate.interviewEligible
-                ? "Eligible for Interview"
-                : "Continuous evaluation"}
-            </p>
-          </div>
-
-          {/* 4. Technical Interview */}
-          <div className="bg-white border border-[#D6D3C8] rounded-xl p-5 shadow-sm space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-[#64748B]">
-                Interview
-              </span>
-              <CalendarDays className="h-4 w-4 text-[#40916C]" />
-            </div>
-            <div className="text-base font-bold text-[#1F2937]">
-              {candidate.interview?.date || candidate.interviewDate ? (
-                <span className="text-[#15803D]">Scheduled</span>
-              ) : candidate.interviewEligible ? (
-                <span className="text-[#15803D]">Slot Ready to Book</span>
-              ) : (
-                <span className="text-[#64748B]">Not Scheduled</span>
-              )}
-            </div>
-            <p className="text-xs text-[#64748B] truncate">
-              {candidate.interview?.date || candidate.interviewDate
-                ? "Google Meet Video"
-                : candidate.interviewEligible
-                ? "Pick available slot"
-                : "Unlocks after verification"}
-            </p>
-          </div>
-        </div>
       </div>
     </StudentShell>
   );
