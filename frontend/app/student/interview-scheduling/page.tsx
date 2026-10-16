@@ -19,6 +19,7 @@ import type {
   InterviewSlot,
 } from "@/services/interviewScheduling.api";
 import { cn } from "@/lib/utils";
+import { formatIndianDate, formatIndianTime } from "@/lib/dateUtils";
 import {
   CalendarDays,
   Clock,
@@ -280,10 +281,10 @@ export default function InterviewSchedulingPage() {
 
             <div className="grid gap-4 sm:grid-cols-2 bg-white p-5 rounded-xl border border-[#D6D3C8]">
               <Field label="Candidate" value={eligibleData?.candidate.name} />
-              <Field label="Date" value={bookingResult.date} />
-              <Field label="Time" value={bookingResult.time} />
+              <Field label="Date" value={formatIndianDate(bookingResult.startAt || bookingResult.date)} />
+              <Field label="Time" value={formatIndianTime(bookingResult.startAt || bookingResult.time, { includeTimezone: true })} />
               <Field label="Duration" value={`${bookingResult.durationMinutes} minutes`} />
-              <Field label="Timezone" value={bookingResult.timezone} />
+              <Field label="Timezone" value="IST" />
               <Field label="Format" value={bookingResult.mode || "Google Meet Video"} />
             </div>
 
@@ -483,7 +484,7 @@ export default function InterviewSchedulingPage() {
                         )}
                       >
                         <span className="text-sm font-bold text-[#1F2937]">
-                          {slot.time}
+                          {formatIndianTime(slot.time)}
                         </span>
                         <span className="text-[11px] font-medium text-[#64748B]">
                           {taken
@@ -511,7 +512,7 @@ export default function InterviewSchedulingPage() {
                     Selected Slot Confirmation
                   </p>
                   <p className="text-lg font-bold text-[#1B4332] mt-0.5">
-                    {formatDateLabel(selectedDate, true)} at {selectedSlot.time}
+                    {formatDateLabel(selectedDate, true)} at {formatIndianTime(selectedSlot.time, { includeTimezone: true })}
                   </p>
                   <p className="text-xs text-[#1F2937] mt-1">
                     Duration: {config?.interviewDurationMinutes ?? 30} mins • Timezone: {config?.timezone ?? "IST"}
@@ -543,7 +544,7 @@ function formatDateLabel(date: string, long = false) {
     day: "numeric",
     month: long ? "long" : "short",
     ...(long ? { year: "numeric" } : {}),
-    timeZone: "UTC",
+    timeZone: "Asia/Kolkata",
   });
 }
 

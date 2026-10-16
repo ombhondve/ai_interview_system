@@ -8,6 +8,7 @@ import { BookingConfirmationModal } from "@/components/booking/BookingConfirmati
 import { PreparationWorkflow } from "@/components/booking/PreparationWorkflow";
 import { enhancedBookingService } from "@/services/enhancedBooking.api";
 import { bookingHelpers } from "@/services/enhancedBooking.api";
+import { formatIndianDate, formatIndianTime } from "@/lib/dateUtils";
 
 export default function EnhancedBookSlotPage() {
   const [candidateId, setCandidateId] = useState<string>("");
@@ -201,11 +202,6 @@ export default function EnhancedBookSlotPage() {
                 <p className="mt-1 text-sm text-emerald-700">
                   {bookingConfirmation.message}
                 </p>
-                {bookingConfirmation.interview?.slot?.startTime && (
-                  <p className="mt-2 text-sm text-emerald-800">
-                    Scheduled for: {bookingHelpers.formatDateTime(bookingConfirmation.interview.slot.startTime)}
-                  </p>
-                )}
               </div>
             </div>
           </div>
@@ -241,17 +237,13 @@ export default function EnhancedBookSlotPage() {
                   <div>
                     <p className="text-sm font-medium text-slate-500">Interview Date</p>
                     <p className="mt-1 text-lg font-semibold text-slate-900">
-                      {activeInterview.slot?.startTime 
-                        ? bookingHelpers.formatDateTime(activeInterview.slot.startTime).split(" at ")[0]
-                        : "N/A"}
+                      {formatIndianDate(activeInterview.slot?.startTime)}
                     </p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-slate-500">Interview Time</p>
                     <p className="mt-1 text-lg font-semibold text-slate-900">
-                      {activeInterview.slot?.startTime 
-                        ? bookingHelpers.formatDateTime(activeInterview.slot.startTime).split(" at ")[1]
-                        : "N/A"}
+                      {formatIndianTime(activeInterview.slot?.startTime, { includeTimezone: true })}
                     </p>
                     {activeInterview.slot?.timezone && (
                       <p className="mt-1 text-sm text-slate-500">{activeInterview.slot.timezone}</p>

@@ -18,6 +18,11 @@ import {
   Sparkles,
   ExternalLink,
 } from "lucide-react";
+import {
+  formatIndianDate,
+  formatIndianTime,
+  formatIndianDateTime,
+} from "@/lib/dateUtils";
 
 interface Candidate {
   id: string;
@@ -154,15 +159,8 @@ export default function StudentDashboardPage() {
     }
 
     if (candidate.interview?.date || candidate.interviewDate) {
-      const interviewDateText =
-        candidate.interview?.date || candidate.interviewDate;
-      const interviewTimeText = candidate.interview?.time
-        ? ` at ${candidate.interview.time}`
-        : "";
-
       return {
         title: "Technical Interview",
-        description: `Scheduled for ${interviewDateText}${interviewTimeText}.`,
         actionLabel: "Join Interview",
         actionHref: "/student/interview",
         badge: "Scheduled",
@@ -327,9 +325,11 @@ export default function StudentDashboardPage() {
                 <h2 className="text-lg font-bold text-[#1F2937]">
                   {nextAction.title}
                 </h2>
-                <p className="text-sm text-[#64748B] leading-relaxed max-w-2xl">
-                  {nextAction.description}
-                </p>
+                {nextAction.description && (
+                  <p className="text-sm text-[#64748B] leading-relaxed max-w-2xl">
+                    {nextAction.description}
+                  </p>
+                )}
               </div>
             </div>
 
@@ -381,7 +381,9 @@ export default function StudentDashboardPage() {
             </div>
             <p className="text-xs text-[#64748B] truncate">
               {projectData?.deadline
-                ? `Due: ${projectData.deadline}`
+                ? (projectData.deadline.startsWith("Due:")
+                    ? projectData.deadline
+                    : `Due: ${formatIndianDateTime(projectData.deadline, { includeTimezone: true })}`)
                 : "Requirements available"}
             </p>
           </div>
@@ -423,7 +425,7 @@ export default function StudentDashboardPage() {
             <div className="text-base font-bold text-[#1F2937] truncate">
               {candidate.interview?.date || candidate.interviewDate ? (
                 <span>
-                  {candidate.interview?.date || candidate.interviewDate}
+                  {formatIndianDate(candidate.interview?.date || candidate.interviewDate)}
                 </span>
               ) : candidate.interviewEligible ? (
                 <span className="text-[#15803D]">Slot Ready to Book</span>
@@ -432,8 +434,8 @@ export default function StudentDashboardPage() {
               )}
             </div>
             <p className="text-xs text-[#64748B] truncate">
-              {candidate.interview?.time
-                ? `Time: ${candidate.interview.time}`
+              {candidate.interview?.date || candidate.interviewDate
+                ? formatIndianTime(candidate.interview?.time || candidate.interview?.date || candidate.interviewDate, { includeTimezone: true })
                 : candidate.interviewEligible
                 ? "Pick available slot"
                 : "Unlocks after verification"}

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { enhancedBookingService, EnhancedSlot, BookingConfirmation } from "@/services/enhancedBooking.api";
 import { bookingHelpers } from "@/services/enhancedBooking.api";
+import { formatIndianDate, formatIndianTime } from "@/lib/dateUtils";
 
 interface BookingConfirmationProps {
   candidateId: string;
@@ -66,21 +67,10 @@ export function BookingConfirmationModal({
     const endTime = new Date(selectedSlot.endTime);
 
     return {
-      date: startTime.toLocaleDateString("en-US", {
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      }),
-      time: `${startTime.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })} - ${endTime.toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-      })}`,
+      date: formatIndianDate(startTime),
+      time: `${formatIndianTime(startTime)} - ${formatIndianTime(endTime, { includeTimezone: true })}`,
       duration: selectedSlot.duration || Math.round((endTime.getTime() - startTime.getTime()) / (1000 * 60)),
-      timezone: selectedSlot.timezone,
+      timezone: "IST",
       location: selectedSlot.location || "Online",
     };
   };

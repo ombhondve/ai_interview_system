@@ -7,25 +7,33 @@ export function cn(...inputs: ClassValue[]) {
 
 export function formatDate(date: Date | string, opts?: Intl.DateTimeFormatOptions) {
   const d = typeof date === "string" ? new Date(date) : date;
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "long",
-    month: "long",
+  if (!d || isNaN(d.getTime())) return typeof date === "string" ? date : "—";
+  return new Intl.DateTimeFormat("en-IN", {
     day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Asia/Kolkata",
     ...opts,
   }).format(d);
 }
 
 export function formatTime(date: Date | string) {
   const d = typeof date === "string" ? new Date(date) : date;
-  return new Intl.DateTimeFormat("en-US", {
+  if (!d || isNaN(d.getTime())) return typeof date === "string" ? date : "—";
+  return new Intl.DateTimeFormat("en-IN", {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-  }).format(d);
+    timeZone: "Asia/Kolkata",
+  })
+    .format(d)
+    .toUpperCase();
 }
 
 export function formatDateTime(date: Date | string) {
-  return `${formatDate(date, { weekday: undefined, month: "short" })}, ${formatTime(date)}`;
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (!d || isNaN(d.getTime())) return typeof date === "string" ? date : "—";
+  return `${formatDate(d)}, ${formatTime(d)}`;
 }
 
 export function initials(name: string) {

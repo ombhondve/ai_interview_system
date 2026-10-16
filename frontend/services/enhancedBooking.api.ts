@@ -1,4 +1,5 @@
 import { request } from "@/lib/client";
+import { formatIndianDateTime } from "@/lib/dateUtils";
 
 // Enhanced booking types
 export interface EnhancedSlot {
@@ -431,16 +432,7 @@ export const enhancedBookingService = {
 // Helper functions
 export const bookingHelpers = {
   formatDateTime(dateTime: string): string {
-    const date = new Date(dateTime);
-    return date.toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZoneName: "short",
-    });
+    return formatIndianDateTime(dateTime, { includeTimezone: true });
   },
 
   formatTimeRemaining(milliseconds: number): string {

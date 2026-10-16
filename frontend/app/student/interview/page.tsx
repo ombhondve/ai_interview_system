@@ -6,6 +6,7 @@ import { StudentShell } from "@/components/student/StudentShell";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { backendApiUrl } from "@/lib/client";
+import { formatIndianDate, formatIndianTime } from "@/lib/dateUtils";
 
 type Turn = { speaker: string; text: string; timestamp: string; questionId?: string; section?: string };
 type BotJobInfo = {
@@ -346,8 +347,9 @@ export default function InterviewPage() {
             })()}
           </div>
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">Scheduled Time</p>
-            <p className="text-sm font-bold text-[#1F2937] mt-0.5">{new Date(session.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">Scheduled</p>
+            <p className="text-sm font-bold text-[#1F2937] mt-0.5">{formatIndianDate(session.scheduledAt)}</p>
+            <p className="text-xs font-semibold text-[#15803D]">{formatIndianTime(session.scheduledAt, { includeTimezone: true })}</p>
           </div>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">Duration</p>

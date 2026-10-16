@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { formatIndianDateTime } from "@/lib/dateUtils";
 
 type AssignedProject = {
   id?: string;
@@ -1171,7 +1172,11 @@ export default function Project() {
                   <div className="flex items-center gap-2 text-sm bg-white px-3.5 py-2.5 rounded-xl border border-[#D6D3C8]">
                     <span className="font-bold text-[#1B4332]">Deadline:</span>
                     <span className="text-[#64748B]">
-                      {project.deadline || "Deadline timer begins once you download the project resources."}
+                      {project.deadline
+                        ? (project.deadline.startsWith("Due:")
+                            ? project.deadline
+                            : formatIndianDateTime(project.deadline, { includeTimezone: true }))
+                        : "Deadline timer begins once you download the project resources."}
                     </span>
                   </div>
 

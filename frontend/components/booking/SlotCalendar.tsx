@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { enhancedBookingService, EnhancedSlot } from "@/services/enhancedBooking.api";
 import { bookingHelpers } from "@/services/enhancedBooking.api";
+import { formatIndianDate, formatIndianTime } from "@/lib/dateUtils";
 
 interface SlotCalendarProps {
   candidateId: string;
@@ -25,9 +26,9 @@ export function SlotCalendar({ candidateId, onSlotSelect, filters }: SlotCalenda
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [checkingEligibility, setCheckingEligibility] = useState<string | null>(null);
 
-  // Group slots by date
+  // Group slots by date in IST
   const slotsByDate = slots.reduce((acc, slot) => {
-    const date = new Date(slot.startTime).toISOString().split("T")[0];
+    const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(slot.startTime));
     if (!acc[date]) {
       acc[date] = [];
     }
@@ -178,10 +179,11 @@ export function SlotCalendar({ candidateId, onSlotSelect, filters }: SlotCalenda
                   variant={selectedDate === date ? "primary" : "outline"}
                   onClick={() => setSelectedDate(date)}
                 >
-                  {new Date(date).toLocaleDateString("en-US", {
+                  {new Date(`${date}T00:00:00Z`).toLocaleDateString("en-IN", {
                     weekday: "short",
                     month: "short",
                     day: "numeric",
+                    timeZone: "Asia/Kolkata",
                   })}
                 </Button>
               ))}
@@ -192,12 +194,7 @@ export function SlotCalendar({ candidateId, onSlotSelect, filters }: SlotCalenda
           {selectedDate && slotsByDate[selectedDate] && (
             <div className="space-y-4">
               <h3 className="text-lg font-semibold text-slate-900">
-                Slots for {new Date(selectedDate).toLocaleDateString("en-US", {
-                  weekday: "long",
-                  year: "numeric",
-                  month: "long",
-                  day: "numeric",
-                })}
+                Slots for {formatIndianDate(selectedDate)}
               </h3>
               
               <div className="grid gap-4 md:grid-cols-2">
@@ -210,15 +207,9 @@ export function SlotCalendar({ candidateId, onSlotSelect, filters }: SlotCalenda
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-slate-900">
-                            {new Date(slot.startTime).toLocaleTimeString("en-US", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+                            {formatIndianTime(slot.startTime)}
                             {" - "}
-                            {new Date(slot.endTime).toLocaleTimeString("en-US", {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
+                            {formatIndianTime(slot.endTime, { includeTimezone: true })}
                           </span>
                           {getSlotStatusBadge(slot)}
                         </div>
