@@ -223,7 +223,7 @@ export default function StudentDashboardPage() {
   if (loading) {
     return (
       <StudentShell>
-        <div className="space-y-6 sm:space-y-8 animate-pulse">
+        <div className="space-y-6 sm:space-y-8 max-w-4xl mx-auto w-full animate-pulse">
           <div className="h-28 rounded-2xl bg-[#E9E4D8]" />
           <div className="h-28 rounded-2xl bg-white border border-[#D6D3C8]" />
         </div>
@@ -258,7 +258,7 @@ export default function StudentDashboardPage() {
 
   return (
     <StudentShell>
-      <div className="space-y-6 sm:space-y-8">
+      <div className="space-y-6 sm:space-y-8 max-w-4xl mx-auto w-full">
         {/* ======================================================== */}
         {/* WELCOME BANNER (Forest Green #1B4332) */}
         {/* ======================================================== */}
@@ -299,12 +299,12 @@ export default function StudentDashboardPage() {
         {/* MOST IMPORTANT NEXT ACTION BANNER */}
         {/* ======================================================== */}
         {nextAction && (
-          <div className="rounded-2xl bg-white border border-[#D6D3C8] p-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-5 transition-all">
-            <div className="flex items-start gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#EAF4EE] text-[#1B4332]">
-                <nextAction.icon className="h-6 w-6 text-[#40916C]" />
+          <div className="w-full rounded-2xl bg-white border border-[#D6D3C8] p-6 sm:p-7 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-5 sm:gap-6 transition-all">
+            <div className="flex items-center gap-4 sm:gap-5 min-w-0">
+              <div className="flex h-12 w-12 sm:h-14 sm:w-14 shrink-0 items-center justify-center rounded-xl bg-[#EAF4EE] text-[#1B4332]">
+                <nextAction.icon className="h-6 w-6 sm:h-7 sm:w-7 text-[#40916C]" />
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span
                     className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-semibold ${nextAction.badgeColor}`}
@@ -315,7 +315,7 @@ export default function StudentDashboardPage() {
                     Next Step
                   </span>
                 </div>
-                <h2 className="text-lg font-bold text-[#1F2937]">
+                <h2 className="text-lg sm:text-xl font-bold text-[#1F2937] truncate">
                   {nextAction.title}
                 </h2>
                 {nextAction.schedule && (
@@ -331,10 +331,10 @@ export default function StudentDashboardPage() {
               </div>
             </div>
 
-            <div className="shrink-0 sm:self-center">
+            <div className="shrink-0 sm:self-center w-full sm:w-auto">
               <Link
                 href={nextAction.actionHref}
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#40916C] hover:bg-[#347959] text-white text-sm font-semibold shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#40916C]"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-[#40916C] hover:bg-[#347959] text-white text-sm font-semibold shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-[#40916C] whitespace-nowrap"
               >
                 <span>{nextAction.actionLabel}</span>
                 <ArrowRight className="h-4 w-4" />
