@@ -112,15 +112,16 @@ export async function login(req, res) {
       return res.status(200).json({ user: userPayload, token });
     }
 
-    // 2. Fall back to demo environment credentials
-    const credentials = getCredentials();
-    if (credentials && email === credentials.email && password === credentials.password) {
-      const admin = getAdmin();
-      const token = jwt.sign(
-        { adminId: admin.id, email: admin.email, role: admin.role },
-        getSecret(),
-        { expiresIn: "8h" }
-      );
+    // 2. Fall back to demo environment credentials in non-production only
+    if (!isProduction) {
+      const credentials = getCredentials();
+      if (credentials && email === credentials.email && password === credentials.password) {
+        const admin = getAdmin();
+        const token = jwt.sign(
+          { adminId: admin.id, email: admin.email, role: admin.role },
+          getSecret(),
+          { expiresIn: "8h" }
+        );
 
       res.cookie("recruitai_admin", token, cookieOptions);
 
@@ -141,6 +142,7 @@ export async function login(req, res) {
 
       return res.status(200).json({ user: admin, token });
     }
+  }
 
     createAuditLog({
       actor: email || "unknown",

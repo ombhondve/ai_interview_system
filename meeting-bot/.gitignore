@@ -12,6 +12,8 @@ ENV/
 # Environment and secrets
 .env
 *.env
+.env.*
+!.env.example
 
 # Browser profile and persistent cookies/tokens (CRITICAL: NEVER COMMIT)
 bot-profile/

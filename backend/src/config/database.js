@@ -15,7 +15,8 @@ async function connectDatabase() {
   }
 
   // Start new connection
-  connectionPromise = mongoose.connect(process.env.STORAGE_MONGODB_URI, {
+  const mongoUri = process.env.STORAGE_MONGODB_URI || process.env.MONGODB_URI;
+  connectionPromise = mongoose.connect(mongoUri, {
     serverSelectionTimeoutMS: 8000,
     maxPoolSize: 10, // Limit connection pool for serverless
   }).then(() => {

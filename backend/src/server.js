@@ -50,10 +50,14 @@ function logGitHubConfiguration() {
 }
 
 async function initializeDefaultAdmin() {
+  const isProduction = process.env.NODE_ENV === "production";
+  if (isProduction && !process.env.ALLOW_PRODUCTION_ADMIN_SEED) {
+    return;
+  }
+
   const email = process.env.DEMO_ADMIN_EMAIL?.trim().toLowerCase();
   const password = process.env.DEMO_ADMIN_PASSWORD;
   if (!email || !password) {
-    console.warn("Admin seed skipped: DEMO_ADMIN_EMAIL and DEMO_ADMIN_PASSWORD must be configured.");
     return;
   }
 
@@ -67,7 +71,7 @@ async function initializeDefaultAdmin() {
     passwordHash,
     role: process.env.DEMO_ADMIN_ROLE === "recruiter" ? "recruiter" : "superadmin",
   });
-  console.log("Configured admin account created.");
+  console.log("Configured admin account initialized in database.");
 }
 
 async function startServer() {
@@ -77,6 +81,8 @@ async function startServer() {
     // Connect to database
     await connectDatabase();
     logger.info("MongoDB connected successfully");
+
+    await initializeDefaultAdmin();
 
     logGitHubConfiguration();
 

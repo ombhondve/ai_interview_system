@@ -8,7 +8,9 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test": "jest --runInBand",
-    "test:bug5": "jest --runInBand --testPathPatterns=project.routes.bug"
+    "test:bug5": "jest --runInBand --testPathPatterns=project.routes.bug",
+    "validate-env": "node scripts/validate-env.js",
+    "create-admin": "node scripts/createAdmin.js"
   },
   "jest": {
     "testEnvironment": "node",

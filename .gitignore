@@ -1,9 +1,37 @@
+# Dependencies
 node_modules/
+.venv/
+*/.venv/
+*/node_modules/
+
+# Next.js and build output
 .next/
+dist/
+out/
+coverage/
+
+# Environment files and credentials (CRITICAL: NEVER COMMIT REAL CREDENTIALS)
 .env
+.env.*
+*.env
+**/.env
+**/.env.*
+**/[a-zA-Z0-9_]*.env
+!.env.example
+!**/.env.example
+!**/.env.production.example
+
+# Service-specific runtime and artifacts
 frontend.zip
-meeting-bot/.env
 meeting-bot/bot-profile/
 meeting-bot/diagnostics/
 meeting-bot/**/__pycache__/
-meeting-bot/.venv/
+**/__pycache__/
+*.py[cod]
+*.log
+
+# Editor and OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
