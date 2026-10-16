@@ -70,14 +70,14 @@ export async function getAvailabilityForDate(config, candidateId, dateStr) {
 
   const booked = await InterviewBooking.find({
     status: { $in: ACTIVE_BOOKING_STATUSES },
-    startAt: { $gte: first, $lt: last },
+    $or: [
+      { startAt: { $gte: first, $lt: last } },
+      { endAt: { $gt: first, $lte: last } },
+      { startAt: { $lte: first }, endAt: { $gte: last } },
+    ],
   })
-    .select({ startAt: 1 })
+    .select({ startAt: 1, endAt: 1, durationMinutes: 1 })
     .lean();
-
-  const takenSet = new Set(
-    booked.map((booking) => booking.startAt.getTime())
-  );
 
   const now = Date.now();
 
@@ -86,8 +86,18 @@ export async function getAvailabilityForDate(config, candidateId, dateStr) {
     timezone: config.timezone,
     interviewDurationMinutes: config.interviewDurationMinutes,
     slots: generated.map(({ startAt, endAt }) => {
-      const taken = takenSet.has(startAt.getTime());
-      const inPast = startAt.getTime() <= now;
+      const slotStartMs = startAt.getTime();
+      const slotEndMs = endAt.getTime();
+
+      const taken = booked.some((booking) => {
+        const bStartMs = new Date(booking.startAt).getTime();
+        const bEndMs = booking.endAt
+          ? new Date(booking.endAt).getTime()
+          : bStartMs + (booking.durationMinutes || 15) * 60000;
+        return slotStartMs < bEndMs && slotEndMs > bStartMs;
+      });
+
+      const inPast = slotStartMs <= now;
 
       let status = "available";
 
@@ -188,7 +198,22 @@ export async function bookInterview({ config, candidate, startAt }) {
     throw new BookingError(400, validation.code, validation.message);
   }
 
-  // 4. ATOMIC INSERT. The partial unique indexes
+  // 4. Overlap check with ANY existing active booking.
+  const overlapping = await InterviewBooking.findOne({
+    status: { $in: ACTIVE_BOOKING_STATUSES },
+    startAt: { $lt: validation.endAt },
+    endAt: { $gt: startAt },
+  });
+
+  if (overlapping) {
+    throw new BookingError(
+      409,
+      "INTERVIEW_TIME_ALREADY_BOOKED",
+      "This interview time was just booked by another student."
+    );
+  }
+
+  // 5. ATOMIC INSERT. The partial unique indexes
   //    (uniq_active_booking_startAt / uniq_active_booking_candidate) are the
   //    real guarantee against double booking under concurrency.
   try {
@@ -204,7 +229,7 @@ export async function bookInterview({ config, candidate, startAt }) {
       bookedAt: new Date(),
     });
 
-    // 5. Mirror onto the candidate document so the existing portal code and
+    // 6. Mirror onto the candidate document so the existing portal code and
     //    admin candidate views keep working.
     await Candidate.findByIdAndUpdate(candidate._id, {
       $set: {
@@ -355,7 +380,11 @@ export async function getAdminSchedule(config, dateStr) {
 
   const bookings = await InterviewBooking.find({
     status: { $in: ACTIVE_BOOKING_STATUSES },
-    startAt: { $gte: first, $lt: last },
+    $or: [
+      { startAt: { $gte: first, $lt: last } },
+      { endAt: { $gt: first, $lte: last } },
+      { startAt: { $lte: first }, endAt: { $gte: last } },
+    ],
   })
     .populate({
       path: "candidateId",
@@ -379,14 +408,19 @@ export async function getAdminSchedule(config, dateStr) {
     aiInterviews.map((ai) => [ai.bookingId.toString(), ai])
   );
 
-  const byStart = new Map(
-    bookings.map((booking) => [booking.startAt.getTime(), booking])
-  );
-
   return {
     ...shell,
     entries: generated.map(({ startAt, endAt }) => {
-      const booking = byStart.get(startAt.getTime());
+      const slotStartMs = startAt.getTime();
+      const slotEndMs = endAt.getTime();
+
+      const booking = bookings.find((b) => {
+        const bStartMs = new Date(b.startAt).getTime();
+        const bEndMs = b.endAt
+          ? new Date(b.endAt).getTime()
+          : bStartMs + (b.durationMinutes || 15) * 60000;
+        return slotStartMs < bEndMs && slotEndMs > bStartMs;
+      });
 
       const base = {
         startAt: startAt.toISOString(),

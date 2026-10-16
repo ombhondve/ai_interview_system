@@ -206,7 +206,7 @@ jest.mock("../interviewConfig.model.js", () => ({
   default: {
     findOne: async () => ({
       timezone: "Asia/Kolkata",
-      interviewDurationMinutes: 30,
+      interviewDurationMinutes: 15,
       workingHours: { startHour: 9, endHour: 18 },
       allowedWeekdays: [0, 1, 2, 3, 4, 5, 6],
       schedulingHorizonDays: 14,
@@ -265,7 +265,7 @@ describe("GET /api/student/interview/config", () => {
 
     expect(response.body.success).toBe(true);
     expect(response.body.config.timezone).toBe(TZ);
-    expect(response.body.config.interviewDurationMinutes).toBe(30);
+    expect(response.body.config.interviewDurationMinutes).toBe(15);
     expect(response.body.interviewEligible).toBe(true);
     expect(Array.isArray(response.body.availableDates)).toBe(true);
   });
@@ -374,7 +374,7 @@ describe("POST /api/student/interview/book", () => {
 
     expect(response.body.success).toBe(true);
     expect(response.body.booking.time).toBe("10:30 am");
-    expect(response.body.booking.durationMinutes).toBe(30);
+    expect(response.body.booking.durationMinutes).toBe(15);
     expect(response.body.booking.timezone).toBe(TZ);
     expect(response.body.booking.status).toBe("scheduled");
   });

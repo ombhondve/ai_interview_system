@@ -282,8 +282,11 @@ export default function InterviewSchedulingPage() {
             <div className="grid gap-4 sm:grid-cols-2 bg-white p-5 rounded-xl border border-[#D6D3C8]">
               <Field label="Candidate" value={eligibleData?.candidate.name} />
               <Field label="Date" value={formatIndianDate(bookingResult.startAt || bookingResult.date)} />
-              <Field label="Time" value={formatIndianTime(bookingResult.startAt || bookingResult.time, { includeTimezone: true })} />
-              <Field label="Duration" value={`${bookingResult.durationMinutes} minutes`} />
+              <Field
+                label="Time"
+                value={`${formatIndianTime(bookingResult.startAt || bookingResult.time, { includeTimezone: false })} – ${formatIndianTime(bookingResult.endAt || bookingResult.endTime, { includeTimezone: true })}`}
+              />
+              <Field label="Duration" value={`${bookingResult.durationMinutes || 15} minutes`} />
               <Field label="Timezone" value="IST" />
               <Field label="Format" value={bookingResult.mode || "Google Meet Video"} />
             </div>
@@ -484,7 +487,7 @@ export default function InterviewSchedulingPage() {
                         )}
                       >
                         <span className="text-sm font-bold text-[#1F2937]">
-                          {formatIndianTime(slot.time)}
+                          {formatIndianTime(slot.startAt || slot.time)} – {formatIndianTime(slot.endAt || slot.endTime)}
                         </span>
                         <span className="text-[11px] font-medium text-[#64748B]">
                           {taken
@@ -512,10 +515,10 @@ export default function InterviewSchedulingPage() {
                     Selected Slot Confirmation
                   </p>
                   <p className="text-lg font-bold text-[#1B4332] mt-0.5">
-                    {formatDateLabel(selectedDate, true)} at {formatIndianTime(selectedSlot.time, { includeTimezone: true })}
+                    {formatDateLabel(selectedDate, true)} at {formatIndianTime(selectedSlot.startAt || selectedSlot.time, { includeTimezone: false })} – {formatIndianTime(selectedSlot.endAt || selectedSlot.endTime, { includeTimezone: true })}
                   </p>
                   <p className="text-xs text-[#1F2937] mt-1">
-                    Duration: {config?.interviewDurationMinutes ?? 30} mins • Timezone: {config?.timezone ?? "IST"}
+                    Duration: {config?.interviewDurationMinutes ?? 15} mins • Timezone: {config?.timezone ?? "IST"}
                   </p>
                 </div>
 

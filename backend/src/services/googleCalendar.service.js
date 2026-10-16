@@ -418,7 +418,7 @@ class GoogleCalendarService {
    */
   buildEventDescription(interview, slot, candidate) {
     const startAt = slot.startTime || slot.startAt;
-    const duration = slot.duration || slot.durationMinutes || interview.aiConfig?.duration || 30;
+    const duration = Math.min(15, slot.duration || slot.durationMinutes || interview.aiConfig?.duration || 15);
     return `
 AI Interview Scheduled
 

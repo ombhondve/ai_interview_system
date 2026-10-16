@@ -28,6 +28,7 @@ type Session = {
   transcript: Turn[];
   currentQuestionIndex: number;
   startedAt?: string;
+  durationMinutes?: number;
   analysisError?: string;
 };
 
@@ -164,10 +165,11 @@ export default function InterviewPage() {
     const tick = () => {
       const secs = Math.max(0, Math.floor((Date.now() - new Date(session.startedAt!).getTime()) / 1000));
       setElapsed(secs);
-      // Auto-complete if 30-minute duration has expired (1800s) - trigger once without confirm dialog
-      if (secs >= 1800 && !autoEndTriggeredRef.current && !isEndingRef.current && !busy) {
+      // Auto-complete if 15-minute duration has expired (900s) - trigger once without confirm dialog
+      const maxSecs = (session?.durationMinutes || 15) * 60;
+      if (secs >= maxSecs && !autoEndTriggeredRef.current && !isEndingRef.current && !busy) {
         autoEndTriggeredRef.current = true;
-        setNotice("Scheduled 30-minute interview duration reached. Concluding interview session...");
+        setNotice(`Scheduled ${session?.durationMinutes || 15}-minute interview duration reached. Concluding interview session...`);
         void performEndInterview(false);
       }
     };
@@ -353,7 +355,9 @@ export default function InterviewPage() {
           </div>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">Duration</p>
-            <p className="text-sm font-bold text-[#1F2937] mt-0.5">30 Minutes</p>
+            <p className="text-sm font-bold text-[#1F2937] mt-0.5">
+              {session?.durationMinutes ? `${session.durationMinutes} Minutes` : "15 Minutes"}
+            </p>
           </div>
           <div>
             <p className="text-[11px] font-bold uppercase tracking-wider text-[#64748B]">Platform</p>

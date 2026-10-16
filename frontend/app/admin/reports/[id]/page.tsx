@@ -248,7 +248,7 @@ export default function AdminReportDetailPage() {
   const verification = submission?.aiVerificationResult;
 
   // Compute interview duration in minutes
-  let durationText = `${interview.durationMinutes || 30} mins`;
+  let durationText = `${interview.durationMinutes || 15} mins`;
   if (interview.startedAt && interview.endedAt) {
     const diffMs = new Date(interview.endedAt).getTime() - new Date(interview.startedAt).getTime();
     durationText = `${Math.round(diffMs / 60000)} mins`;

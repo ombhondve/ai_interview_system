@@ -44,7 +44,7 @@ const TZ = "Asia/Kolkata";
 
 const config = {
   timezone: TZ,
-  interviewDurationMinutes: 30,
+  interviewDurationMinutes: 15,
   workingHours: { startHour: 9, endHour: 18 },
   allowedWeekdays: [1, 2, 3, 4, 5],
   schedulingHorizonDays: 30,
@@ -157,16 +157,18 @@ describe("interview time generation", () => {
     test("generates times on the configured grid", () => {
       const times = generateInterviewTimesForDate(config, DATE);
 
-      // 09:00 -> 17:30 start, every 30 min = 18 slots
-      expect(times).toHaveLength(18);
+      // 09:00 -> 17:45 start, every 15 min = 36 slots
+      expect(times).toHaveLength(36);
       expect(times[0].startAt.toISOString()).toBe("2026-10-08T03:30:00.000Z");
-      expect(times[1].startAt.toISOString()).toBe("2026-10-08T04:00:00.000Z");
-      expect(times[2].startAt.toISOString()).toBe("2026-10-08T04:30:00.000Z");
+      expect(times[1].startAt.toISOString()).toBe("2026-10-08T03:45:00.000Z");
+      expect(times[2].startAt.toISOString()).toBe("2026-10-08T04:00:00.000Z");
+      expect(times[3].startAt.toISOString()).toBe("2026-10-08T04:15:00.000Z");
+      expect(times[4].startAt.toISOString()).toBe("2026-10-08T04:30:00.000Z");
     });
 
     test("TEST 3/5: every slot spans exactly the configured duration", () => {
       generateInterviewTimesForDate(config, DATE).forEach(({ startAt, endAt }) => {
-        expect(endAt.getTime() - startAt.getTime()).toBe(30 * 60 * 1000);
+        expect(endAt.getTime() - startAt.getTime()).toBe(15 * 60 * 1000);
       });
     });
 
@@ -241,7 +243,7 @@ describe("interview time generation", () => {
       const result = validateStartInstant(config, target, earlyNow);
 
       expect(result.valid).toBe(true);
-      expect(result.endAt.toISOString()).toBe("2026-10-08T05:30:00.000Z");
+      expect(result.endAt.toISOString()).toBe("2026-10-08T05:15:00.000Z");
     });
 
     test("TEST 14a: rejects an invalid Date", () => {
@@ -605,7 +607,7 @@ describe("interviewBooking model - double booking guarantees", () => {
 describe("24/7 hours and no advance-lead restrictions", () => {
   const fullDayConfig = {
     timezone: TZ,
-    interviewDurationMinutes: 30,
+    interviewDurationMinutes: 15,
     workingHours: { startHour: 0, endHour: 24 },
     allowedWeekdays: [0, 1, 2, 3, 4, 5, 6],
     schedulingHorizonDays: 30,
@@ -614,21 +616,20 @@ describe("24/7 hours and no advance-lead restrictions", () => {
     location: "Online",
   };
 
-  test("generates slots across the entire 24 hour day (48 half-hour slots)", () => {
+  test("generates slots across the entire 24 hour day (96 15-minute slots)", () => {
     const slots = generateInterviewTimesForDate(fullDayConfig, "2026-10-08");
-    expect(slots).toHaveLength(48);
+    expect(slots).toHaveLength(96);
 
-    // Slots at 00:00, 02:00, 06:00, 07:00, 09:00, 12:00, 17:00, 20:00, 23:30 all exist
+    // Slots at 00:00, 00:15, 02:00, 06:00, 07:00, 09:00, 10:00, 10:15, 10:30, 10:45, 11:00, 12:00, 17:00, 20:00, 23:45 all exist
     const times = slots.map((s) => formatTimeInZone(s.startAt, TZ));
     expect(times).toContain("12:00 am");
-    expect(times).toContain("02:00 am");
-    expect(times).toContain("06:00 am");
-    expect(times).toContain("07:00 am");
-    expect(times).toContain("09:00 am");
-    expect(times).toContain("12:00 pm");
-    expect(times).toContain("05:00 pm");
-    expect(times).toContain("08:00 pm");
-    expect(times).toContain("11:30 pm");
+    expect(times).toContain("12:15 am");
+    expect(times).toContain("10:00 am");
+    expect(times).toContain("10:15 am");
+    expect(times).toContain("10:30 am");
+    expect(times).toContain("10:45 am");
+    expect(times).toContain("11:00 am");
+    expect(times).toContain("11:45 pm");
   });
 
   test("accepts future slots 30 minutes or 1 hour from now without 2-hour restriction", () => {

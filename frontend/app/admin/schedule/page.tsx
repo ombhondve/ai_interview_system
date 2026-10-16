@@ -311,7 +311,7 @@ export default function SchedulePage() {
                     />
                     <div>
                       <p className="text-sm font-semibold text-[#111F33]">
-                        {entry.time}
+                        {entry.time} – {entry.endTime}
                       </p>
                       <p className="text-xs text-[#64748B]">
                         {entry.status === "booked"
@@ -350,7 +350,11 @@ export default function SchedulePage() {
                       />
                       <Detail
                         label="Interview time"
-                        value={entry.time}
+                        value={`${entry.time} – ${entry.endTime}`}
+                      />
+                      <Detail
+                        label="Duration"
+                        value={`${schedule?.interviewDurationMinutes || 15} minutes`}
                       />
                       <Detail
                         label="Interview Status"
